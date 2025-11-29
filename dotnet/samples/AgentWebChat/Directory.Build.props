@@ -1,0 +1,9 @@
+<Project>
+  <!-- Import parent Directory.Build.props -->
+  <Import Project="../Directory.Build.props" />
+
+  <!-- Override to use only net10.0 for AgentWebChat projects -->
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+  </PropertyGroup>
+</Project>
