@@ -7,6 +7,13 @@
             <ChatMessageItem @key="@message" Message="@message" />
         }
 
+        @if (SupplementalContent is not null)
+        {
+            <div class="message-supplemental">
+                @SupplementalContent
+            </div>
+        }
+
         @if (InProgressMessage is not null)
         {
             <ChatMessageItem Message="@InProgressMessage" InProgress="true" />
@@ -29,7 +36,11 @@
     [Parameter]
     public RenderFragment? NoMessagesContent { get; set; }
 
-    private bool IsEmpty => !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
+    [Parameter]
+    public RenderFragment? SupplementalContent { get; set; }
+
+    private bool IsEmpty => SupplementalContent is null
+        && !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

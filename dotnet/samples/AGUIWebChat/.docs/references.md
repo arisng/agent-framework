@@ -25,3 +25,7 @@ This document lists authoritative sources that ground the AGUIWebChat module doc
 - Azure OpenAI service overview: https://learn.microsoft.com/azure/ai-services/openai/overview
 - Azure OpenAI .NET quickstart: https://learn.microsoft.com/azure/ai-services/openai/quickstart?tabs=command-line&pivots=programming-language-csharp
 - Azure Identity client library overview (DefaultAzureCredential): https://learn.microsoft.com/dotnet/api/azure.identity.defaultazurecredential
+
+## AG-UI Protocol & Integration
+- AG-UI integration with Agent Framework: https://learn.microsoft.com/agent-framework/integrations/ag-ui/
+- AG-UI protocol introduction: https://docs.ag-ui.com/introduction

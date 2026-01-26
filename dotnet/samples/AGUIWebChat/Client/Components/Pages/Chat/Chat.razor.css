@@ -1,6 +1,22 @@
+.chat-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    align-items: stretch;
+    min-height: calc(100vh - 4rem);
+}
+
+.chat-transcript {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
 .chat-container {
     position: sticky;
     bottom: 0;
+    margin-top: auto;
     padding-left: 1.5rem;
     padding-right: 1.5rem;
     padding-top: 0.75rem;
@@ -8,4 +24,5 @@
     border-top-width: 1px;
     background-color: #F3F4F6;
     border-color: #E5E7EB;
+    z-index: 2;
 }

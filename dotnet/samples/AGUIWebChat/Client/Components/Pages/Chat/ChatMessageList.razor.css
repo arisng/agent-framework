@@ -9,6 +9,12 @@
     gap: 1.25rem;
 }
 
+.message-supplemental {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
 .no-messages {
     text-align: center;
     font-size: 1.25rem;

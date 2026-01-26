@@ -1,0 +1,31 @@
+@if (HasPlan)
+{
+    <div class="assistant-message chat-plan-message">
+        <div>
+            <div class="assistant-message-icon chat-plan-message-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+                </svg>
+            </div>
+        </div>
+        <div class="assistant-message-header">Plan</div>
+        <div class="assistant-message-text chat-plan-message-body">
+            <AgenticPlanPanel Steps="@Steps" Title="@Title" Subtitle="@Subtitle" />
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly IReadOnlyList<AgenticPlanPanel.AgenticPlanStep> EmptySteps = Array.Empty<AgenticPlanPanel.AgenticPlanStep>();
+
+    [Parameter]
+    public IReadOnlyList<AgenticPlanPanel.AgenticPlanStep> Steps { get; set; } = EmptySteps;
+
+    [Parameter]
+    public string Title { get; set; } = "Agentic plan";
+
+    [Parameter]
+    public string? Subtitle { get; set; } = "Live progress from the agent";
+
+    private bool HasPlan => Steps.Count > 0;
+}

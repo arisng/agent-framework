@@ -1,5 +1,8 @@
 @page "/"
 @using System.ComponentModel
+@using System.Text
+@using System.Text.Json
+@using Microsoft.Extensions.AI
 @inject IChatClient ChatClient
 @inject NavigationManager Nav
 @implements IDisposable
@@ -8,14 +11,24 @@
 
 <ChatHeader OnNewChat="@ResetConversationAsync" />
 
-<ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
-    <NoMessagesContent>
-        <div>Ask the assistant a question to start a conversation.</div>
-    </NoMessagesContent>
-</ChatMessageList>
-<div class="chat-container">
-    <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
-    <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+<div class="chat-layout">
+    <div class="chat-transcript">
+        <ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
+            <NoMessagesContent>
+                <div>Ask the assistant a question to start a conversation.</div>
+            </NoMessagesContent>
+            <SupplementalContent>
+                @if (planSteps.Count > 0)
+                {
+                    <ChatPlanMessage Steps="@planSteps" />
+                }
+            </SupplementalContent>
+        </ChatMessageList>
+        <div class="chat-container">
+            <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
+            <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+        </div>
+    </div>
 </div>
 
 @code {
@@ -26,6 +39,7 @@
     private int statefulMessageCount;
     private readonly ChatOptions chatOptions = new();
     private readonly List<ChatMessage> messages = new();
+    private readonly List<AgenticPlanPanel.AgenticPlanStep> planSteps = new();
     private CancellationTokenSource? currentResponseCancellation;
     private ChatMessage? currentResponseMessage;
     private ChatInput? chatInput;
@@ -47,12 +61,13 @@
         await chatInput!.FocusAsync();
 
         // Stream and display a new response from the IChatClient
-        var responseText = new TextContent("");
+        TextContent responseText = new("");
         currentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
         StateHasChanged();
         currentResponseCancellation = new();
-        await foreach (var update in ChatClient.GetStreamingResponseAsync(messages.Skip(statefulMessageCount), chatOptions, currentResponseCancellation.Token))
+        await foreach (ChatResponseUpdate update in ChatClient.GetStreamingResponseAsync(messages.Skip(statefulMessageCount), chatOptions, currentResponseCancellation.Token))
         {
+            UpdatePlanFromState(update);
             messages.AddMessages(update, filter: c => c is not TextContent);
             responseText.Text += update.Text;
             chatOptions.ConversationId = update.ConversationId;
@@ -85,10 +100,209 @@
         messages.Add(new(ChatRole.System, SystemPrompt));
         chatOptions.ConversationId = null;
         statefulMessageCount = 0;
+        planSteps.Clear();
         chatSuggestions?.Clear();
         await chatInput!.FocusAsync();
     }
 
     public void Dispose()
         => currentResponseCancellation?.Cancel();
+
+    private void UpdatePlanFromState(ChatResponseUpdate update)
+    {
+        foreach (AIContent content in update.Contents)
+        {
+            if (content is not DataContent dataContent)
+            {
+                continue;
+            }
+
+            if (IsJsonPatchMediaType(dataContent.MediaType))
+            {
+                ApplyPlanDelta(dataContent);
+                continue;
+            }
+
+            if (IsJsonSnapshotMediaType(dataContent.MediaType))
+            {
+                ApplyPlanSnapshot(dataContent);
+            }
+        }
+    }
+
+    private void ApplyPlanSnapshot(DataContent dataContent)
+    {
+        if (!TryReadJsonElement(dataContent, out JsonElement snapshotElement))
+        {
+            return;
+        }
+
+        if (!snapshotElement.TryGetProperty("steps", out JsonElement stepsElement) || stepsElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        planSteps.Clear();
+
+        foreach (JsonElement stepElement in stepsElement.EnumerateArray())
+        {
+            string description = stepElement.TryGetProperty("description", out JsonElement descriptionElement)
+                ? (descriptionElement.GetString() ?? string.Empty)
+                : string.Empty;
+            string status = stepElement.TryGetProperty("status", out JsonElement statusElement)
+                ? (statusElement.GetString() ?? "pending")
+                : "pending";
+            string? detail = stepElement.TryGetProperty("detail", out JsonElement detailElement)
+                ? detailElement.GetString()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                description = "Untitled step";
+            }
+
+            planSteps.Add(new AgenticPlanPanel.AgenticPlanStep(description, status.ToLowerInvariant(), detail));
+        }
+
+        StateHasChanged();
+    }
+
+    private void ApplyPlanDelta(DataContent dataContent)
+    {
+        if (!TryReadJsonElement(dataContent, out JsonElement deltaElement))
+        {
+            return;
+        }
+
+        if (deltaElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (JsonElement operationElement in deltaElement.EnumerateArray())
+        {
+            string? op = operationElement.TryGetProperty("op", out JsonElement opElement)
+                ? opElement.GetString()
+                : null;
+            string? path = operationElement.TryGetProperty("path", out JsonElement pathElement)
+                ? pathElement.GetString()
+                : null;
+            JsonElement valueElement = operationElement.TryGetProperty("value", out JsonElement foundValue)
+                ? foundValue
+                : default;
+            bool hasValue = operationElement.TryGetProperty("value", out _);
+
+            ApplyPlanDeltaOperation(op, path, valueElement, hasValue);
+        }
+
+        StateHasChanged();
+    }
+
+    private void ApplyPlanDeltaOperation(string? op, string? path, JsonElement valueElement, bool hasValue)
+    {
+        if (string.IsNullOrWhiteSpace(op) || string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        string normalizedOp = op.Trim().ToLowerInvariant();
+        if (normalizedOp is not ("replace" or "add"))
+        {
+            return;
+        }
+
+        string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 3 || !string.Equals(segments[0], "steps", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!int.TryParse(segments[1], out int stepIndex))
+        {
+            return;
+        }
+
+        if (stepIndex < 0 || stepIndex >= planSteps.Count)
+        {
+            return;
+        }
+
+        string property = segments[2];
+        AgenticPlanPanel.AgenticPlanStep currentStep = planSteps[stepIndex];
+        string description = currentStep.Description;
+        string status = currentStep.Status;
+        string? detail = currentStep.Detail;
+
+        if (string.Equals(property, "description", StringComparison.OrdinalIgnoreCase) && hasValue)
+        {
+            description = valueElement.GetString() ?? description;
+        }
+        else if (string.Equals(property, "status", StringComparison.OrdinalIgnoreCase) && hasValue)
+        {
+            status = valueElement.GetString() ?? status;
+        }
+        else if (string.Equals(property, "detail", StringComparison.OrdinalIgnoreCase) && hasValue)
+        {
+            detail = valueElement.GetString();
+        }
+
+        planSteps[stepIndex] = new AgenticPlanPanel.AgenticPlanStep(description, status, detail);
+    }
+
+    private static bool TryReadJsonElement(DataContent dataContent, out JsonElement element)
+    {
+        element = default;
+        string raw = GetDataContentText(dataContent);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(raw);
+            element = document.RootElement.Clone();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string GetDataContentText(DataContent dataContent)
+    {
+        string raw = dataContent.Base64Data.ToString();
+        if (string.IsNullOrWhiteSpace(raw) && dataContent.Uri is not null)
+        {
+            return dataContent.Uri.ToString();
+        }
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            byte[] decoded = Convert.FromBase64String(raw);
+            return Encoding.UTF8.GetString(decoded);
+        }
+        catch (FormatException)
+        {
+            return raw;
+        }
+    }
+
+    private static bool IsJsonPatchMediaType(string? mediaType)
+    {
+        return mediaType is not null
+            && mediaType.Equals("application/json-patch+json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsJsonSnapshotMediaType(string? mediaType)
+    {
+        return mediaType is not null
+            && mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase);
+    }
 }

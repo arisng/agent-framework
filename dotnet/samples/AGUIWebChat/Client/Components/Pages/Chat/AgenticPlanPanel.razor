@@ -1,0 +1,143 @@
+@using System.Collections.ObjectModel
+
+<div class="plan-panel" role="region" aria-label="Agentic plan progress">
+    <div class="plan-panel-header">
+        <div>
+            <div class="plan-panel-title">@Title</div>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <div class="plan-panel-subtitle">@Subtitle</div>
+            }
+        </div>
+        <div class="plan-panel-meta">
+            @if (HasSteps)
+            {
+                <div class="plan-panel-count">@CompletionSummary</div>
+            }
+            else
+            {
+                <div class="plan-panel-count plan-panel-count-muted">Awaiting plan updates</div>
+            }
+        </div>
+    </div>
+
+    <div class="plan-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@CompletionPercentValue">
+        <div class="plan-progress-bar">
+            <div class="plan-progress-bar-fill" style="width:@CompletionPercent"></div>
+        </div>
+    </div>
+
+    <div class="plan-steps">
+        @if (!HasSteps)
+        {
+            <div class="plan-empty-state">
+                <div class="plan-empty-title">No plan steps yet</div>
+                <div class="plan-empty-description">When the agent publishes a plan, progress will appear here.</div>
+            </div>
+        }
+        else
+        {
+            @foreach (AgenticPlanStep step in Steps)
+            {
+                <div class="plan-step">
+                    <div class="plan-step-marker @GetStatusClass(step.Status)"></div>
+                    <div class="plan-step-content">
+                        <div class="plan-step-header">
+                            <div class="plan-step-title">@step.Description</div>
+                            <div class="plan-step-status @GetStatusClass(step.Status)">@GetStatusLabel(step.Status)</div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(step.Detail))
+                        {
+                            <div class="plan-step-detail">@step.Detail</div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly ReadOnlyCollection<AgenticPlanStep> EmptySteps = new([]);
+
+    [Parameter]
+    public IReadOnlyList<AgenticPlanStep> Steps { get; set; } = EmptySteps;
+
+    [Parameter]
+    public string Title { get; set; } = "Agentic plan";
+
+    [Parameter]
+    public string? Subtitle { get; set; } = "Live progress from the agent";
+
+    private bool HasSteps => Steps.Count > 0;
+
+    private int TotalCount => Steps.Count;
+
+    private int CompletedCount => Steps.Count(step => IsCompleted(step.Status));
+
+    private double CompletionRatio => TotalCount == 0 ? 0 : (double)CompletedCount / TotalCount;
+
+    private int CompletionPercentValue => (int)Math.Round(CompletionRatio * 100, MidpointRounding.AwayFromZero);
+
+    private string CompletionPercent => $"{CompletionPercentValue}%";
+
+    private string CompletionSummary => $"{CompletedCount} of {TotalCount} complete";
+
+    private static bool IsCompleted(string? status)
+    {
+        return NormalizeStatus(status) == "completed";
+    }
+
+    private static string GetStatusLabel(string? status)
+    {
+        string normalizedStatus = NormalizeStatus(status);
+        return normalizedStatus switch
+        {
+            "completed" => "Completed",
+            "in-progress" => "In progress",
+            "blocked" => "Blocked",
+            "pending" => "Pending",
+            _ => "Pending"
+        };
+    }
+
+    private static string GetStatusClass(string? status)
+    {
+        string normalizedStatus = NormalizeStatus(status);
+        return normalizedStatus switch
+        {
+            "completed" => "plan-step-complete",
+            "in-progress" => "plan-step-active",
+            "blocked" => "plan-step-blocked",
+            "pending" => "plan-step-pending",
+            _ => "plan-step-pending"
+        };
+    }
+
+    private static string NormalizeStatus(string? status)
+    {
+        return string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
+    }
+
+    public sealed class AgenticPlanStep
+    {
+        public AgenticPlanStep(string description, string status)
+        {
+            Description = description;
+            Status = status;
+        }
+
+        public AgenticPlanStep(string description, string status, string? detail)
+        {
+            Description = description;
+            Status = status;
+            Detail = detail;
+        }
+
+        public string Description { get; }
+
+        public string Status { get; }
+
+        public string? Detail { get; }
+    }
+}

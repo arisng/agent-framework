@@ -16,6 +16,10 @@
     gap: 0.25rem;
 }
 
+.assistant-state {
+    display: none;
+}
+
 .assistant-message-header {
     font-weight: 600;
 }
