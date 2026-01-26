@@ -1,0 +1,12 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Publish" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Folder Name="/AGUIWebChat/">
+    <File Path="README.md" />
+    <Project Path="Server/AGUIWebChatServer.csproj" />
+    <Project Path="Client/AGUIWebChatClient.csproj" />
+  </Folder>
+</Solution>

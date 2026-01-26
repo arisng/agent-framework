@@ -1,17 +1,17 @@
 # AGUI WebChat Sample
 
-This sample demonstrates a Blazor-based web chat application using the AG-UI protocol to communicate with an AI agent server.
+This sample demonstrates a Blazor-based web chat application using the AG-UI protocol to communicate with an AI agent server, including Agentic UI state updates (plan snapshots and JSON Patch deltas).
 
 The sample consists of two projects:
 
 1. **Server** - An ASP.NET Core server that hosts a simple chat agent using the AG-UI protocol
-2. **Client** - A Blazor Server application with a rich chat UI for interacting with the agent
+2. **Client** - A Blazor Server application with a rich chat UI for interacting with the agent and rendering Agentic UI state updates
 
 ## Prerequisites
 
 ### Azure OpenAI Configuration
 
-The server requires Azure OpenAI credentials. Set the following environment variables:
+The server supports Azure OpenAI and OpenAI. To use Azure OpenAI, set the following environment variables:
 
 ```powershell
 $env:AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
@@ -24,6 +24,24 @@ The server uses `DefaultAzureCredential` for authentication. Ensure you are logg
 - Azure PowerShell: `Connect-AzAccount`
 - Visual Studio or VS Code with Azure extensions
 - Environment variables with service principal credentials
+
+### OpenAI Configuration
+
+To use OpenAI, set the following environment variables:
+
+```powershell
+$env:OPENAI_API_KEY="your-openai-api-key"
+$env:OPENAI_MODEL="gpt-5-mini"
+```
+
+```powershell
+cd Server
+
+# Set OpenAI API key (connection string value)
+dotnet user-secrets set "OPENAI_API_KEY" "API-KEY"
+```
+
+If both Azure OpenAI and OpenAI environment variables are provided, the server prefers Azure OpenAI.
 
 ## Running the Sample
 
@@ -49,12 +67,17 @@ dotnet run
 
 The client will start on `http://localhost:5000`. Open your browser and navigate to `http://localhost:5000` to access the chat interface.
 
+## Solution File
+
+The sample includes a solution file at [AGUIWebChat.slnx](AGUIWebChat.slnx) that references both the server and client projects.
+
 ### Step 3: Chat with the Agent
 
 Type your message in the text box at the bottom of the page and press Enter or click the send button. The assistant will respond with streaming text that appears in real-time.
 
 Features:
 - **Streaming responses**: Watch the assistant's response appear word by word
+- **Agentic UI state updates**: View structured state snapshots and deltas emitted by the server
 - **Conversation suggestions**: The assistant may offer follow-up questions after responding
 - **New chat**: Click the "New chat" button to start a fresh conversation
 - **Auto-scrolling**: The chat automatically scrolls to show new messages
@@ -63,26 +86,44 @@ Features:
 
 ### Server (AG-UI Host)
 
-The server (`Server/Program.cs`) creates a simple chat agent:
+The server (`Server/Program.cs`) creates a simple chat agent, selecting Azure OpenAI when configured, otherwise OpenAI:
 
 ```csharp
-// Create Azure OpenAI client
-AzureOpenAIClient azureOpenAIClient = new AzureOpenAIClient(
+ChatClient chatClient;
+if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(deploymentName))
+{
+  // Create Azure OpenAI client
+  AzureOpenAIClient azureOpenAIClient = new AzureOpenAIClient(
     new Uri(endpoint),
     new DefaultAzureCredential());
 
-ChatClient chatClient = azureOpenAIClient.GetChatClient(deploymentName);
+  chatClient = azureOpenAIClient.GetChatClient(deploymentName);
+}
+else if (!string.IsNullOrWhiteSpace(openAiApiKey) && !string.IsNullOrWhiteSpace(openAiModel))
+{
+  // Create OpenAI client
+  OpenAIClient openAIClient = new OpenAIClient(openAiApiKey);
+  chatClient = openAIClient.GetChatClient(openAiModel);
+}
+else
+{
+  throw new InvalidOperationException(
+    "Either AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NAME, or OPENAI_API_KEY and OPENAI_MODEL must be set.");
+}
 
 // Create AI agent
 ChatClientAgent agent = chatClient.AsIChatClient().AsAIAgent(
-    name: "ChatAssistant",
-    instructions: "You are a helpful assistant.");
+  name: "AgenticUIAssistant",
+  instructions: "You are a helpful assistant.");
+
+// Wrap the agent to emit Agentic UI state events from tool results
+AIAgent agenticUiAgent = new AgenticUIAgent(agent, jsonOptions.SerializerOptions);
 
 // Map AG-UI endpoint
-app.MapAGUI("/ag-ui", agent);
+app.MapAGUI("/ag-ui", agenticUiAgent);
 ```
 
-The server exposes the agent via the AG-UI protocol at `http://localhost:5100/ag-ui`.
+The server exposes the agent via the AG-UI protocol at `http://localhost:5100/ag-ui`, streaming both text and state events.
 
 ### Client (Blazor Web App)
 
@@ -102,6 +143,8 @@ The Blazor UI (`Client/Components/Pages/Chat/Chat.razor`) uses the `IChatClient`
 - Stream responses back in real-time
 - Maintain conversation history
 - Display messages with appropriate styling
+
+The message renderer (`Client/Components/Pages/Chat/ChatMessageItem.razor`) also renders Agentic UI state updates emitted as `DataContent` payloads.
 
 ### UI Components
 
@@ -163,8 +206,8 @@ Edit the instructions in `Server/Program.cs`:
 
 ```csharp
 ChatClientAgent agent = chatClient.AsIChatClient().AsAIAgent(
-    name: "ChatAssistant",
-    instructions: "You are a helpful coding assistant specializing in C# and .NET.");
+  name: "AgenticUIAssistant",
+  instructions: "You are a helpful coding assistant specializing in C# and .NET.");
 ```
 
 ### Styling the UI
