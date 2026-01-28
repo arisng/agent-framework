@@ -1,4 +1,5 @@
 @page "/"
+@using System.Collections.Generic
 @using System.ComponentModel
 @using System.Text
 @using System.Text.Json
@@ -40,6 +41,7 @@
     private readonly ChatOptions chatOptions = new();
     private readonly List<ChatMessage> messages = new();
     private readonly List<AgenticPlanPanel.AgenticPlanStep> planSteps = new();
+    private readonly HashSet<string> toolCallIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? currentResponseCancellation;
     private ChatMessage? currentResponseMessage;
     private ChatInput? chatInput;
@@ -68,6 +70,7 @@
         await foreach (ChatResponseUpdate update in ChatClient.GetStreamingResponseAsync(messages.Skip(statefulMessageCount), chatOptions, currentResponseCancellation.Token))
         {
             UpdatePlanFromState(update);
+            AddToolContentsToCurrentResponse(update);
             messages.AddMessages(update, filter: c => c is not TextContent);
             responseText.Text += update.Text;
             chatOptions.ConversationId = update.ConversationId;
@@ -78,6 +81,7 @@
         messages.Add(currentResponseMessage!);
         statefulMessageCount = chatOptions.ConversationId is not null ? messages.Count : 0;
         currentResponseMessage = null;
+        toolCallIds.Clear();
         chatSuggestions?.Update(messages);
     }
 
@@ -91,6 +95,7 @@
 
         currentResponseCancellation?.Cancel();
         currentResponseMessage = null;
+        toolCallIds.Clear();
     }
 
     private async Task ResetConversationAsync()
@@ -102,7 +107,24 @@
         statefulMessageCount = 0;
         planSteps.Clear();
         chatSuggestions?.Clear();
+        toolCallIds.Clear();
         await chatInput!.FocusAsync();
+    }
+
+    private void AddToolContentsToCurrentResponse(ChatResponseUpdate update)
+    {
+        if (currentResponseMessage is null)
+        {
+            return;
+        }
+
+        foreach (AIContent content in update.Contents)
+        {
+            if (content is FunctionCallContent call && toolCallIds.Add(call.CallId))
+            {
+                currentResponseMessage.Contents.Add(call);
+            }
+        }
     }
 
     public void Dispose()

@@ -61,6 +61,11 @@ AITool[] tools =
         AgenticPlanningTools.UpdatePlanStepAsync,
         name: "update_plan_step",
         description: "Update a step in the plan with new description or status.",
+        serializerOptions: jsonOptions.SerializerOptions),
+    AIFunctionFactory.Create(
+        WeatherTool.GetWeather,
+        name: "get_weather",
+        description: "Get the weather for a given location.",
         serializerOptions: jsonOptions.SerializerOptions)
 ];
 

@@ -9,4 +9,5 @@ namespace AGUIWebChatServer.AgenticUI;
 [JsonSerializable(typeof(JsonPatchOperation))]
 [JsonSerializable(typeof(List<JsonPatchOperation>))]
 [JsonSerializable(typeof(StepStatus))]
+[JsonSerializable(typeof(WeatherInfo))]
 internal sealed partial class AgenticUISerializerContext : JsonSerializerContext;

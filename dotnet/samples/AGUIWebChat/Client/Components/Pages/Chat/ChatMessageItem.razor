@@ -10,7 +10,7 @@
         @Message.Text
     </div>
 }
-else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System)
+else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System || Message.Role == ChatRole.Tool)
 {
     foreach (var content in Message.Contents)
     {
@@ -51,6 +51,15 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System)
                 </div>
             }
         }
+        else if (content is FunctionCallContent { Name: "get_weather" } weatherCall)
+        {
+            TrackFunctionCall(weatherCall);
+            FunctionResultContent? result = GetMatchingResult(weatherCall.CallId);
+            if (result == null)
+            {
+                <ChatWeatherTool Call="@weatherCall" Result="@result" InProgress="true" />
+            }
+        }
         else if (Message.Role == ChatRole.Assistant && content is FunctionCallContent { Name: "Search" } fcc && fcc.Arguments?.TryGetValue("searchPhrase", out var searchPhrase) is true)
         {
             <div class="assistant-search">
@@ -69,12 +78,24 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System)
                 </div>
             </div>
         }
+        else if (content is FunctionResultContent funcResult)
+        {
+            TrackFunctionResult(funcResult);
+
+            if (TryGetMatchingCall(funcResult.CallId, out FunctionCallContent? call) && call?.Name == "get_weather")
+            {
+                <ChatWeatherTool Call="@call" Result="@funcResult" InProgress="false" />
+            }
+        }
     }
 }
 
 @code {
     private static readonly ConditionalWeakTable<ChatMessage, ChatMessageItem> SubscribersLookup = new();
     private static readonly Regex Base64Regex = new("^[A-Za-z0-9+/]*={0,2}$", RegexOptions.Compiled);
+    private static readonly Dictionary<string, FunctionCallContent> FunctionCalls = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, FunctionResultContent> FunctionResults = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, WeakReference<ChatMessageItem>> FunctionCallSubscribers = new(StringComparer.Ordinal);
 
     [Parameter, EditorRequired]
     public required ChatMessage Message { get; set; }
@@ -147,5 +168,45 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System)
         return !string.IsNullOrWhiteSpace(value)
             && value.Length % 4 == 0
             && Base64Regex.IsMatch(value);
+    }
+
+    private void TrackFunctionCall(FunctionCallContent call)
+    {
+        FunctionCalls[call.CallId] = call;
+        FunctionCallSubscribers[call.CallId] = new WeakReference<ChatMessageItem>(this);
+    }
+
+    private void TrackFunctionResult(FunctionResultContent result)
+    {
+        FunctionResults[result.CallId] = result;
+        NotifyCallSubscriber(result.CallId);
+    }
+
+    private static FunctionResultContent? GetMatchingResult(string callId)
+    {
+        FunctionResults.TryGetValue(callId, out FunctionResultContent? result);
+        return result;
+    }
+
+    private static bool TryGetMatchingCall(string callId, out FunctionCallContent? call)
+    {
+        return FunctionCalls.TryGetValue(callId, out call);
+    }
+
+    private static void NotifyCallSubscriber(string callId)
+    {
+        if (!FunctionCallSubscribers.TryGetValue(callId, out WeakReference<ChatMessageItem>? subscriber))
+        {
+            return;
+        }
+
+        if (subscriber.TryGetTarget(out ChatMessageItem? target))
+        {
+            target.StateHasChanged();
+        }
+        else
+        {
+            FunctionCallSubscribers.Remove(callId);
+        }
     }
 }

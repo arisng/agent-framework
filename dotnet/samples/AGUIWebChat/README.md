@@ -78,6 +78,7 @@ Type your message in the text box at the bottom of the page and press Enter or c
 Features:
 - **Streaming responses**: Watch the assistant's response appear word by word
 - **Agentic UI state updates**: View structured state snapshots and deltas emitted by the server
+- **Backend tool rendering**: View tool executions with custom UI (e.g., weather tool with interactive cards)
 - **Conversation suggestions**: The assistant may offer follow-up questions after responding
 - **New chat**: Click the "New chat" button to start a fresh conversation
 - **Auto-scrolling**: The chat automatically scrolls to show new messages
@@ -146,6 +147,38 @@ The Blazor UI (`Client/Components/Pages/Chat/Chat.razor`) uses the `IChatClient`
 
 The message renderer (`Client/Components/Pages/Chat/ChatMessageItem.razor`) also renders Agentic UI state updates emitted as `DataContent` payloads.
 
+### Backend Tool Rendering
+
+The sample includes a **weather tool** (`get_weather`) that demonstrates backend tool rendering with custom UI components:
+
+**Server-Side Implementation:**
+- `WeatherTool.GetWeather(string location)` - A tool function that returns weather information for a given location
+- `WeatherInfo` - A structured model containing temperature, conditions, humidity, wind speed, and "feels like" data
+- Registered in the agent configuration alongside planning tools
+
+**Client-Side Rendering:**
+- `ChatWeatherTool.razor` - A custom Blazor component that renders weather data with:
+  - **Loading state**: Animated spinner with "Retrieving weather..." message while the tool executes
+  - **Weather card**: Custom UI with dynamic background colors based on weather conditions
+  - **Weather icons**: SVG icons (sun, cloud, rain) that match the current conditions
+  - **Temperature display**: Shows temperature in both Celsius and Fahrenheit
+  - **Weather metrics**: Grid layout displaying humidity, wind speed, and "feels like" temperature
+
+**Tool Call Flow:**
+1. User asks about weather (e.g., "What's the weather in Seattle?")
+2. LLM decides to call the `get_weather` tool with the location argument
+3. Client displays loading indicator (tool call initiated)
+4. Server executes the tool and returns structured weather data
+5. Client renders custom weather card with all weather information
+
+**Usage Example:**
+```
+User: "What's the weather in Tokyo?"
+Assistant: [weather card displays with current conditions]
+```
+
+Try asking weather-related questions to see the tool in action!
+
 ### UI Components
 
 The chat interface is built from several Blazor components:
@@ -199,6 +232,53 @@ dotnet run
 ```
 
 ## Customization
+
+### Adding Custom Tools
+
+The sample demonstrates how to add custom backend tools with specialized UI rendering. To add your own tool:
+
+**1. Create a Tool Class (Server):**
+```csharp
+public static class MyTool
+{
+    [Description("Description of what your tool does")]
+    public static MyResult ExecuteTool(
+        [Description("Parameter description")] string parameter)
+    {
+        // Tool implementation
+        return new MyResult { /* ... */ };
+    }
+}
+```
+
+**2. Register the Tool (Server/Program.cs):**
+```csharp
+AIFunctionFactory.Create(
+    MyTool.ExecuteTool,
+    name: "my_tool",
+    description: "Tool description for LLM",
+    serializerOptions: jsonOptions.SerializerOptions)
+```
+
+**3. Create a UI Component (Client):**
+```razor
+@* Client/Components/Pages/Chat/ChatMyTool.razor *@
+<div class="my-tool-card">
+    @* Custom UI for your tool result *@
+</div>
+```
+
+**4. Integrate in ChatMessageItem.razor:**
+```razor
+else if (content is FunctionCallContent { Name: "my_tool" } myToolCall)
+{
+    TrackFunctionCall(myToolCall);
+    var result = GetMatchingResult(myToolCall.CallId);
+    <ChatMyTool Call="@myToolCall" Result="@result" InProgress="@(result == null && InProgress)" />
+}
+```
+
+See `WeatherTool`, `WeatherInfo`, and `ChatWeatherTool.razor` for a complete reference implementation.
 
 ### Changing the Agent Instructions
 

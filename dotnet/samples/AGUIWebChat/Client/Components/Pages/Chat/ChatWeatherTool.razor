@@ -1,0 +1,216 @@
+@using System.Collections.Generic
+@using System.Text.Json
+@using Microsoft.Extensions.AI
+
+@if (InProgress && Result == null)
+{
+    <div class="weather-loading">
+        <div class="weather-loading-icon">⚙️</div>
+        <span class="weather-loading-text">Retrieving weather...</span>
+    </div>
+}
+else if (Result != null)
+{
+    var weatherData = ParseWeatherResult();
+    if (weatherData != null)
+    {
+        var themeColor = GetThemeColor(weatherData.Conditions);
+        var weatherIcon = GetWeatherIcon(weatherData.Conditions);
+
+        <div class="weather-card" style="background-color: @themeColor;">
+            <div class="weather-card-content">
+                <div class="weather-header">
+                    <div class="weather-location-info">
+                        <h3 class="weather-city">@Location</h3>
+                        <p class="weather-subtitle">Current Weather</p>
+                    </div>
+                    <div class="weather-icon">
+                        @((MarkupString)weatherIcon)
+                    </div>
+                </div>
+
+                <div class="weather-temperature">
+                    <div class="weather-temp-primary">
+                        <span>@weatherData.Temperature°C</span>
+                        <span class="weather-temp-secondary">
+                            / @(((weatherData.Temperature * 9) / 5 + 32).ToString("F1"))°F
+                        </span>
+                    </div>
+                    <div class="weather-conditions">@weatherData.Conditions</div>
+                </div>
+
+                <div class="weather-details">
+                    <div class="weather-detail-item">
+                        <p class="weather-detail-label">Humidity</p>
+                        <p class="weather-detail-value">@weatherData.Humidity%</p>
+                    </div>
+                    <div class="weather-detail-item">
+                        <p class="weather-detail-label">Wind</p>
+                        <p class="weather-detail-value">@weatherData.WindSpeed km/h</p>
+                    </div>
+                    <div class="weather-detail-item">
+                        <p class="weather-detail-label">Feels Like</p>
+                        <p class="weather-detail-value">@weatherData.FeelsLike°</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public required FunctionCallContent Call { get; set; }
+
+    [Parameter]
+    public FunctionResultContent? Result { get; set; }
+
+    [Parameter]
+    public bool InProgress { get; set; }
+
+    private string Location
+    {
+        get
+        {
+            return TryGetLocation(Call.Arguments, out string? location) && !string.IsNullOrWhiteSpace(location)
+                ? location
+                : "Unknown Location";
+        }
+    }
+    private static bool TryGetLocation(IDictionary<string, object?>? arguments, out string? location)
+    {
+        location = null;
+
+        if (arguments is null || !arguments.TryGetValue("location", out object? value) || value is null)
+        {
+            return false;
+        }
+
+        if (value is string locationString)
+        {
+            location = locationString;
+            return true;
+        }
+
+        if (value is JsonElement locationElement && locationElement.ValueKind == JsonValueKind.String)
+        {
+            location = locationElement.GetString();
+            return !string.IsNullOrWhiteSpace(location);
+        }
+
+        return false;
+    }
+
+    private sealed class WeatherData
+    {
+        public int Temperature { get; set; }
+        public string Conditions { get; set; } = string.Empty;
+        public int Humidity { get; set; }
+        public int WindSpeed { get; set; }
+        public int FeelsLike { get; set; }
+    }
+
+    private WeatherData? ParseWeatherResult()
+    {
+        if (Result?.Result is null) return null;
+
+        try
+        {
+            var resultObj = Result.Result;
+            if (resultObj is JsonElement jsonElement)
+            {
+                return new WeatherData
+                {
+                    Temperature = jsonElement.TryGetProperty("temperature", out var temp) ? temp.GetInt32() : 0,
+                    Conditions = jsonElement.TryGetProperty("conditions", out var cond) ? cond.GetString() ?? "clear" : "clear",
+                    Humidity = jsonElement.TryGetProperty("humidity", out var hum) ? hum.GetInt32() : 0,
+                    WindSpeed = jsonElement.TryGetProperty("windSpeed", out var wind) ? wind.GetInt32() : 0,
+                    FeelsLike = jsonElement.TryGetProperty("feelsLike", out var feels) ? feels.GetInt32() : 0
+                };
+            }
+
+            // Try to parse as JSON string if not JsonElement
+            string? jsonString = resultObj?.ToString();
+            if (!string.IsNullOrEmpty(jsonString))
+            {
+                using JsonDocument doc = JsonDocument.Parse(jsonString);
+                JsonElement root = doc.RootElement;
+                return new WeatherData
+                {
+                    Temperature = root.TryGetProperty("temperature", out var temp) ? temp.GetInt32() : 0,
+                    Conditions = root.TryGetProperty("conditions", out var cond) ? cond.GetString() ?? "clear" : "clear",
+                    Humidity = root.TryGetProperty("humidity", out var hum) ? hum.GetInt32() : 0,
+                    WindSpeed = root.TryGetProperty("windSpeed", out var wind) ? wind.GetInt32() : 0,
+                    FeelsLike = root.TryGetProperty("feelsLike", out var feels) ? feels.GetInt32() : 0
+                };
+            }
+        }
+        catch (Exception)
+        {
+            // Fallback on parsing failure
+        }
+
+        return null;
+    }
+
+    private static string GetThemeColor(string conditions)
+    {
+        string conditionLower = conditions.ToLowerInvariant();
+
+        if (conditionLower.Contains("clear") || conditionLower.Contains("sunny"))
+            return "#667eea";
+
+        if (conditionLower.Contains("rain") || conditionLower.Contains("storm"))
+            return "#4A5568";
+
+        if (conditionLower.Contains("cloud"))
+            return "#718096";
+
+        if (conditionLower.Contains("snow"))
+            return "#63B3ED";
+
+        return "#764ba2";
+    }
+
+    private static string GetWeatherIcon(string conditions)
+    {
+        string conditionLower = conditions.ToLowerInvariant();
+
+        if (conditionLower.Contains("clear") || conditionLower.Contains("sunny"))
+        {
+            return """
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="weather-icon-svg">
+                    <circle cx="12" cy="12" r="5" />
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke-width="2" stroke="currentColor" />
+                </svg>
+                """;
+        }
+
+        if (conditionLower.Contains("rain") || conditionLower.Contains("drizzle") || 
+            conditionLower.Contains("snow") || conditionLower.Contains("storm"))
+        {
+            return """
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="weather-icon-svg">
+                    <path d="M7 15a4 4 0 0 1 0-8 5 5 0 0 1 10 0 4 4 0 0 1 0 8H7z" fill="currentColor" opacity="0.8" />
+                    <path d="M8 18l2 4M12 18l2 4M16 18l2 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" />
+                </svg>
+                """;
+        }
+
+        if (conditionLower.Contains("fog") || conditionLower.Contains("cloud") || conditionLower.Contains("overcast"))
+        {
+            return """
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="weather-icon-svg">
+                    <path d="M7 15a4 4 0 0 1 0-8 5 5 0 0 1 10 0 4 4 0 0 1 0 8H7z" fill="currentColor" />
+                </svg>
+                """;
+        }
+
+        // Default cloud icon
+        return """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="weather-icon-svg">
+                <path d="M7 15a4 4 0 0 1 0-8 5 5 0 0 1 10 0 4 4 0 0 1 0 8H7z" fill="currentColor" />
+            </svg>
+            """;
+    }
+}
