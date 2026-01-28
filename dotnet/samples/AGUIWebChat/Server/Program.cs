@@ -90,7 +90,7 @@ ChatClientAgent baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientA
             again until all the steps in current plan are completed.
             """,
         Tools = tools,
-        AllowMultipleToolCalls = false
+        AllowMultipleToolCalls = true
     }
 });
 
