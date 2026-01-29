@@ -1,0 +1,255 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@using System.Linq
+@using AGUIWebChat.Client.Models.QuizModels
+
+@if (Card is not null)
+{
+    <div class="quiz-card @GetCardStateClass()">
+        <div class="quiz-card-content">
+            <!-- Question Section -->
+            <div class="quiz-question-section">
+                <h4 class="quiz-question-text">@Card.Question.Text</h4>
+                @if (!string.IsNullOrWhiteSpace(Card.Question.Description))
+                {
+                    <p class="quiz-question-description">@Card.Question.Description</p>
+                }
+                @if (Card.Question.MediaUrl is not null)
+                {
+                    <img src="@Card.Question.MediaUrl" alt="Question media" class="quiz-question-media" />
+                }
+            </div>
+
+            <!-- Answer Options Section -->
+            <div class="quiz-answers-section">
+                @if (IsSingleSelect)
+                {
+                    @foreach (AnswerOption answer in Card.Answers)
+                    {
+                        bool isSelected = IsAnswerSelected(answer.Id);
+                        bool isCorrect = IsCorrectAnswer(answer.Id);
+                        bool isIncorrect = isSelected && !isCorrect && ShouldShowEvaluation;
+                        bool isDisabled = answer.IsDisabled == true || IsCardDisabled;
+
+                        <div class="quiz-answer-option @GetAnswerStateClass(answer.Id)">
+                            <label class="quiz-answer-label">
+                                <input type="radio"
+                                       name="quiz-card-@Card.Id"
+                                       value="@answer.Id"
+                                       checked="@isSelected"
+                                       disabled="@isDisabled"
+                                       @onchange="@(() => OnAnswerSelected(answer.Id))" />
+                                <span class="quiz-answer-text">@answer.Text</span>
+                                @if (ShouldShowCorrectAnswerIndicators && isCorrect)
+                                {
+                                    <span class="quiz-answer-indicator quiz-answer-correct">✓</span>
+                                }
+                                @if (isIncorrect)
+                                {
+                                    <span class="quiz-answer-indicator quiz-answer-incorrect">✗</span>
+                                }
+                            </label>
+                            @if (!string.IsNullOrWhiteSpace(answer.Description))
+                            {
+                                <p class="quiz-answer-description">@answer.Description</p>
+                            }
+                            @if (answer.MediaUrl is not null)
+                            {
+                                <img src="@answer.MediaUrl" alt="Answer media" class="quiz-answer-media" />
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    @foreach (AnswerOption answer in Card.Answers)
+                    {
+                        bool isSelected = IsAnswerSelected(answer.Id);
+                        bool isCorrect = IsCorrectAnswer(answer.Id);
+                        bool isIncorrect = isSelected && !isCorrect && ShouldShowEvaluation;
+                        bool isDisabled = answer.IsDisabled == true || IsCardDisabled;
+
+                        <div class="quiz-answer-option @GetAnswerStateClass(answer.Id)">
+                            <label class="quiz-answer-label">
+                                <input type="checkbox"
+                                       value="@answer.Id"
+                                       checked="@isSelected"
+                                       disabled="@isDisabled"
+                                       @onchange="@(e => OnAnswerToggled(answer.Id, ((ChangeEventArgs)e).Value))" />
+                                <span class="quiz-answer-text">@answer.Text</span>
+                                @if (ShouldShowCorrectAnswerIndicators && isCorrect)
+                                {
+                                    <span class="quiz-answer-indicator quiz-answer-correct">✓</span>
+                                }
+                                @if (isIncorrect)
+                                {
+                                    <span class="quiz-answer-indicator quiz-answer-incorrect">✗</span>
+                                }
+                            </label>
+                            @if (!string.IsNullOrWhiteSpace(answer.Description))
+                            {
+                                <p class="quiz-answer-description">@answer.Description</p>
+                            }
+                            @if (answer.MediaUrl is not null)
+                            {
+                                <img src="@answer.MediaUrl" alt="Answer media" class="quiz-answer-media" />
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Evaluation Section -->
+            @if (Card.Evaluation is not null && ShouldShowEvaluation)
+            {
+                <div class="quiz-evaluation-section @(Card.Evaluation.IsCorrect ? "quiz-evaluation-correct" : "quiz-evaluation-incorrect")">
+                    <div class="quiz-evaluation-header">
+                        <span class="quiz-evaluation-icon">
+                            @(Card.Evaluation.IsCorrect ? "✓" : "✗")
+                        </span>
+                        <span class="quiz-evaluation-status">
+                            @(Card.Evaluation.IsCorrect ? "Correct!" : "Incorrect")
+                        </span>
+                        @if (Card.Evaluation.Score.HasValue)
+                        {
+                            <span class="quiz-evaluation-score">
+                                Score: @Card.Evaluation.Score.Value.ToString("P0")
+                            </span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Card.Evaluation.Feedback))
+                    {
+                        <p class="quiz-evaluation-feedback">@Card.Evaluation.Feedback</p>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Registry component contract: Data object (QuestionCard)
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    /// <summary>
+    /// Registry component contract: Media type identifier
+    /// </summary>
+    [Parameter]
+    public string MediaType { get; set; } = "application/vnd.quiz.card+json";
+
+    private QuestionCard? Card => Data as QuestionCard;
+
+    private bool IsSingleSelect => Card?.Selection.Mode == "single";
+
+    private bool IsCardDisabled => Card?.Evaluation is not null;
+
+    private bool ShouldShowEvaluation => Card?.Evaluation is not null;
+
+    private bool ShouldShowCorrectAnswerIndicators
+    {
+        get
+        {
+            if (Card?.CorrectAnswerDisplay is null)
+            {
+                return false;
+            }
+
+            string visibility = Card.CorrectAnswerDisplay.Visibility;
+
+            return visibility switch
+            {
+                "always" => true,
+                "afterSubmit" => Card.Evaluation is not null,
+                "afterReveal" => Card.Evaluation is not null, // Could add reveal button logic here
+                "never" => false,
+                _ => false
+            };
+        }
+    }
+
+    private bool IsAnswerSelected(string answerId)
+    {
+        return Card?.UserChoiceIds.Contains(answerId) == true;
+    }
+
+    private bool IsCorrectAnswer(string answerId)
+    {
+        return Card?.CorrectAnswerIds.Contains(answerId) == true;
+    }
+
+    private string GetCardStateClass()
+    {
+        if (Card?.Evaluation is null)
+        {
+            return "quiz-card-unanswered";
+        }
+
+        return Card.Evaluation.IsCorrect ? "quiz-card-correct" : "quiz-card-incorrect";
+    }
+
+    private string GetAnswerStateClass(string answerId)
+    {
+        List<string> classes = new();
+
+        if (IsAnswerSelected(answerId))
+        {
+            classes.Add("quiz-answer-selected");
+        }
+
+        if (ShouldShowCorrectAnswerIndicators)
+        {
+            if (IsCorrectAnswer(answerId))
+            {
+                classes.Add("quiz-answer-is-correct");
+            }
+            else if (IsAnswerSelected(answerId))
+            {
+                classes.Add("quiz-answer-is-incorrect");
+            }
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private void OnAnswerSelected(string answerId)
+    {
+        if (Card is null || IsCardDisabled)
+        {
+            return;
+        }
+
+        // For single-select, replace the entire selection
+        Card.UserChoiceIds.Clear();
+        Card.UserChoiceIds.Add(answerId);
+
+        StateHasChanged();
+    }
+
+    private void OnAnswerToggled(string answerId, object? value)
+    {
+        if (Card is null || IsCardDisabled)
+        {
+            return;
+        }
+
+        bool isChecked = value is bool boolValue && boolValue;
+
+        if (isChecked)
+        {
+            // Add if not already present
+            if (!Card.UserChoiceIds.Contains(answerId))
+            {
+                Card.UserChoiceIds.Add(answerId);
+            }
+        }
+        else
+        {
+            // Remove if present
+            Card.UserChoiceIds.Remove(answerId);
+        }
+
+        StateHasChanged();
+    }
+}

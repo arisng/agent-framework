@@ -2,6 +2,7 @@
 
 using AGUIWebChatClient.Components;
 using AGUIWebChatClient.Components.Pages.Chat;
+using AGUIWebChatClient.Components.QuizComponents;
 using AGUIWebChat.Client.Services;
 using Microsoft.Agents.AI.AGUI;
 
@@ -31,6 +32,8 @@ builder.Services.AddSingleton<IComponentRegistry>(sp =>
     componentRegistry.Register(ToolContentMediaTypes.PlanCall, typeof(CreatePlanToolComponent));
     componentRegistry.Register(ToolContentMediaTypes.PlanUpdateCall, typeof(UpdatePlanStepToolComponent));
     componentRegistry.Register(ToolContentMediaTypes.PlanResult, typeof(PlanToolResultComponent));
+    componentRegistry.Register("application/vnd.quiz+json", typeof(QuizComponent));
+    componentRegistry.Register("application/vnd.quiz.card+json", typeof(QuizCardComponent));
     return componentRegistry;
 });
 

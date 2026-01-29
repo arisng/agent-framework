@@ -1,0 +1,44 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@using System.Linq
+@using AGUIWebChat.Client.Models.QuizModels
+
+@if (QuizData is not null)
+{
+    <div class="quiz-container">
+        <!-- Quiz Header -->
+        <div class="quiz-header">
+            <h3 class="quiz-title">@QuizData.Title</h3>
+            @if (!string.IsNullOrWhiteSpace(QuizData.Instructions))
+            {
+                <div class="quiz-instructions">@QuizData.Instructions</div>
+            }
+        </div>
+
+        <!-- Quiz Cards -->
+        <div class="quiz-cards-list">
+            @foreach (QuestionCard card in SortedCards)
+            {
+                <QuizCardComponent Data="@card" MediaType="application/vnd.quiz.card+json" />
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Registry component contract: Data object (Quiz)
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    /// <summary>
+    /// Registry component contract: Media type identifier
+    /// </summary>
+    [Parameter]
+    public string MediaType { get; set; } = "application/vnd.quiz+json";
+
+    private Quiz? QuizData => Data as Quiz;
+
+    private IEnumerable<QuestionCard> SortedCards =>
+        QuizData?.Cards.OrderBy(card => card.Sequence) ?? Enumerable.Empty<QuestionCard>();
+}

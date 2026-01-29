@@ -147,6 +147,11 @@ The Blazor UI (`Client/Components/Pages/Chat/Chat.razor`) uses the `IChatClient`
 
 The message renderer (`Client/Components/Pages/Chat/ChatMessageItem.razor`) also renders Agentic UI state updates emitted as `DataContent` payloads.
 
+The client uses a component registry to render content by MIME type instead of hardcoded checks:
+- `IComponentRegistry` maps content types to component types.
+- `DynamicMessageRenderer` resolves the component at runtime with `DynamicComponent`.
+- `PlanComponent` is registered for `application/vnd.microsoft.agui.plan+json` so plan payloads render consistently.
+
 ### Backend Tool Rendering
 
 The sample includes a **weather tool** (`get_weather`) that demonstrates backend tool rendering with custom UI components:
@@ -178,6 +183,61 @@ Assistant: [weather card displays with current conditions]
 ```
 
 Try asking weather-related questions to see the tool in action!
+
+### Interactive Quiz Feature
+
+The sample includes support for **interactive quizzes** that provide an engaging way to assess knowledge, gather feedback, or guide user interactions through structured question-and-answer flows.
+
+**Supported Quiz Capabilities:**
+- **Single-select questions**: Radio button interface for selecting one answer from multiple options
+- **Multi-select questions**: Checkbox interface for selecting multiple answers with configurable min/max constraints
+- **Rich question content**: Questions can include descriptions, media attachments, and formatted text
+- **Answer options**: Each answer can have a label, description, and optional media (images, links)
+- **Real-time evaluation**: Display correct/incorrect feedback, scores, and explanatory messages
+- **Conditional visibility**: Control when correct answers are shown based on display rules (always, after submission, never, or on correct answers only)
+- **Disabled state**: Lock quiz cards after submission or based on business logic
+- **Sequential ordering**: Cards are displayed in a specified sequence for structured learning paths
+
+**Data Model:**
+The quiz feature follows a comprehensive data model that defines:
+- `Quiz`: Container with title, instructions, and a collection of question cards
+- `QuestionCard`: Individual question with content, answer options, selection rules, correct answer definitions, user choices, and evaluation results
+- `AnswerOption`: Answer choice with text, optional description, and media attachments
+- `SelectionRule`: Defines single or multiple selection mode with min/max constraints
+- `CorrectAnswerDisplayRule`: Controls visibility of correct answers based on conditions
+- `CardEvaluation`: Provides scoring, correctness indicators, and feedback messages
+
+For detailed schema information, see [.docs/ag-ui-quiz/quiz-data-model.md](.docs/ag-ui-quiz/quiz-data-model.md).
+
+**Client-Side Components:**
+- `QuizComponent.razor` - Renders the complete quiz with title, instructions, and question card list
+- `QuizCardComponent.razor` - Renders individual question cards with:
+  - Question text and optional description
+  - Answer options (radio buttons or checkboxes based on selection mode)
+  - User interaction handling and visual feedback
+  - Evaluation display (score, correctness, feedback)
+  - Conditional correct answer display
+- `QuizComponent.razor.css` / `QuizCardComponent.razor.css` - Modern, responsive styling with visual indicators for selected, correct, and incorrect states
+
+**Component Registry Integration:**
+Quiz components are registered via the component registry system:
+- `application/vnd.quiz+json` → `QuizComponent`
+- `application/vnd.quiz.card+json` → `QuizCardComponent`
+
+This enables dynamic rendering without hardcoded quiz logic in message handlers.
+
+**Usage Example:**
+```
+User: "Can you quiz me on C# basics?"
+Assistant: [quiz card displays with questions]
+User: [selects answers via radio buttons/checkboxes]
+Assistant: [displays evaluation with score and feedback]
+```
+
+**AG-UI Protocol Integration:**
+The server can emit quiz data as part of the AG-UI state stream using the `application/vnd.quiz+json` or `application/vnd.quiz.card+json` media types. The client automatically routes these to the appropriate quiz renderer components, providing a seamless interactive experience.
+
+Try asking the agent to create a quiz to see this feature in action!
 
 ### UI Components
 

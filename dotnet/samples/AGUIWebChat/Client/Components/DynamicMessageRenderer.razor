@@ -1,3 +1,14 @@
+@*
+    DynamicMessageRenderer - Generic component renderer for AG-UI content
+    
+    This component resolves and renders specialized components based on media type using the IComponentRegistry.
+    Registered components include tool calls/results, plan updates, and quiz interactions.
+    
+    Quiz Routing:
+    - Quiz data delivered with media type "application/vnd.quiz+json" renders as QuizComponent
+    - Individual quiz cards with "application/vnd.quiz.card+json" render as QuizCardComponent
+    - No hardcoded quiz logic exists - all routing is registry-based for extensibility
+*@
 @using System
 @using System.Text.Json
 @using AGUIWebChat.Client.Services
