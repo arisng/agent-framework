@@ -1,0 +1,19 @@
+@using Microsoft.Extensions.AI
+
+@* Plan tool results are intentionally suppressed to avoid showing JSON patches or bubbles. *@
+
+@code {
+    /// <summary>
+    /// Registry component contract: Data object (FunctionResultContent for plan tool result)
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    /// <summary>
+    /// Registry component contract: Media type identifier
+    /// </summary>
+    [Parameter]
+    public string MediaType { get; set; } = ToolContentMediaTypes.PlanResult;
+
+    private FunctionResultContent? Result => Data as FunctionResultContent;
+}

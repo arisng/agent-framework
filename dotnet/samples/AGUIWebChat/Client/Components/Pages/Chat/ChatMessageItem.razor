@@ -58,9 +58,13 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
         {
             TrackFunctionCall(toolCall);
             Logger.LogInformation("[ChatMessageItem] Rendering tool call: {Name} (CallId={CallId})", toolCall.Name, toolCall.CallId);
-            string mediaType = toolCall.Name == "get_weather"
-                ? ToolContentMediaTypes.WeatherCall
-                : ToolContentMediaTypes.ToolCall;
+            string mediaType = toolCall.Name switch
+            {
+                "get_weather" => ToolContentMediaTypes.WeatherCall,
+                "create_plan" => ToolContentMediaTypes.PlanCall,
+                "update_plan_step" => ToolContentMediaTypes.PlanUpdateCall,
+                _ => ToolContentMediaTypes.ToolCall
+            };
             Logger.LogInformation("[ChatMessageItem] Using media type: {MediaType}", mediaType);
             <DynamicMessageRenderer Data="@toolCall" MediaType="@mediaType" />
         }
@@ -78,7 +82,11 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
             }
             else
             {
-                string mediaType = ToolContentMediaTypes.ToolResult;
+                // Route plan tool results to specialized media type
+                string mediaType = TryGetMatchingCall(funcResult.CallId, out FunctionCallContent? matchingCall) && 
+                                   (matchingCall?.Name == "create_plan" || matchingCall?.Name == "update_plan_step")
+                    ? ToolContentMediaTypes.PlanResult
+                    : ToolContentMediaTypes.ToolResult;
                 Logger.LogInformation("[ChatMessageItem] Using media type: {MediaType} for result", mediaType);
                 <DynamicMessageRenderer Data="@funcResult" MediaType="@mediaType" />
             }

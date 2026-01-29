@@ -1,0 +1,165 @@
+@using System.Text.Json
+@using Microsoft.Extensions.AI
+
+@* User-friendly display for update_plan_step tool call *@
+@if (Call is not null)
+{
+    <div class="assistant-message assistant-tool-call">
+        <div>
+            <div class="assistant-message-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+            </div>
+        </div>
+        <div class="assistant-message-header">Updating Plan Step</div>
+        <div class="assistant-message-text">
+            @if (stepIndex >= 0)
+            {
+                @if (!string.IsNullOrEmpty(statusText))
+                {
+                    <div>Marking step @(stepIndex + 1) as @statusText...</div>
+                }
+                else if (!string.IsNullOrEmpty(descriptionText))
+                {
+                    <div>Updating step @(stepIndex + 1) description...</div>
+                }
+                else
+                {
+                    <div>Updating step @(stepIndex + 1)...</div>
+                }
+            }
+            else
+            {
+                <div>Updating plan step...</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Registry component contract: Data object (FunctionCallContent for update_plan_step call)
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    /// <summary>
+    /// Registry component contract: Media type identifier
+    /// </summary>
+    [Parameter]
+    public string MediaType { get; set; } = ToolContentMediaTypes.PlanUpdateCall;
+
+    private FunctionCallContent? Call => Data as FunctionCallContent;
+
+    private int stepIndex
+    {
+        get
+        {
+            if (Call?.Arguments is null)
+            {
+                return -1;
+            }
+
+            // Try to get the "index" parameter from Arguments
+            if (Call.Arguments.TryGetValue("index", out object? indexValue))
+            {
+                // Handle JsonElement
+                if (indexValue is JsonElement indexElement)
+                {
+                    if (indexElement.ValueKind == JsonValueKind.Number && indexElement.TryGetInt32(out int index))
+                    {
+                        return index;
+                    }
+                }
+
+                // Handle direct int
+                if (indexValue is int directIndex)
+                {
+                    return directIndex;
+                }
+
+                // Try to parse string
+                if (indexValue is string indexString && int.TryParse(indexString, out int parsedIndex))
+                {
+                    return parsedIndex;
+                }
+            }
+
+            return -1;
+        }
+    }
+
+    private string? statusText
+    {
+        get
+        {
+            if (Call?.Arguments is null)
+            {
+                return null;
+            }
+
+            // Try to get the "status" parameter from Arguments
+            if (Call.Arguments.TryGetValue("status", out object? statusValue))
+            {
+                // Handle JsonElement
+                if (statusValue is JsonElement statusElement)
+                {
+                    if (statusElement.ValueKind == JsonValueKind.String)
+                    {
+                        string status = statusElement.GetString() ?? "";
+                        return status.ToLowerInvariant();
+                    }
+                    else if (statusElement.ValueKind == JsonValueKind.Number && statusElement.TryGetInt32(out int statusInt))
+                    {
+                        // Handle enum as int (0 = Pending, 1 = Completed)
+                        return statusInt == 0 ? "pending" : "completed";
+                    }
+                }
+
+                // Handle direct string
+                if (statusValue is string directStatus)
+                {
+                    return directStatus.ToLowerInvariant();
+                }
+
+                // Handle enum value
+                if (statusValue is Enum enumStatus)
+                {
+                    return enumStatus.ToString().ToLowerInvariant();
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private string? descriptionText
+    {
+        get
+        {
+            if (Call?.Arguments is null)
+            {
+                return null;
+            }
+
+            // Try to get the "description" parameter from Arguments
+            if (Call.Arguments.TryGetValue("description", out object? descValue))
+            {
+                // Handle JsonElement
+                if (descValue is JsonElement descElement && descElement.ValueKind == JsonValueKind.String)
+                {
+                    return descElement.GetString();
+                }
+
+                // Handle direct string
+                if (descValue is string directDesc)
+                {
+                    return directDesc;
+                }
+            }
+
+            return null;
+        }
+    }
+}

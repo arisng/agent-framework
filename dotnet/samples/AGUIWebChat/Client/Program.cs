@@ -28,6 +28,9 @@ builder.Services.AddSingleton<IComponentRegistry>(sp =>
     componentRegistry.Register(ToolContentMediaTypes.ToolResult, typeof(ToolResultComponent));
     componentRegistry.Register(ToolContentMediaTypes.WeatherCall, typeof(WeatherToolComponent));
     componentRegistry.Register(ToolContentMediaTypes.WeatherResult, typeof(WeatherToolComponent));
+    componentRegistry.Register(ToolContentMediaTypes.PlanCall, typeof(CreatePlanToolComponent));
+    componentRegistry.Register(ToolContentMediaTypes.PlanUpdateCall, typeof(UpdatePlanStepToolComponent));
+    componentRegistry.Register(ToolContentMediaTypes.PlanResult, typeof(PlanToolResultComponent));
     return componentRegistry;
 });
 

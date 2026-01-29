@@ -1,23 +1,23 @@
-.assistant-message, .assistant-search {
+.tool-call-component {
     display: grid;
     grid-template-rows: min-content;
     grid-template-columns: 2rem minmax(0, 1fr);
     gap: 0.25rem;
 }
 
-.assistant-state {
+.tool-call-component .assistant-state {
     display: none;
 }
 
-.assistant-message-header {
+.tool-call-component .assistant-message-header {
     font-weight: 600;
 }
 
-.assistant-message-text {
+.tool-call-component .assistant-message-text {
     grid-column-start: 2;
 }
 
-.assistant-message-icon {
+.tool-call-component .assistant-message-icon {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -28,33 +28,7 @@
     background: #9b72ce;
 }
 
-    .assistant-message-icon svg {
+    .tool-call-component .assistant-message-icon svg {
         width: 1rem;
         height: 1rem;
     }
-
-.assistant-search {
-    font-size: 0.875rem;
-    line-height: 1.25rem;
-}
-
-.assistant-search-icon {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 1.5rem;
-    height: 1.5rem;
-}
-
-    .assistant-search-icon svg {
-        width: 1rem;
-        height: 1rem;
-    }
-
-.assistant-search-content {
-    align-content: center;
-}
-
-.assistant-search-phrase {
-    font-weight: 600;
-}

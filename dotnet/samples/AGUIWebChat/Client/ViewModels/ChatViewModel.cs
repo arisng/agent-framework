@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using AGUIWebChat.Client.Services;
@@ -180,6 +181,12 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
                         Messages.Count, toolResultMessage.Role, toolResultMessage.Contents.Count);
                     NotifyMessagesChanged();
                     ChatMessageItem.NotifyChanged(toolResultMessage);
+
+                    // NEW: Check if this is a plan tool result and update PlanSteps accordingly
+                    if (IsPlanToolResult(toolResult))
+                    {
+                        ProcessPlanToolResult(toolResult);
+                    }
                 }
                 else
                 {
@@ -242,6 +249,102 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    // --- Plan Tool Result Processing ---
+
+    private bool IsPlanToolResult(AGUIToolResult result)
+    {
+        // Check if the matching tool call was create_plan or update_plan_step
+        if (!_toolCallMessages.TryGetValue(result.Content.CallId, out ChatMessage? callMessage))
+        {
+            return false;
+        }
+
+        FunctionCallContent? functionCall = callMessage.Contents.OfType<FunctionCallContent>()
+            .FirstOrDefault(c => c.CallId == result.Content.CallId);
+
+        if (functionCall is null)
+        {
+            return false;
+        }
+
+        bool isPlanTool = functionCall.Name is "create_plan" or "update_plan_step";
+        if (isPlanTool)
+        {
+            _logger.LogInformation("[ChatVM] Detected plan tool result: {FunctionName} (CallId={CallId})",
+                functionCall.Name, result.Content.CallId);
+        }
+
+        return isPlanTool;
+    }
+
+    private void ProcessPlanToolResult(AGUIToolResult result)
+    {
+        try
+        {
+            // Get the corresponding tool call to determine the function name
+            if (!_toolCallMessages.TryGetValue(result.Content.CallId, out ChatMessage? callMessage))
+            {
+                _logger.LogWarning("[ChatVM] Cannot process plan tool result - call message not found for CallId={CallId}",
+                    result.Content.CallId);
+                return;
+            }
+
+            FunctionCallContent? functionCall = callMessage.Contents.OfType<FunctionCallContent>()
+                .FirstOrDefault(c => c.CallId == result.Content.CallId);
+
+            if (functionCall is null)
+            {
+                _logger.LogWarning("[ChatVM] Cannot process plan tool result - function call not found for CallId={CallId}",
+                    result.Content.CallId);
+                return;
+            }
+
+            // Extract result data - it could be string or object
+            string? resultJson = result.Content.Result switch
+            {
+                string strResult => strResult,
+                JsonElement jsonElement => jsonElement.GetRawText(),
+                object obj => JsonSerializer.Serialize(obj),
+                _ => null
+            };
+
+            if (string.IsNullOrWhiteSpace(resultJson))
+            {
+                _logger.LogWarning("[ChatVM] Plan tool result has empty data for {FunctionName} (CallId={CallId})",
+                    functionCall.Name, result.Content.CallId);
+                return;
+            }
+
+            _logger.LogInformation("[ChatVM] Processing plan tool result: {FunctionName}, Data={Data}",
+                functionCall.Name, resultJson.Substring(0, Math.Min(200, resultJson.Length)));
+
+            // Apply the appropriate update based on function name
+            switch (functionCall.Name)
+            {
+                case "create_plan":
+                    // create_plan returns a full plan snapshot
+                    ApplyPlanSnapshot(resultJson);
+                    _logger.LogInformation("[ChatVM] Applied plan snapshot from create_plan result");
+                    break;
+
+                case "update_plan_step":
+                    // update_plan_step returns a JSON patch
+                    ApplyPlanDelta(resultJson);
+                    _logger.LogInformation("[ChatVM] Applied plan delta from update_plan_step result");
+                    break;
+
+                default:
+                    _logger.LogWarning("[ChatVM] Unknown plan function: {FunctionName}", functionCall.Name);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't crash the UI if plan processing fails - just log it
+            _logger.LogError(ex, "[ChatVM] Error processing plan tool result");
+        }
+    }
+
     // --- JSON Patching Logic (Temporary Copy) ---
 
     private void ApplyPlanSnapshot(string raw)
@@ -289,11 +392,12 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
+            string normalizedPatch = NormalizeJsonPatch(raw);
             // Snapshot current state
             var currentState = new AgentState([.. _planSteps]);
 
             // Apply patch
-            var newState = JsonPatchHelper.ApplyPatch(currentState, raw);
+            var newState = JsonPatchHelper.ApplyPatch(currentState, normalizedPatch);
 
             if (newState?.Steps is not null)
             {
@@ -303,6 +407,65 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         catch
         {
             // Ignore malformed patches to prevent UI crashes
+        }
+    }
+
+    private static string NormalizeJsonPatch(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return raw;
+        }
+
+        try
+        {
+            JsonNode? node = JsonNode.Parse(raw);
+            if (node is not JsonArray array)
+            {
+                return raw;
+            }
+
+            JsonArray normalizedArray = new();
+            foreach (JsonNode? item in array)
+            {
+                if (item is not JsonObject obj)
+                {
+                    normalizedArray.Add(item?.DeepClone());
+                    continue;
+                }
+
+                JsonObject normalizedObj = new();
+                foreach ((string key, JsonNode? value) in obj)
+                {
+                    string normalizedKey = key;
+                    if (string.Equals(key, "op", StringComparison.OrdinalIgnoreCase))
+                    {
+                        normalizedKey = "op";
+                    }
+                    else if (string.Equals(key, "path", StringComparison.OrdinalIgnoreCase))
+                    {
+                        normalizedKey = "path";
+                    }
+                    else if (string.Equals(key, "value", StringComparison.OrdinalIgnoreCase))
+                    {
+                        normalizedKey = "value";
+                    }
+                    else if (string.Equals(key, "from", StringComparison.OrdinalIgnoreCase))
+                    {
+                        normalizedKey = "from";
+                    }
+
+                    normalizedObj[normalizedKey] = value?.DeepClone();
+                }
+
+                normalizedArray.Add(normalizedObj);
+            }
+
+            return normalizedArray.ToJsonString();
+        }
+        catch
+        {
+            return raw;
         }
     }
 

@@ -7,13 +7,6 @@
             <ChatMessageItem @key="@message" Message="@message" />
         }
 
-        @if (SupplementalContent is not null)
-        {
-            <div class="message-supplemental">
-                @SupplementalContent
-            </div>
-        }
-
         @if (InProgressMessage is not null)
         {
             <ChatMessageItem Message="@InProgressMessage" InProgress="true" />
@@ -22,6 +15,13 @@
         else if (IsEmpty)
         {
             <div class="no-messages">@NoMessagesContent</div>
+        }
+
+        @if (SupplementalContent is not null)
+        {
+            <div class="message-supplemental">
+                @SupplementalContent
+            </div>
         }
     </chat-messages>
 </div>
