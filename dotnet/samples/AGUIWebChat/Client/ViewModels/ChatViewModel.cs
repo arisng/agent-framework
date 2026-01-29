@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using AGUIWebChat.Client.Services;
 using AGUIWebChatClient.Components.Pages.Chat;
 
@@ -13,6 +14,7 @@ namespace AGUIWebChat.Client.ViewModels;
 public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly AGUIProtocolService _protocolService;
+    private readonly ILogger<ChatViewModel> _logger;
     private readonly ObservableCollection<AgenticPlanPanel.AgenticPlanStep> _planSteps = new();
     private ChatMessage? _currentResponseMessage;
     private CancellationTokenSource? _currentResponseCancellation;
@@ -20,13 +22,16 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     private int _statefulMessageCount;
     private bool _isThinking;
     private readonly HashSet<string> _toolCallIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _toolResultIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ChatMessage> _toolCallMessages = new(StringComparer.Ordinal);
     private string _systemPrompt = @"
         You are a helpful assistant.
         ";
 
-    public ChatViewModel(AGUIProtocolService protocolService)
+    public ChatViewModel(AGUIProtocolService protocolService, ILogger<ChatViewModel> logger)
     {
         _protocolService = protocolService;
+        _logger = logger;
         ResetConversation(); // Initialize
     }
 
@@ -110,6 +115,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
             }
 
             _toolCallIds.Clear();
+            _toolResultIds.Clear();
             NotifyMessagesChanged();
         }
         catch (OperationCanceledException)
@@ -142,7 +148,42 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
             case AGUIToolCall toolCall:
                  if (_toolCallIds.Add(toolCall.Content.CallId))
                 {
-                    CurrentResponseMessage?.Contents.Add(toolCall.Content);
+                    _logger.LogInformation("[ChatVM] Processing tool call: {Name} (ID: {CallId})", toolCall.Content.Name, toolCall.Content.CallId);
+                    ChatMessage? targetMessage = CurrentResponseMessage;
+                    if (targetMessage is null)
+                    {
+                        targetMessage = new ChatMessage(ChatRole.Assistant, []);
+                        Messages.Add(targetMessage);
+                        NotifyMessagesChanged();
+                    }
+
+                    targetMessage.Contents.Add(toolCall.Content);
+                    _toolCallMessages[toolCall.Content.CallId] = targetMessage;
+                    _logger.LogInformation("[ChatVM] Tool call added to message (Role={Role}, Contents={Count})", targetMessage.Role, targetMessage.Contents.Count);
+                    ChatMessageItem.NotifyChanged(targetMessage);
+                }
+                break;
+            case AGUIToolResult toolResult:
+                if (_toolResultIds.Add(toolResult.Content.CallId))
+                {
+                    _logger.LogInformation("[ChatVM] Processing tool result for CallId={CallId}, Result={Result}",
+                        toolResult.Content.CallId,
+                        toolResult.Content.Result?.ToString()?.Substring(0, Math.Min(100, toolResult.Content.Result?.ToString()?.Length ?? 0)));
+
+                    // CRITICAL FIX: Tool results must ALWAYS be in separate Tool role messages
+                    // OpenAI requires: [Assistant with tool_calls] -> [Tool with results]
+                    // NOT: [Assistant with both tool_calls AND results]
+                    _logger.LogInformation("[ChatVM] Creating NEW Tool message for tool result (Role=Tool)");
+                    ChatMessage toolResultMessage = new ChatMessage(ChatRole.Tool, [toolResult.Content]);
+                    Messages.Add(toolResultMessage);
+                    _logger.LogInformation("[ChatVM] Tool result message added: MessageCount={Count}, MessageRole={Role}, ContentCount={ContentCount}",
+                        Messages.Count, toolResultMessage.Role, toolResultMessage.Contents.Count);
+                    NotifyMessagesChanged();
+                    ChatMessageItem.NotifyChanged(toolResultMessage);
+                }
+                else
+                {
+                    _logger.LogWarning("[ChatVM] Duplicate tool result ignored for CallId={CallId}", toolResult.Content.CallId);
                 }
                 break;
             case AGUIDataSnapshot snapshot:
@@ -167,6 +208,8 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         _currentResponseCancellation?.Cancel();
         CurrentResponseMessage = null;
         _toolCallIds.Clear();
+        _toolResultIds.Clear();
+        _toolCallMessages.Clear();
         IsThinking = false;
         NotifyMessagesChanged();
     }
@@ -180,6 +223,8 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         _statefulMessageCount = 0;
         _planSteps.Clear();
         _toolCallIds.Clear();
+        _toolResultIds.Clear();
+        _toolCallMessages.Clear();
         NotifyMessagesChanged();
     }
 

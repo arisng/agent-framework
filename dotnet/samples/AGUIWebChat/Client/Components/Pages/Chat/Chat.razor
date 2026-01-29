@@ -22,7 +22,8 @@
             <SupplementalContent>
                 @if (ViewModel.PlanSteps.Count > 0)
                 {
-                    <ChatPlanMessage Steps="@ViewModel.PlanSteps" />
+                    <DynamicMessageRenderer Data="@(new PlanContent(ViewModel.PlanSteps, "Agentic plan", "Live progress from the agent"))"
+                                            MediaType="application/vnd.microsoft.agui.plan+json" />
                 }
             </SupplementalContent>
         </ChatMessageList>

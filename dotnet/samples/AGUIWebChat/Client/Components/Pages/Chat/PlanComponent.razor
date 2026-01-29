@@ -1,0 +1,28 @@
+@if (Plan is not null && HasPlan)
+{
+    <div class="assistant-message chat-plan-message">
+        <div>
+            <div class="assistant-message-icon chat-plan-message-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+                </svg>
+            </div>
+        </div>
+        <div class="assistant-message-header">Plan</div>
+        <div class="assistant-message-text chat-plan-message-body">
+            <AgenticPlanPanel Steps="@Plan.Steps" Title="@Plan.Title" Subtitle="@Plan.Subtitle" />
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    [Parameter]
+    public string MediaType { get; set; } = "application/vnd.microsoft.agui.plan+json";
+
+    private PlanContent? Plan => Data as PlanContent;
+
+    private bool HasPlan => Plan?.Steps.Count > 0;
+}

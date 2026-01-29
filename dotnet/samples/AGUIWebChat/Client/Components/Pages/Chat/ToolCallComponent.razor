@@ -1,0 +1,67 @@
+@using System.Text
+@using System.Text.Json
+@using Microsoft.Extensions.AI
+
+@if (Call is not null)
+{
+    <div class="assistant-message assistant-tool-call">
+        <div>
+            <div class="assistant-message-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17 17.25 21m-2.5-5.5L20 10.25l-2.5-2.5-5.25 5.25m-5.66 2.17a4.5 4.5 0 1 1 6.36-6.36L6.5 15.17Z" />
+                </svg>
+            </div>
+        </div>
+        <div class="assistant-message-header">Tool Call</div>
+        <div class="assistant-message-text">
+            <div><strong>Name:</strong> @Call.Name</div>
+            <div><strong>Call Id:</strong> @Call.CallId</div>
+            @if (!string.IsNullOrWhiteSpace(ArgumentsPreview))
+            {
+                <pre>@ArgumentsPreview</pre>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly JsonSerializerOptions PreviewSerializerOptions = new() { WriteIndented = true };
+
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    [Parameter]
+    public string MediaType { get; set; } = ToolContentMediaTypes.ToolCall;
+
+    private FunctionCallContent? Call => Data as FunctionCallContent;
+
+    private string? ArgumentsPreview => FormatArguments(Call?.Arguments);
+
+    private static string? FormatArguments(IDictionary<string, object?>? arguments)
+    {
+        if (arguments is null || arguments.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(arguments, PreviewSerializerOptions);
+        }
+        catch (NotSupportedException)
+        {
+            StringBuilder fallback = new();
+            foreach (KeyValuePair<string, object?> pair in arguments)
+            {
+                if (fallback.Length > 0)
+                {
+                    fallback.AppendLine();
+                }
+
+                fallback.Append(pair.Key).Append(": ").Append(pair.Value);
+            }
+
+            return fallback.ToString();
+        }
+    }
+}

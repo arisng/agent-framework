@@ -1,0 +1,84 @@
+@using System.Text.Json
+@using Microsoft.Extensions.AI
+
+@if (Result is not null)
+{
+    <div class="assistant-message assistant-tool-result">
+        <div>
+            <div class="assistant-message-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 3h6m-6-9h6M4.5 6.75h15" />
+                </svg>
+            </div>
+        </div>
+        <div class="assistant-message-header">Tool Result</div>
+        <div class="assistant-message-text">
+            <div><strong>Call Id:</strong> @Result.CallId</div>
+            @if (!string.IsNullOrWhiteSpace(ResultPreview))
+            {
+                <pre>@ResultPreview</pre>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly JsonSerializerOptions PreviewSerializerOptions = new() { WriteIndented = true };
+
+    [Parameter, EditorRequired]
+    public required object Data { get; set; }
+
+    [Parameter]
+    public string MediaType { get; set; } = ToolContentMediaTypes.ToolResult;
+
+    private FunctionResultContent? Result => Data as FunctionResultContent;
+
+    private string? ResultPreview => FormatResult(Result?.Result);
+
+    private static string? FormatResult(object? result)
+    {
+        if (result is null)
+        {
+            return null;
+        }
+
+        if (result is string text)
+        {
+            return TryFormatJson(text, out string formatted) ? formatted : text;
+        }
+
+        if (result is JsonElement jsonElement)
+        {
+            return JsonSerializer.Serialize(jsonElement, PreviewSerializerOptions);
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(result, PreviewSerializerOptions);
+        }
+        catch (NotSupportedException)
+        {
+            return result.ToString();
+        }
+    }
+
+    private static bool TryFormatJson(string text, out string formatted)
+    {
+        formatted = text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(text);
+            formatted = JsonSerializer.Serialize(document.RootElement, PreviewSerializerOptions);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+}

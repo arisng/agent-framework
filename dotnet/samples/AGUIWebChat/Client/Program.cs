@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using AGUIWebChatClient.Components;
+using AGUIWebChatClient.Components.Pages.Chat;
 using AGUIWebChat.Client.Services;
 using Microsoft.Agents.AI.AGUI;
 
@@ -19,6 +20,16 @@ builder.Services.AddChatClient(sp => new AGUIChatClient(
 
 builder.Services.AddScoped<AGUIProtocolService>();
 builder.Services.AddScoped<AGUIWebChat.Client.ViewModels.ChatViewModel>();
+builder.Services.AddSingleton<IComponentRegistry>(sp =>
+{
+    ComponentRegistry componentRegistry = new();
+    componentRegistry.Register("application/vnd.microsoft.agui.plan+json", typeof(PlanComponent));
+    componentRegistry.Register(ToolContentMediaTypes.ToolCall, typeof(ToolCallComponent));
+    componentRegistry.Register(ToolContentMediaTypes.ToolResult, typeof(ToolResultComponent));
+    componentRegistry.Register(ToolContentMediaTypes.WeatherCall, typeof(WeatherToolComponent));
+    componentRegistry.Register(ToolContentMediaTypes.WeatherResult, typeof(WeatherToolComponent));
+    return componentRegistry;
+});
 
 WebApplication app = builder.Build();
 

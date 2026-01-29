@@ -3,6 +3,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
 namespace AGUIWebChat.Client.Services;
 
@@ -11,16 +12,19 @@ public record AGUITextPart(string Text) : AGUIUpdate;
 public record AGUIDataSnapshot(string JsonData) : AGUIUpdate;
 public record AGUIDataDelta(string JsonData) : AGUIUpdate;
 public record AGUIToolCall(FunctionCallContent Content) : AGUIUpdate;
+public record AGUIToolResult(FunctionResultContent Content) : AGUIUpdate;
 public record AGUIConversationIdUpdate(string ConversationId) : AGUIUpdate;
 public record AGUIRawUpdate(ChatResponseUpdate Update) : AGUIUpdate;
 
 public class AGUIProtocolService
 {
     private readonly IChatClient _chatClient;
+    private readonly ILogger<AGUIProtocolService> _logger;
 
-    public AGUIProtocolService(IChatClient chatClient)
+    public AGUIProtocolService(IChatClient chatClient, ILogger<AGUIProtocolService> logger)
     {
         _chatClient = chatClient;
+        _logger = logger;
     }
 
     public async IAsyncEnumerable<AGUIUpdate> StreamResponseAsync(
@@ -47,7 +51,14 @@ public class AGUIProtocolService
             {
                 if (content is FunctionCallContent call)
                 {
+                    _logger.LogInformation("[AG-UI] Tool call received: {Name} (ID: {CallId})", call.Name, call.CallId);
                     yield return new AGUIToolCall(call);
+                }
+                else if (content is FunctionResultContent result)
+                {
+                    _logger.LogInformation("[AG-UI] Tool result received: CallId={CallId}, Result={Result}",
+                        result.CallId, result.Result?.ToString()?.Substring(0, Math.Min(200, result.Result?.ToString()?.Length ?? 0)));
+                    yield return new AGUIToolResult(result);
                 }
                 else if (content is DataContent dataContent)
                 {

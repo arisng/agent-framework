@@ -2,7 +2,8 @@
 @using System.Text
 @using System.Text.Json
 @using System.Text.RegularExpressions
-@using System.Linq
+@using Microsoft.Extensions.Logging
+@inject ILogger<ChatMessageItem> Logger
 
 @if (Message.Role == ChatRole.User)
 {
@@ -12,8 +13,10 @@
 }
 else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System || Message.Role == ChatRole.Tool)
 {
+    Logger.LogInformation("[ChatMessageItem] Rendering message: Role={Role}, Contents={Count}", Message.Role, Message.Contents.Count);
     foreach (var content in Message.Contents)
     {
+        Logger.LogInformation("[ChatMessageItem] Processing content: Type={Type}", content.GetType().Name);
         if (Message.Role == ChatRole.Assistant && content is TextContent { Text: { Length: > 0 } text })
         {
             <div class="assistant-message">
@@ -51,40 +54,33 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
                 </div>
             }
         }
-        else if (content is FunctionCallContent { Name: "get_weather" } weatherCall)
+        else if (content is FunctionCallContent toolCall)
         {
-            TrackFunctionCall(weatherCall);
-            FunctionResultContent? result = GetMatchingResult(weatherCall.CallId);
-            if (result == null)
-            {
-                <ChatWeatherTool Call="@weatherCall" Result="@result" InProgress="true" />
-            }
-        }
-        else if (Message.Role == ChatRole.Assistant && content is FunctionCallContent { Name: "Search" } fcc && fcc.Arguments?.TryGetValue("searchPhrase", out var searchPhrase) is true)
-        {
-            <div class="assistant-search">
-                <div class="assistant-search-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                    </svg>
-                </div>
-                <div class="assistant-search-content">
-                    Searching:
-                    <span class="assistant-search-phrase">@searchPhrase</span>
-                    @if (fcc.Arguments?.TryGetValue("filenameFilter", out var filenameObj) is true && filenameObj is string filename && !string.IsNullOrEmpty(filename))
-                    {
-                        <text> in </text><span class="assistant-search-phrase">@filename</span>
-                    }
-                </div>
-            </div>
+            TrackFunctionCall(toolCall);
+            Logger.LogInformation("[ChatMessageItem] Rendering tool call: {Name} (CallId={CallId})", toolCall.Name, toolCall.CallId);
+            string mediaType = toolCall.Name == "get_weather"
+                ? ToolContentMediaTypes.WeatherCall
+                : ToolContentMediaTypes.ToolCall;
+            Logger.LogInformation("[ChatMessageItem] Using media type: {MediaType}", mediaType);
+            <DynamicMessageRenderer Data="@toolCall" MediaType="@mediaType" />
         }
         else if (content is FunctionResultContent funcResult)
         {
             TrackFunctionResult(funcResult);
-
+            Logger.LogInformation("[ChatMessageItem] Rendering tool result: CallId={CallId}", funcResult.CallId);
+            
+            // Check if this result matches a weather call - if so, suppress separate rendering
+            // because the weather call component will display both call and result
             if (TryGetMatchingCall(funcResult.CallId, out FunctionCallContent? call) && call?.Name == "get_weather")
             {
-                <ChatWeatherTool Call="@call" Result="@funcResult" InProgress="false" />
+                Logger.LogInformation("[ChatMessageItem] Weather result matched to call - suppressing separate render");
+                // Don't render separately - the WeatherToolComponent for the call will show the result
+            }
+            else
+            {
+                string mediaType = ToolContentMediaTypes.ToolResult;
+                Logger.LogInformation("[ChatMessageItem] Using media type: {MediaType} for result", mediaType);
+                <DynamicMessageRenderer Data="@funcResult" MediaType="@mediaType" />
             }
         }
     }
@@ -97,6 +93,9 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
     private static readonly Dictionary<string, FunctionResultContent> FunctionResults = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, WeakReference<ChatMessageItem>> FunctionCallSubscribers = new(StringComparer.Ordinal);
 
+    private int _lastMessageHash;
+    private bool _lastInProgress;
+
     [Parameter, EditorRequired]
     public required ChatMessage Message { get; set; }
 
@@ -106,6 +105,57 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
     protected override void OnInitialized()
     {
         SubscribersLookup.AddOrUpdate(Message, this);
+    }
+
+    protected override bool ShouldRender()
+    {
+        // Compute hash of current message state
+        int currentHash = ComputeMessageHash();
+        
+        // Only re-render if message content or InProgress state has changed
+        if (currentHash == _lastMessageHash && InProgress == _lastInProgress)
+        {
+            Logger.LogDebug("[ChatMessageItem] Skipping redundant render for message: Role={Role}", Message.Role);
+            return false;
+        }
+        
+        // Update tracking state
+        _lastMessageHash = currentHash;
+        _lastInProgress = InProgress;
+        
+        return true;
+    }
+
+    private int ComputeMessageHash()
+    {
+        var hash = new HashCode();
+        hash.Add(Message.Role);
+        hash.Add(Message.Text);
+        hash.Add(Message.Contents.Count);
+        
+        // Include content identifiers to detect changes
+        foreach (var content in Message.Contents)
+        {
+            hash.Add(content.GetType());
+            
+            if (content is FunctionCallContent call)
+            {
+                hash.Add(call.CallId);
+                hash.Add(call.Name);
+            }
+            else if (content is FunctionResultContent result)
+            {
+                hash.Add(result.CallId);
+                // Hash the result content to detect changes
+                hash.Add(result.Result?.ToString() ?? string.Empty);
+            }
+            else if (content is TextContent text)
+            {
+                hash.Add(text.Text);
+            }
+        }
+        
+        return hash.ToHashCode();
     }
 
     public static void NotifyChanged(ChatMessage source)
@@ -178,17 +228,27 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
 
     private void TrackFunctionResult(FunctionResultContent result)
     {
+        // Only notify if this is a new result (not already tracked)
+        bool isNewResult = !FunctionResults.ContainsKey(result.CallId);
+        Logger.LogInformation("[ChatMessageItem.TrackFunctionResult] CallId={CallId}, IsNew={IsNew}, TotalResults={Total}", 
+            result.CallId, isNewResult, FunctionResults.Count);
         FunctionResults[result.CallId] = result;
-        NotifyCallSubscriber(result.CallId);
+        
+        if (isNewResult)
+        {
+            Logger.LogInformation("[ChatMessageItem.TrackFunctionResult] Notifying subscriber for CallId={CallId}", result.CallId);
+            NotifyCallSubscriber(result.CallId);
+        }
     }
 
-    private static FunctionResultContent? GetMatchingResult(string callId)
+    internal static FunctionResultContent? GetMatchingResult(string callId)
     {
-        FunctionResults.TryGetValue(callId, out FunctionResultContent? result);
+        bool found = FunctionResults.TryGetValue(callId, out FunctionResultContent? result);
+        // Don't log here as it's called on every render - would flood logs
         return result;
     }
 
-    private static bool TryGetMatchingCall(string callId, out FunctionCallContent? call)
+    internal static bool TryGetMatchingCall(string callId, out FunctionCallContent? call)
     {
         return FunctionCalls.TryGetValue(callId, out call);
     }
@@ -197,11 +257,13 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
     {
         if (!FunctionCallSubscribers.TryGetValue(callId, out WeakReference<ChatMessageItem>? subscriber))
         {
+            // Logger not available in static context - this is expected for non-weather tools
             return;
         }
 
         if (subscriber.TryGetTarget(out ChatMessageItem? target))
         {
+            target.Logger.LogInformation("[NotifyCallSubscriber] Triggering StateHasChanged for CallId={CallId}", callId);
             target.StateHasChanged();
         }
         else

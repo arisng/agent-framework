@@ -1,15 +1,19 @@
 @using System.Collections.Generic
+@using System.Text
 @using System.Text.Json
 @using Microsoft.Extensions.AI
 
-@if (InProgress && Result == null)
+@* Registry-compatible component for weather tool visualization *@
+@* Supports both call-only (loading) and result (weather card) states *@
+
+@if (IsLoadingState)
 {
     <div class="weather-loading">
         <div class="weather-loading-icon">⚙️</div>
         <span class="weather-loading-text">Retrieving weather...</span>
     </div>
 }
-else if (Result != null)
+else if (WeatherResult != null)
 {
     var weatherData = ParseWeatherResult();
     if (weatherData != null)
@@ -59,24 +63,68 @@ else if (Result != null)
 }
 
 @code {
+    /// <summary>
+    /// Registry component contract: Data object (FunctionCallContent or FunctionResultContent)
+    /// </summary>
     [Parameter, EditorRequired]
-    public required FunctionCallContent Call { get; set; }
+    public required object Data { get; set; }
 
+    /// <summary>
+    /// Registry component contract: Media type identifier
+    /// </summary>
     [Parameter]
-    public FunctionResultContent? Result { get; set; }
+    public string MediaType { get; set; } = ToolContentMediaTypes.WeatherCall;
 
-    [Parameter]
-    public bool InProgress { get; set; }
+    // Determine component state based on Data type - show loading only when we have a call without a result
+    private bool IsLoadingState => 
+        Data is FunctionCallContent && WeatherResult == null;
+
+    private FunctionCallContent? WeatherCall =>
+        Data as FunctionCallContent;
+
+    private FunctionResultContent? WeatherResult
+    {
+        get
+        {
+            // If Data is already a result, use it directly
+            if (Data is FunctionResultContent result)
+            {
+                Console.WriteLine($"[WeatherToolComponent.WeatherResult] Data is result: CallId={result.CallId}");
+                return result;
+            }
+
+            // If Data is a call, look up matching result from ChatMessageItem's static tracking
+            if (Data is FunctionCallContent call)
+            {
+                // Access ChatMessageItem's static result lookup
+                // This maintains compatibility with existing call/result correlation logic
+                var matchedResult = ChatMessageItem.GetMatchingResult(call.CallId);
+                Console.WriteLine($"[WeatherToolComponent.WeatherResult] Lookup for CallId={call.CallId}: Found={matchedResult != null}");
+                return matchedResult;
+            }
+
+            return null;
+        }
+    }
 
     private string Location
     {
         get
         {
-            return TryGetLocation(Call.Arguments, out string? location) && !string.IsNullOrWhiteSpace(location)
+            FunctionCallContent? call = WeatherCall;
+            
+            // If we have a result but no call, look up the matching call
+            if (call == null && WeatherResult != null)
+            {
+                ChatMessageItem.TryGetMatchingCall(WeatherResult.CallId, out call);
+            }
+
+            return call != null && TryGetLocation(call.Arguments, out string? location) && !string.IsNullOrWhiteSpace(location)
                 ? location
                 : "Unknown Location";
         }
     }
+
     private static bool TryGetLocation(IDictionary<string, object?>? arguments, out string? location)
     {
         location = null;
@@ -112,37 +160,42 @@ else if (Result != null)
 
     private WeatherData? ParseWeatherResult()
     {
-        if (Result?.Result is null) return null;
+        if (WeatherResult?.Result is null)
+        {
+            return null;
+        }
 
         try
         {
-            var resultObj = Result.Result;
+            object resultObj = WeatherResult.Result;
             if (resultObj is JsonElement jsonElement)
             {
-                return new WeatherData
-                {
-                    Temperature = jsonElement.TryGetProperty("temperature", out var temp) ? temp.GetInt32() : 0,
-                    Conditions = jsonElement.TryGetProperty("conditions", out var cond) ? cond.GetString() ?? "clear" : "clear",
-                    Humidity = jsonElement.TryGetProperty("humidity", out var hum) ? hum.GetInt32() : 0,
-                    WindSpeed = jsonElement.TryGetProperty("windSpeed", out var wind) ? wind.GetInt32() : 0,
-                    FeelsLike = jsonElement.TryGetProperty("feelsLike", out var feels) ? feels.GetInt32() : 0
-                };
+                return ParseWeatherElement(jsonElement);
             }
 
-            // Try to parse as JSON string if not JsonElement
-            string? jsonString = resultObj?.ToString();
-            if (!string.IsNullOrEmpty(jsonString))
+            if (resultObj is JsonDocument jsonDocument)
+            {
+                return ParseWeatherElement(jsonDocument.RootElement);
+            }
+
+            string? jsonString = null;
+            if (resultObj is byte[] bytes)
+            {
+                jsonString = Encoding.UTF8.GetString(bytes);
+            }
+            else if (resultObj is string stringResult)
+            {
+                jsonString = stringResult;
+            }
+            else
+            {
+                jsonString = JsonSerializer.Serialize(resultObj);
+            }
+
+            if (!string.IsNullOrWhiteSpace(jsonString))
             {
                 using JsonDocument doc = JsonDocument.Parse(jsonString);
-                JsonElement root = doc.RootElement;
-                return new WeatherData
-                {
-                    Temperature = root.TryGetProperty("temperature", out var temp) ? temp.GetInt32() : 0,
-                    Conditions = root.TryGetProperty("conditions", out var cond) ? cond.GetString() ?? "clear" : "clear",
-                    Humidity = root.TryGetProperty("humidity", out var hum) ? hum.GetInt32() : 0,
-                    WindSpeed = root.TryGetProperty("windSpeed", out var wind) ? wind.GetInt32() : 0,
-                    FeelsLike = root.TryGetProperty("feelsLike", out var feels) ? feels.GetInt32() : 0
-                };
+                return ParseWeatherElement(doc.RootElement);
             }
         }
         catch (Exception)
@@ -151,6 +204,18 @@ else if (Result != null)
         }
 
         return null;
+    }
+
+    private static WeatherData ParseWeatherElement(JsonElement element)
+    {
+        return new WeatherData
+        {
+            Temperature = element.TryGetProperty("temperature", out JsonElement temp) ? temp.GetInt32() : 0,
+            Conditions = element.TryGetProperty("conditions", out JsonElement cond) ? cond.GetString() ?? "clear" : "clear",
+            Humidity = element.TryGetProperty("humidity", out JsonElement hum) ? hum.GetInt32() : 0,
+            WindSpeed = element.TryGetProperty("windSpeed", out JsonElement wind) ? wind.GetInt32() : 0,
+            FeelsLike = element.TryGetProperty("feelsLike", out JsonElement feels) ? feels.GetInt32() : 0
+        };
     }
 
     private static string GetThemeColor(string conditions)
