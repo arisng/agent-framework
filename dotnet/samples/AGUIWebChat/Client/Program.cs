@@ -1,9 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using AGUIWebChat.Client.Services;
 using AGUIWebChatClient.Components;
 using AGUIWebChatClient.Components.Pages.Chat;
 using AGUIWebChatClient.Components.QuizComponents;
-using AGUIWebChat.Client.Services;
 using Microsoft.Agents.AI.AGUI;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -21,6 +21,7 @@ builder.Services.AddChatClient(sp => new AGUIChatClient(
 
 builder.Services.AddScoped<AGUIProtocolService>();
 builder.Services.AddScoped<AGUIWebChat.Client.ViewModels.ChatViewModel>();
+builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddSingleton<IComponentRegistry>(sp =>
 {
     ComponentRegistry componentRegistry = new();

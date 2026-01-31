@@ -63,6 +63,16 @@
     max-width: 100%;
     border-radius: 0.5rem;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    display: block;
+}
+
+.quiz-question-media[src$=".mp4"],
+.quiz-question-media[src$=".webm"],
+.quiz-question-media[src$=".ogg"],
+.quiz-question-media[src$=".mov"] {
+    max-height: 400px;
+    width: 100%;
+    object-fit: contain;
 }
 
 /* Answer Options Section */
@@ -147,6 +157,16 @@
     max-width: 100%;
     border-radius: 0.375rem;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    display: block;
+}
+
+.quiz-answer-media[src$=".mp4"],
+.quiz-answer-media[src$=".webm"],
+.quiz-answer-media[src$=".ogg"],
+.quiz-answer-media[src$=".mov"] {
+    max-height: 200px;
+    width: 100%;
+    object-fit: contain;
 }
 
 /* Answer Indicators */
@@ -163,6 +183,74 @@
 
 .quiz-answer-indicator.quiz-answer-incorrect {
     color: #EF4444;
+}
+
+/* Submit Button Section */
+.quiz-submit-section {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #E5E7EB;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.quiz-submit-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background-color: #3B82F6;
+    color: #ffffff;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.quiz-submit-button:hover:not(:disabled) {
+    background-color: #2563EB;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.quiz-submit-button:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.quiz-submit-button:disabled {
+    background-color: #9CA3AF;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.quiz-submit-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.quiz-submit-error {
+    color: #EF4444;
+    font-size: 0.875rem;
+    margin: 0;
+    padding: 0.5rem;
+    background-color: #FEF2F2;
+    border: 1px solid #FCA5A5;
+    border-radius: 0.375rem;
 }
 
 /* Evaluation Section */

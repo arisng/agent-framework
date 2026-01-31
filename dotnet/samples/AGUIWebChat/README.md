@@ -45,27 +45,46 @@ If both Azure OpenAI and OpenAI environment variables are provided, the server p
 
 ## Running the Sample
 
-### Step 1: Start the Server
+### Option 1: VS Code Compound Launch (Recommended for Debugging)
+
+1. Open the AGUIWebChat folder in VS Code.
+2. Press F5 or go to Run > Start Debugging.
+3. Select "Debug AGUIWebChat (Server + Client)" from the dropdown.
+4. Both server and client will start simultaneously, and the browser will open to `http://localhost:7000`.
+
+### Option 2: Debug Script
+
+Run the provided script to start both services:
+
+```bash
+./run-debug.sh
+```
+
+This will start the server on `http://localhost:6100` and client on `http://localhost:7000`. Press Ctrl+C to stop both.
+
+### Option 3: Manual (Original Method)
+
+#### Step 1: Start the Server
 
 Open a terminal and navigate to the Server directory:
 
-```powershell
+```bash
 cd Server
-dotnet run
+dotnet run --urls=http://localhost:6100
 ```
 
-The server will start on `http://localhost:5100` and expose the AG-UI endpoint at `/ag-ui`.
+The server will start on `http://localhost:6100` and expose the AG-UI endpoint at `/ag-ui`.
 
-### Step 2: Start the Client
+#### Step 2: Start the Client
 
 Open a new terminal and navigate to the Client directory:
 
-```powershell
+```bash
 cd Client
-dotnet run
+dotnet run --urls=http://localhost:7000
 ```
 
-The client will start on `http://localhost:5000`. Open your browser and navigate to `http://localhost:5000` to access the chat interface.
+The client will start on `http://localhost:7000`. Open your browser and navigate to `http://localhost:7000` to access the chat interface.
 
 ## Solution File
 
@@ -83,7 +102,7 @@ Features:
 - **New chat**: Click the "New chat" button to start a fresh conversation
 - **Auto-scrolling**: The chat automatically scrolls to show new messages
 
-## How It Works
+## How It **Works**
 
 ### Server (AG-UI Host)
 
@@ -261,7 +280,7 @@ The server URL and port are configured in `Server/Properties/launchSettings.json
 {
   "profiles": {
     "http": {
-      "applicationUrl": "http://localhost:5100"
+      "applicationUrl": "http://localhost:6100"
     }
   }
 }
@@ -275,9 +294,9 @@ The client connects to the server URL specified in `Client/Properties/launchSett
 {
   "profiles": {
     "http": {
-      "applicationUrl": "http://localhost:5000",
+      "applicationUrl": "http://localhost:7000",
       "environmentVariables": {
-        "SERVER_URL": "http://localhost:5100"
+        "SERVER_URL": "http://localhost:6100"
       }
     }
   }
@@ -286,8 +305,8 @@ The client connects to the server URL specified in `Client/Properties/launchSett
 
 To change the server URL, modify the `SERVER_URL` environment variable in the client's launch settings or provide it at runtime:
 
-```powershell
-$env:SERVER_URL="http://your-server:5100"
+```bash
+$env:SERVER_URL="http://your-server:6100"
 dotnet run
 ```
 

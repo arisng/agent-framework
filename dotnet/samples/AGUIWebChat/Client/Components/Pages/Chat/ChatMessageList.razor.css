@@ -9,11 +9,12 @@
     gap: 1.25rem;
 }
 
-.message-supplemental {
+/* Removed: .message-supplemental - No longer used after flattening message list architecture (task-5, task-6) */
+/* .message-supplemental {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-}
+} */
 
 .no-messages {
     text-align: center;

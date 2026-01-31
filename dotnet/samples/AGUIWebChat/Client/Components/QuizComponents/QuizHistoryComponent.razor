@@ -1,0 +1,168 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@page "/quiz-history"
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Quiz History - AGUIWebChat</PageTitle>
+
+<div class="quiz-history-container">
+    <div class="quiz-history-header">
+        <div class="header-with-back">
+            <button class="back-button" @onclick="NavigateToChat">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+                </svg>
+                Back to Chat
+            </button>
+            <h2>Quiz History</h2>
+        </div>
+        <p class="subtitle">Review your past quiz attempts and performance</p>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading quiz history...</p>
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div class="error-message">
+            <p>❌ Error loading quiz history:</p>
+            <p>@_error</p>
+            <button @onclick="LoadHistoryAsync" class="retry-button">Retry</button>
+        </div>
+    }
+    else if (_history == null || _history.Count == 0)
+    {
+        <div class="empty-state">
+            <p>📝 No quiz history found.</p>
+            <p>Start taking quizzes to see your history here!</p>
+        </div>
+    }
+    else
+    {
+        <div class="quiz-history-list">
+            @foreach (var item in _history)
+            {
+                <div class="history-item @GetStatusClass(item.Status)" @onclick="() => NavigateToDetails(item)">
+                    <div class="history-item-header">
+                        <h3 class="quiz-title">@item.QuizTitle</h3>
+                        <span class="status-badge">@item.Status</span>
+                    </div>
+                    
+                    <div class="history-item-details">
+                        <div class="detail-row">
+                            <span class="label">Started:</span>
+                            <span class="value">@item.StartedAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")</span>
+                        </div>
+                        
+                        @if (item.CompletedAt.HasValue)
+                        {
+                            <div class="detail-row">
+                                <span class="label">Completed:</span>
+                                <span class="value">@item.CompletedAt.Value.ToLocalTime().ToString("MMM dd, yyyy HH:mm")</span>
+                            </div>
+                        }
+                        
+                        <div class="detail-row">
+                            <span class="label">Progress:</span>
+                            <span class="value">@item.CompletedCards / @item.TotalCards cards</span>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <span class="label">Average Score:</span>
+                            <span class="value score-value">@item.AverageScore.ToString("P0")</span>
+                        </div>
+                    </div>
+                    
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @GetProgressPercentage(item)%"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<QuizHistoryItem>? _history;
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _history = await Http.GetFromJsonAsync<List<QuizHistoryItem>>("/api/quiz/history");
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Network error: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "completed" => "status-completed",
+            "inprogress" => "status-in-progress",
+            _ => ""
+        };
+    }
+
+    private double GetProgressPercentage(QuizHistoryItem item)
+    {
+        if (item.TotalCards == 0) return 0;
+        return ((double)item.CompletedCards / item.TotalCards) * 100;
+    }
+
+    private void NavigateToDetails(QuizHistoryItem item)
+    {
+        // Navigate to quiz details page (future enhancement)
+        // For now, this is a placeholder
+        Navigation.NavigateTo($"/quiz-details/{item.SessionId}");
+    }
+
+    private void NavigateToChat()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    /// <summary>
+    /// DTO matching server's QuizHistoryDto.
+    /// </summary>
+    private sealed record QuizHistoryItem
+    {
+        public required string SessionId { get; init; }
+        public required string QuizId { get; init; }
+        public required string QuizTitle { get; init; }
+        public required DateTime StartedAt { get; init; }
+        public DateTime? CompletedAt { get; init; }
+        public required string Status { get; init; }
+        public required int TotalCards { get; init; }
+        public required int CompletedCards { get; init; }
+        public required double AverageScore { get; init; }
+    }
+}

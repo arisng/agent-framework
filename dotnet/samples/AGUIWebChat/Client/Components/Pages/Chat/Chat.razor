@@ -19,13 +19,6 @@
             <NoMessagesContent>
                 <div>Ask the assistant a question to start a conversation.</div>
             </NoMessagesContent>
-            <SupplementalContent>
-                @if (ViewModel.PlanSteps.Count > 0)
-                {
-                    <DynamicMessageRenderer Data="@(new PlanContent(ViewModel.PlanSteps, "Agentic plan", "Live progress from the agent"))"
-                                            MediaType="application/vnd.microsoft.agui.plan+json" />
-                }
-            </SupplementalContent>
         </ChatMessageList>
         <div class="chat-container">
             <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />

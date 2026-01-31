@@ -1,0 +1,227 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@page "/quiz-analytics"
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Quiz Analytics - AGUIWebChat</PageTitle>
+
+<div class="quiz-analytics-container">
+    <div class="quiz-analytics-header">
+        <div class="header-with-back">
+            <button class="back-button" @onclick="NavigateToChat">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+                </svg>
+                Back to Chat
+            </button>
+            <h2>Quiz Analytics</h2>
+        </div>
+        <p class="subtitle">Track your performance and progress over time</p>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading analytics...</p>
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div class="error-message">
+            <p>❌ Error loading analytics:</p>
+            <p>@_error</p>
+            <button @onclick="LoadAnalyticsAsync" class="retry-button">Retry</button>
+        </div>
+    }
+    else if (_analytics == null)
+    {
+        <div class="empty-state">
+            <p>📊 No analytics data available.</p>
+            <p>Start taking quizzes to see your performance analytics!</p>
+        </div>
+    }
+    else
+    {
+        <div class="analytics-content">
+            <!-- Overall Metrics Cards -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">📝</div>
+                    <div class="metric-value">@_analytics.TotalSessions</div>
+                    <div class="metric-label">Total Sessions</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-value">@_analytics.CompletedSessions</div>
+                    <div class="metric-label">Completed Sessions</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">🎯</div>
+                    <div class="metric-value">@_analytics.TotalAttempts</div>
+                    <div class="metric-label">Total Attempts</div>
+                </div>
+
+                <div class="metric-card highlight">
+                    <div class="metric-icon">⭐</div>
+                    <div class="metric-value">@_analytics.OverallAverageScore.ToString("P0")</div>
+                    <div class="metric-label">Average Score</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">📈</div>
+                    <div class="metric-value">@_analytics.SuccessRate.ToString("P0")</div>
+                    <div class="metric-label">Success Rate</div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">📚</div>
+                    <div class="metric-value">@_analytics.TopicsCovered.Count</div>
+                    <div class="metric-label">Topics Covered</div>
+                </div>
+            </div>
+
+            <!-- Topics Covered List -->
+            @if (_analytics.TopicsCovered.Count > 0)
+            {
+                <div class="topics-section">
+                    <h3>Topics Covered</h3>
+                    <div class="topics-list">
+                        @foreach (var topic in _analytics.TopicsCovered)
+                        {
+                            <div class="topic-badge">@topic</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Scores by Topic -->
+            @if (_analytics.ScoresByTopic.Count > 0)
+            {
+                <div class="scores-by-topic-section">
+                    <h3>Performance by Topic</h3>
+                    <div class="topic-scores-list">
+                        @foreach (var kvp in _analytics.ScoresByTopic.OrderByDescending(x => x.Value))
+                        {
+                            <div class="topic-score-item">
+                                <div class="topic-score-header">
+                                    <span class="topic-name">@kvp.Key</span>
+                                    <span class="topic-score">@kvp.Value.ToString("P0")</span>
+                                </div>
+                                <div class="topic-score-bar">
+                                    <div class="topic-score-fill" style="width: @(kvp.Value * 100)%"></div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Insights Section -->
+            @if (_analytics.TotalAttempts > 0)
+            {
+                <div class="insights-section">
+                    <h3>💡 Insights</h3>
+                    <div class="insights-list">
+                        @if (_analytics.OverallAverageScore >= 0.8)
+                        {
+                            <div class="insight-item success">
+                                <span class="insight-icon">🎉</span>
+                                <span>Great job! You're maintaining a strong average score of @_analytics.OverallAverageScore.ToString("P0").</span>
+                            </div>
+                        }
+                        else if (_analytics.OverallAverageScore >= 0.6)
+                        {
+                            <div class="insight-item info">
+                                <span class="insight-icon">📚</span>
+                                <span>You're doing well with an average score of @_analytics.OverallAverageScore.ToString("P0"). Keep learning!</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="insight-item warning">
+                                <span class="insight-icon">💪</span>
+                                <span>There's room for improvement. Your average score is @_analytics.OverallAverageScore.ToString("P0"). Keep practicing!</span>
+                            </div>
+                        }
+
+                        @if (_analytics.ScoresByTopic.Count > 0)
+                        {
+                            var bestTopic = _analytics.ScoresByTopic.OrderByDescending(x => x.Value).First();
+                            <div class="insight-item success">
+                                <span class="insight-icon">🏆</span>
+                                <span>You're strongest in <strong>@bestTopic.Key</strong> with @bestTopic.Value.ToString("P0") average score.</span>
+                            </div>
+                        }
+
+                        @if (_analytics.CompletedSessions < _analytics.TotalSessions)
+                        {
+                            <div class="insight-item info">
+                                <span class="insight-icon">⏳</span>
+                                <span>You have @(_analytics.TotalSessions - _analytics.CompletedSessions) session(s) in progress. Complete them to improve your stats!</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private QuizAnalyticsData? _analytics;
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAnalyticsAsync();
+    }
+
+    private async Task LoadAnalyticsAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _analytics = await Http.GetFromJsonAsync<QuizAnalyticsData>("/api/quiz/analytics");
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Network error: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateToChat()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    /// <summary>
+    /// DTO matching server's QuizAnalyticsDto.
+    /// </summary>
+    private sealed record QuizAnalyticsData
+    {
+        public required int TotalSessions { get; init; }
+        public required int CompletedSessions { get; init; }
+        public required int TotalAttempts { get; init; }
+        public required double OverallAverageScore { get; init; }
+        public required double SuccessRate { get; init; }
+        public required List<string> TopicsCovered { get; init; }
+        public required Dictionary<string, double> ScoresByTopic { get; init; }
+    }
+}

@@ -5,6 +5,9 @@
 
 .chat-header-controls {
     margin-bottom: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
 h1 {
@@ -12,7 +15,7 @@ h1 {
     text-overflow: ellipsis;
 }
 
-.new-chat-icon {
+.header-icon {
     width: 1.25rem;
     height: 1.25rem;
     color: rgb(55, 65, 81);

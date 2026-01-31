@@ -18,7 +18,7 @@
         <div class="quiz-cards-list">
             @foreach (QuestionCard card in SortedCards)
             {
-                <QuizCardComponent Data="@card" MediaType="application/vnd.quiz.card+json" />
+                <QuizCardComponent Data="@card" MediaType="application/vnd.quiz.card+json" QuizId="@QuizData.Id" />
             }
         </div>
     </div>

@@ -1,3 +1,5 @@
+﻿// Copyright (c) Microsoft. All rights reserved.
+
 namespace AGUIWebChatClient.Components.Pages.Chat;
 
 public static class ToolContentMediaTypes
@@ -9,4 +11,6 @@ public static class ToolContentMediaTypes
     public const string PlanCall = "application/vnd.microsoft.agui.plan-call+json";
     public const string PlanUpdateCall = "application/vnd.microsoft.agui.plan-update-call+json";
     public const string PlanResult = "application/vnd.microsoft.agui.plan-result+json";
+    public const string Quiz = "application/vnd.quiz+json";
+    public const string QuizCard = "application/vnd.quiz.card+json";
 }

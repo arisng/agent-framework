@@ -1,9 +1,8 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 
 namespace AGUIWebChat.Client.Services;
 
@@ -23,8 +22,8 @@ public class AGUIProtocolService
 
     public AGUIProtocolService(IChatClient chatClient, ILogger<AGUIProtocolService> logger)
     {
-        _chatClient = chatClient;
-        _logger = logger;
+        this._chatClient = chatClient;
+        this._logger = logger;
     }
 
     public async IAsyncEnumerable<AGUIUpdate> StreamResponseAsync(
@@ -32,7 +31,7 @@ public class AGUIProtocolService
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var update in _chatClient.GetStreamingResponseAsync(messages, options, cancellationToken))
+        await foreach (var update in this._chatClient.GetStreamingResponseAsync(messages, options, cancellationToken))
         {
             // Always yield the raw update first so the consumer can maintain history
             yield return new AGUIRawUpdate(update);
@@ -51,12 +50,12 @@ public class AGUIProtocolService
             {
                 if (content is FunctionCallContent call)
                 {
-                    _logger.LogInformation("[AG-UI] Tool call received: {Name} (ID: {CallId})", call.Name, call.CallId);
+                    this._logger.LogInformation("[AG-UI] Tool call received: {Name} (ID: {CallId})", call.Name, call.CallId);
                     yield return new AGUIToolCall(call);
                 }
                 else if (content is FunctionResultContent result)
                 {
-                    _logger.LogInformation("[AG-UI] Tool result received: CallId={CallId}, Result={Result}",
+                    this._logger.LogInformation("[AG-UI] Tool result received: CallId={CallId}, Result={Result}",
                         result.CallId, result.Result?.ToString()?.Substring(0, Math.Min(200, result.Result?.ToString()?.Length ?? 0)));
                     yield return new AGUIToolResult(result);
                 }

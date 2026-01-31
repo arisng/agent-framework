@@ -14,11 +14,20 @@
 else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System || Message.Role == ChatRole.Tool)
 {
     Logger.LogInformation("[ChatMessageItem] Rendering message: Role={Role}, Contents={Count}", Message.Role, Message.Contents.Count);
-    foreach (var content in Message.Contents)
+    foreach (var content in SortedContents)
     {
         Logger.LogInformation("[ChatMessageItem] Processing content: Type={Type}", content.GetType().Name);
         if (Message.Role == ChatRole.Assistant && content is TextContent { Text: { Length: > 0 } text })
         {
+            // CRITICAL FIX: Filter out quiz JSON duplication
+            // The server may include quiz JSON in assistant text after tool results
+            // We need to suppress this to avoid duplicate rendering
+            if (IsQuizJsonDuplicate(text))
+            {
+                Logger.LogInformation("[ChatMessageItem] Detected quiz JSON in assistant text - suppressing duplicate rendering");
+                continue; // Skip rendering this text content
+            }
+
             <div class="assistant-message">
                 <div>
                     <div class="assistant-message-icon">
@@ -35,23 +44,62 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
         }
         else if (content is DataContent dataContent)
         {
-            var stateText = FormatDataContent(dataContent);
-            if (!string.IsNullOrWhiteSpace(stateText))
+            // FEATURE: Handle plan DataContent inline rendering
+            if (dataContent.MediaType == "application/vnd.microsoft.agui.plan+json")
             {
-                <div class="assistant-message assistant-state">
-                    <div>
-                        <div class="assistant-message-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h15" />
-                            </svg>
+                Logger.LogInformation("[ChatMessageItem] Rendering plan DataContent inline");
+                try
+                {
+                    // Get plan JSON using existing helper
+                    string planJson = GetDataContentText(dataContent);
+
+                    if (!string.IsNullOrWhiteSpace(planJson))
+                    {
+                        var planContent = JsonSerializer.Deserialize<AGUIWebChatClient.Components.Pages.Chat.PlanContent>(
+                            planJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                        if (planContent is not null)
+                        {
+                            Logger.LogInformation("[ChatMessageItem] Successfully deserialized plan - rendering PlanComponent");
+                            <DynamicMessageRenderer Data="@planContent" MediaType="@dataContent.MediaType" />
+                        }
+                        else
+                        {
+                            Logger.LogWarning("[ChatMessageItem] Failed to deserialize plan JSON");
+                        }
+                    }
+                    else
+                    {
+                        Logger.LogWarning("[ChatMessageItem] Plan DataContent has empty data");
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    Logger.LogError(ex, "[ChatMessageItem] Error deserializing plan JSON: {Message}", ex.Message);
+                }
+            }
+            else
+            {
+                // Other DataContent types - render as state update
+                var stateText = FormatDataContent(dataContent);
+                if (!string.IsNullOrWhiteSpace(stateText))
+                {
+                    <div class="assistant-message assistant-state">
+                        <div>
+                            <div class="assistant-message-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h15" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="assistant-message-header">State Update</div>
+                        <div class="assistant-message-text">
+                            <div><strong>Media type:</strong> @(dataContent.MediaType ?? "application/octet-stream")</div>
+                            <pre>@stateText</pre>
                         </div>
                     </div>
-                    <div class="assistant-message-header">State Update</div>
-                    <div class="assistant-message-text">
-                        <div><strong>Media type:</strong> @(dataContent.MediaType ?? "application/octet-stream")</div>
-                        <pre>@stateText</pre>
-                    </div>
-                </div>
+                }
             }
         }
         else if (content is FunctionCallContent toolCall)
@@ -63,6 +111,7 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
                 "get_weather" => ToolContentMediaTypes.WeatherCall,
                 "create_plan" => ToolContentMediaTypes.PlanCall,
                 "update_plan_step" => ToolContentMediaTypes.PlanUpdateCall,
+                "generate_quiz" => ToolContentMediaTypes.ToolCall,
                 _ => ToolContentMediaTypes.ToolCall
             };
             Logger.LogInformation("[ChatMessageItem] Using media type: {MediaType}", mediaType);
@@ -79,6 +128,31 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
             {
                 Logger.LogInformation("[ChatMessageItem] Weather result matched to call - suppressing separate render");
                 // Don't render separately - the WeatherToolComponent for the call will show the result
+            }
+            else if (TryGetMatchingCall(funcResult.CallId, out FunctionCallContent? quizCall) && (quizCall?.Name == "generate_quiz" || quizCall?.Name == "get_quiz"))
+            {
+                // Parse quiz JSON result and render as Quiz component ONLY (no raw JSON fallback)
+                Logger.LogInformation("[ChatMessageItem] Routing {ToolName} result to Quiz component", quizCall.Name);
+                try
+                {
+                    string quizJson = funcResult.Result?.ToString() ?? string.Empty;
+                    var quiz = JsonSerializer.Deserialize<AGUIWebChat.Client.Models.QuizModels.Quiz>(quizJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (quiz is not null)
+                    {
+                        Logger.LogInformation("[ChatMessageItem] Successfully deserialized quiz JSON - rendering QuizComponent");
+                        <DynamicMessageRenderer Data="@quiz" MediaType="@ToolContentMediaTypes.Quiz" />
+                    }
+                    else
+                    {
+                        Logger.LogWarning("[ChatMessageItem] Failed to deserialize quiz JSON - quiz deserialized to null. NOT rendering raw JSON.");
+                        // Do NOT render raw JSON fallback - suppress display entirely
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    Logger.LogError(ex, "[ChatMessageItem] Error deserializing quiz JSON: {Message}. NOT rendering raw JSON.", ex.Message);
+                    // Do NOT render raw JSON fallback - suppress display entirely
+                }
             }
             else
             {
@@ -106,6 +180,24 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
 
     [Parameter, EditorRequired]
     public required ChatMessage Message { get; set; }
+
+    private IEnumerable<AIContent> SortedContents
+    {
+        get
+        {
+            // Group contents by type
+            var calls = Message.Contents.OfType<FunctionCallContent>().ToList();
+            var results = Message.Contents.OfType<FunctionResultContent>().ToList();
+            var texts = Message.Contents.OfType<TextContent>().ToList();
+            var data = Message.Contents.OfType<DataContent>().ToList();
+            
+            // Return in strict order: calls -> results -> texts/data
+            return calls.Cast<AIContent>()
+                .Concat(results.Cast<AIContent>())
+                .Concat(texts.Cast<AIContent>())
+                .Concat(data.Cast<AIContent>());
+        }
+    }
 
     [Parameter]
     public bool InProgress { get; set;}
@@ -278,5 +370,63 @@ else if (Message.Role == ChatRole.Assistant || Message.Role == ChatRole.System |
         {
             FunctionCallSubscribers.Remove(callId);
         }
+    }
+
+    private bool IsQuizJsonDuplicate(string text)
+    {
+        // Check if this message contains quiz tool results
+        bool hasQuizResults = Message.Contents
+            .OfType<FunctionResultContent>()
+            .Any(result => TryGetMatchingCall(result.CallId, out FunctionCallContent? call) && call?.Name == "generate_quiz");
+
+        if (!hasQuizResults)
+        {
+            // No quiz results in this message - text is not a duplicate
+            return false;
+        }
+
+        // Try to parse the text as quiz JSON
+        try
+        {
+            // Clean up potential markdown formatting (```json ... ```)
+            string cleanedText = text.Trim();
+            if (cleanedText.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+            {
+                // Extract JSON from markdown code block
+                int startIndex = cleanedText.IndexOf('\n') + 1;
+                int endIndex = cleanedText.LastIndexOf("```");
+                if (endIndex > startIndex)
+                {
+                    cleanedText = cleanedText.Substring(startIndex, endIndex - startIndex).Trim();
+                }
+            }
+            else if (cleanedText.StartsWith("```", StringComparison.Ordinal))
+            {
+                // Generic code block
+                int startIndex = cleanedText.IndexOf('\n') + 1;
+                int endIndex = cleanedText.LastIndexOf("```");
+                if (endIndex > startIndex)
+                {
+                    cleanedText = cleanedText.Substring(startIndex, endIndex - startIndex).Trim();
+                }
+            }
+
+            var quiz = JsonSerializer.Deserialize<AGUIWebChat.Client.Models.QuizModels.Quiz>(
+                cleanedText,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (quiz is not null)
+            {
+                // Successfully parsed as quiz JSON - this is a duplicate
+                Logger.LogInformation("[ChatMessageItem.IsQuizJsonDuplicate] Detected quiz JSON in text (Title={Title})", quiz.Title);
+                return true;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not valid quiz JSON - might be legitimate text
+        }
+
+        return false;
     }
 }

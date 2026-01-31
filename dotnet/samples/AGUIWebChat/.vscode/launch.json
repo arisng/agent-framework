@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "AGUIWebChat Server",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-server",
+      "program": "${workspaceFolder}/Server/bin/Debug/net10.0/AGUIWebChatServer.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/Server",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    {
+      "name": "AGUIWebChat Client",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-client",
+      "program": "${workspaceFolder}/Client/bin/Debug/net10.0/AGUIWebChatClient.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/Client",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "SERVER_URL": "http://localhost:6100"
+      },
+      "serverReadyAction": {
+        "pattern": "Now listening on: http://localhost:7000",
+        "uriFormat": "http://localhost:7000",
+        "action": "openExternally"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug AGUIWebChat (Server + Client)",
+      "configurations": ["AGUIWebChat Server", "AGUIWebChat Client"],
+      "presentation": {
+        "order": 1,
+        "group": "AGUIWebChat"
+      }
+    }
+  ]
+}

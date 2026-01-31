@@ -1,3 +1,5 @@
+﻿// Copyright (c) Microsoft. All rights reserved.
+
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -21,8 +23,15 @@ public static class JsonPatchHelper
     /// <returns>A new instance of T with patches applied.</returns>
     public static T? ApplyPatch<T>(T original, string jsonPatch)
     {
-        if (original is null) return default;
-        if (string.IsNullOrWhiteSpace(jsonPatch)) return original;
+        if (original is null)
+        {
+            return default;
+        }
+
+        if (string.IsNullOrWhiteSpace(jsonPatch))
+        {
+            return original;
+        }
 
         JsonNode? rootNode;
         try
@@ -34,7 +43,10 @@ public static class JsonPatchHelper
             return original;
         }
 
-        if (rootNode is null) return original;
+        if (rootNode is null)
+        {
+            return original;
+        }
 
         JsonElement patchElement;
         try
@@ -47,7 +59,10 @@ public static class JsonPatchHelper
             return original;
         }
 
-        if (patchElement.ValueKind != JsonValueKind.Array) return original;
+        if (patchElement.ValueKind != JsonValueKind.Array)
+        {
+            return original;
+        }
 
         foreach (var opElement in patchElement.EnumerateArray())
         {
@@ -99,7 +114,10 @@ public static class JsonPatchHelper
         }
 
         var (parent, key, index) = NavigateToParent(root, path);
-        if (parent is null) return;
+        if (parent is null)
+        {
+            return;
+        }
 
         switch (op)
         {
@@ -178,14 +196,23 @@ public static class JsonPatchHelper
     /// </summary>
     private static (JsonNode? parent, string key, int? index) NavigateToParent(JsonNode root, string path)
     {
-        if (string.IsNullOrEmpty(path)) return (null, "", null);
+        if (string.IsNullOrEmpty(path))
+        {
+            return (null, "", null);
+        }
 
         // Normalize path (RFC 6901 JSON Pointer)
         // Path must start with /
-        if (!path.StartsWith('/')) return (null, "", null);
+        if (!path.StartsWith('/'))
+        {
+            return (null, "", null);
+        }
 
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 0) return (null, "", null);
+        if (segments.Length == 0)
+        {
+            return (null, "", null);
+        }
 
         JsonNode current = root;
 
@@ -233,7 +260,7 @@ public static class JsonPatchHelper
 
         string lastSegment = UnescapePointer(segments[^1]);
         int? index = null;
-        if (current is JsonArray && (int.TryParse(lastSegment, out int idxResult)))
+        if (current is JsonArray && int.TryParse(lastSegment, out int idxResult))
         {
             index = idxResult;
         }

@@ -1,66 +1,66 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 using AGUIWebChat.Client.Services;
 using AGUIWebChatClient.Components.Pages.Chat;
+using Microsoft.Extensions.AI;
 
 namespace AGUIWebChat.Client.ViewModels;
 
 public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 {
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly AGUIProtocolService _protocolService;
     private readonly ILogger<ChatViewModel> _logger;
-    private readonly ObservableCollection<AgenticPlanPanel.AgenticPlanStep> _planSteps = new();
-    private ChatMessage? _currentResponseMessage;
     private CancellationTokenSource? _currentResponseCancellation;
-    private ChatOptions _chatOptions = new();
+    private readonly ChatOptions _chatOptions = new();
     private int _statefulMessageCount;
-    private bool _isThinking;
     private readonly HashSet<string> _toolCallIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _toolResultIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatMessage> _toolCallMessages = new(StringComparer.Ordinal);
-    private string _systemPrompt = @"
+    private ChatMessage? _currentPlanMessage;
+    private readonly string _systemPrompt = @"
         You are a helpful assistant.
         ";
 
     public ChatViewModel(AGUIProtocolService protocolService, ILogger<ChatViewModel> logger)
     {
-        _protocolService = protocolService;
-        _logger = logger;
-        ResetConversation(); // Initialize
+        this._protocolService = protocolService;
+        this._logger = logger;
+        this.ResetConversation(); // Initialize
     }
 
     public ObservableCollection<ChatMessage> Messages { get; } = new();
-    public ObservableCollection<AgenticPlanPanel.AgenticPlanStep> PlanSteps => _planSteps;
+    public ObservableCollection<AgenticPlanPanel.AgenticPlanStep> PlanSteps { get; } = new();
 
     public bool IsThinking
     {
-        get => _isThinking;
-        private set
+        get; private set
         {
-            if (_isThinking != value)
+            if (field != value)
             {
-                _isThinking = value;
-                OnPropertyChanged();
+                field = value;
+                this.OnPropertyChanged();
             }
         }
     }
 
     public ChatMessage? CurrentResponseMessage
     {
-        get => _currentResponseMessage;
-        private set
+        get; private set
         {
-            if (_currentResponseMessage != value)
+            if (field != value)
             {
-                _currentResponseMessage = value;
-                OnPropertyChanged();
+                field = value;
+                this.OnPropertyChanged();
             }
         }
     }
@@ -75,64 +75,67 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task SendMessageAsync(string input)
     {
-        if (string.IsNullOrWhiteSpace(input)) return;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return;
+        }
 
-        CancelAnyCurrentResponse();
+        this.CancelAnyCurrentResponse();
 
         var userMessage = new ChatMessage(ChatRole.User, input);
-        Messages.Add(userMessage);
+        this.Messages.Add(userMessage);
 
-        IsThinking = true;
-        NotifyMessagesChanged();
+        this.IsThinking = true;
+        this.NotifyMessagesChanged();
 
         try
         {
             TextContent responseText = new("");
-            CurrentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
-            _currentResponseCancellation = new();
+            this.CurrentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
+            this._currentResponseCancellation = new();
 
-            var requestMessages = Messages.Skip(_statefulMessageCount).ToList();
+            var requestMessages = this.Messages.Skip(this._statefulMessageCount).ToList();
 
             // We need to notify UI that CurrentResponseMessage has started, so it can display the "in progress" bubble
-            NotifyMessagesChanged();
+            this.NotifyMessagesChanged();
 
-            await foreach (var update in _protocolService.StreamResponseAsync(requestMessages, _chatOptions, _currentResponseCancellation.Token))
+            await foreach (var update in this._protocolService.StreamResponseAsync(requestMessages, this._chatOptions, this._currentResponseCancellation.Token))
             {
-                ProcessUpdate(update, responseText);
+                this.ProcessUpdate(update, responseText);
 
                 // For streaming text, we notify the specific message item to re-render efficiently
-                if (CurrentResponseMessage != null)
+                if (this.CurrentResponseMessage != null)
                 {
-                   ChatMessageItem.NotifyChanged(CurrentResponseMessage);
+                    ChatMessageItem.NotifyChanged(this.CurrentResponseMessage);
                 }
             }
 
             // Finalize
-            if (CurrentResponseMessage != null)
+            if (this.CurrentResponseMessage != null)
             {
-                Messages.Add(CurrentResponseMessage);
-                _statefulMessageCount = _chatOptions.ConversationId is not null ? Messages.Count : 0;
-                CurrentResponseMessage = null;
+                this.Messages.Add(this.CurrentResponseMessage);
+                this._statefulMessageCount = this._chatOptions.ConversationId is not null ? this.Messages.Count : 0;
+                this.CurrentResponseMessage = null;
             }
 
-            _toolCallIds.Clear();
-            _toolResultIds.Clear();
-            NotifyMessagesChanged();
+            this._toolCallIds.Clear();
+            this._toolResultIds.Clear();
+            this.NotifyMessagesChanged();
         }
         catch (OperationCanceledException)
         {
             // If cancelled, ensure we keep what we have
-             if (CurrentResponseMessage is not null)
+            if (this.CurrentResponseMessage is not null)
             {
-                Messages.Add(CurrentResponseMessage);
-                NotifyMessagesChanged();
+                this.Messages.Add(this.CurrentResponseMessage);
+                this.NotifyMessagesChanged();
             }
         }
         finally
         {
-            IsThinking = false;
-            CurrentResponseMessage = null;
-            _currentResponseCancellation = null;
+            this.IsThinking = false;
+            this.CurrentResponseMessage = null;
+            this._currentResponseCancellation = null;
         }
     }
 
@@ -141,103 +144,104 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         switch (update)
         {
             case AGUIConversationIdUpdate idUpdate:
-                _chatOptions.ConversationId = idUpdate.ConversationId;
+                this._chatOptions.ConversationId = idUpdate.ConversationId;
                 break;
             case AGUITextPart textUpdate:
                 responseText.Text += textUpdate.Text;
                 break;
             case AGUIToolCall toolCall:
-                 if (_toolCallIds.Add(toolCall.Content.CallId))
+                if (this._toolCallIds.Add(toolCall.Content.CallId))
                 {
-                    _logger.LogInformation("[ChatVM] Processing tool call: {Name} (ID: {CallId})", toolCall.Content.Name, toolCall.Content.CallId);
-                    ChatMessage? targetMessage = CurrentResponseMessage;
+                    this._logger.LogInformation("[ChatVM] Processing tool call: {Name} (ID: {CallId})", toolCall.Content.Name, toolCall.Content.CallId);
+                    ChatMessage? targetMessage = this.CurrentResponseMessage;
                     if (targetMessage is null)
                     {
                         targetMessage = new ChatMessage(ChatRole.Assistant, []);
-                        Messages.Add(targetMessage);
-                        NotifyMessagesChanged();
+                        this.Messages.Add(targetMessage);
+                        this.NotifyMessagesChanged();
                     }
 
                     targetMessage.Contents.Add(toolCall.Content);
-                    _toolCallMessages[toolCall.Content.CallId] = targetMessage;
-                    _logger.LogInformation("[ChatVM] Tool call added to message (Role={Role}, Contents={Count})", targetMessage.Role, targetMessage.Contents.Count);
+                    this._toolCallMessages[toolCall.Content.CallId] = targetMessage;
+                    this._logger.LogInformation("[ChatVM] Tool call added to message (Role={Role}, Contents={Count})", targetMessage.Role, targetMessage.Contents.Count);
                     ChatMessageItem.NotifyChanged(targetMessage);
                 }
                 break;
             case AGUIToolResult toolResult:
-                if (_toolResultIds.Add(toolResult.Content.CallId))
+                if (this._toolResultIds.Add(toolResult.Content.CallId))
                 {
-                    _logger.LogInformation("[ChatVM] Processing tool result for CallId={CallId}, Result={Result}",
+                    this._logger.LogInformation("[ChatVM] Processing tool result for CallId={CallId}, Result={Result}",
                         toolResult.Content.CallId,
                         toolResult.Content.Result?.ToString()?.Substring(0, Math.Min(100, toolResult.Content.Result?.ToString()?.Length ?? 0)));
 
                     // CRITICAL FIX: Tool results must ALWAYS be in separate Tool role messages
                     // OpenAI requires: [Assistant with tool_calls] -> [Tool with results]
                     // NOT: [Assistant with both tool_calls AND results]
-                    _logger.LogInformation("[ChatVM] Creating NEW Tool message for tool result (Role=Tool)");
-                    ChatMessage toolResultMessage = new ChatMessage(ChatRole.Tool, [toolResult.Content]);
-                    Messages.Add(toolResultMessage);
-                    _logger.LogInformation("[ChatVM] Tool result message added: MessageCount={Count}, MessageRole={Role}, ContentCount={ContentCount}",
-                        Messages.Count, toolResultMessage.Role, toolResultMessage.Contents.Count);
-                    NotifyMessagesChanged();
+                    this._logger.LogInformation("[ChatVM] Creating NEW Tool message for tool result (Role=Tool)");
+                    ChatMessage toolResultMessage = new(ChatRole.Tool, [toolResult.Content]);
+                    this.Messages.Add(toolResultMessage);
+                    this._logger.LogInformation("[ChatVM] Tool result message added: MessageCount={Count}, MessageRole={Role}, ContentCount={ContentCount}",
+                        this.Messages.Count, toolResultMessage.Role, toolResultMessage.Contents.Count);
+                    this.NotifyMessagesChanged();
                     ChatMessageItem.NotifyChanged(toolResultMessage);
 
                     // NEW: Check if this is a plan tool result and update PlanSteps accordingly
-                    if (IsPlanToolResult(toolResult))
+                    if (this.IsPlanToolResult(toolResult))
                     {
-                        ProcessPlanToolResult(toolResult);
+                        this.ProcessPlanToolResult(toolResult);
                     }
                 }
                 else
                 {
-                    _logger.LogWarning("[ChatVM] Duplicate tool result ignored for CallId={CallId}", toolResult.Content.CallId);
+                    this._logger.LogWarning("[ChatVM] Duplicate tool result ignored for CallId={CallId}", toolResult.Content.CallId);
                 }
                 break;
             case AGUIDataSnapshot snapshot:
-                ApplyPlanSnapshot(snapshot.JsonData);
+                this.ApplyPlanSnapshot(snapshot.JsonData);
                 break;
             case AGUIDataDelta delta:
-                ApplyPlanDelta(delta.JsonData);
+                this.ApplyPlanDelta(delta.JsonData);
                 break;
-            case AGUIRawUpdate raw:
+            case AGUIRawUpdate:
                 break;
         }
     }
 
     public void CancelAnyCurrentResponse()
     {
-        if (CurrentResponseMessage is not null)
+        if (this.CurrentResponseMessage is not null)
         {
-            Messages.Add(CurrentResponseMessage);
-            NotifyMessagesChanged();
+            this.Messages.Add(this.CurrentResponseMessage);
+            this.NotifyMessagesChanged();
         }
 
-        _currentResponseCancellation?.Cancel();
-        CurrentResponseMessage = null;
-        _toolCallIds.Clear();
-        _toolResultIds.Clear();
-        _toolCallMessages.Clear();
-        IsThinking = false;
-        NotifyMessagesChanged();
+        this._currentResponseCancellation?.Cancel();
+        this.CurrentResponseMessage = null;
+        this._toolCallIds.Clear();
+        this._toolResultIds.Clear();
+        this._toolCallMessages.Clear();
+        this.IsThinking = false;
+        this.NotifyMessagesChanged();
     }
 
     public void ResetConversation()
     {
-        CancelAnyCurrentResponse();
-        Messages.Clear();
-        Messages.Add(new ChatMessage(ChatRole.System, _systemPrompt));
-        _chatOptions.ConversationId = null;
-        _statefulMessageCount = 0;
-        _planSteps.Clear();
-        _toolCallIds.Clear();
-        _toolResultIds.Clear();
-        _toolCallMessages.Clear();
-        NotifyMessagesChanged();
+        this.CancelAnyCurrentResponse();
+        this.Messages.Clear();
+        this.Messages.Add(new ChatMessage(ChatRole.System, this._systemPrompt));
+        this._chatOptions.ConversationId = null;
+        this._statefulMessageCount = 0;
+        this.PlanSteps.Clear();
+        this._toolCallIds.Clear();
+        this._toolResultIds.Clear();
+        this._toolCallMessages.Clear();
+        this._currentPlanMessage = null;
+        this.NotifyMessagesChanged();
     }
 
     public void Dispose()
     {
-        Dispose(true);
+        this.Dispose(true);
         GC.SuppressFinalize(this);
     }
 
@@ -245,7 +249,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     {
         if (disposing)
         {
-             _currentResponseCancellation?.Dispose();
+            this._currentResponseCancellation?.Dispose();
         }
     }
 
@@ -254,7 +258,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     private bool IsPlanToolResult(AGUIToolResult result)
     {
         // Check if the matching tool call was create_plan or update_plan_step
-        if (!_toolCallMessages.TryGetValue(result.Content.CallId, out ChatMessage? callMessage))
+        if (!this._toolCallMessages.TryGetValue(result.Content.CallId, out ChatMessage? callMessage))
         {
             return false;
         }
@@ -270,7 +274,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         bool isPlanTool = functionCall.Name is "create_plan" or "update_plan_step";
         if (isPlanTool)
         {
-            _logger.LogInformation("[ChatVM] Detected plan tool result: {FunctionName} (CallId={CallId})",
+            this._logger.LogInformation("[ChatVM] Detected plan tool result: {FunctionName} (CallId={CallId})",
                 functionCall.Name, result.Content.CallId);
         }
 
@@ -282,9 +286,9 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             // Get the corresponding tool call to determine the function name
-            if (!_toolCallMessages.TryGetValue(result.Content.CallId, out ChatMessage? callMessage))
+            if (!this._toolCallMessages.TryGetValue(result.Content.CallId, out ChatMessage? callMessage))
             {
-                _logger.LogWarning("[ChatVM] Cannot process plan tool result - call message not found for CallId={CallId}",
+                this._logger.LogWarning("[ChatVM] Cannot process plan tool result - call message not found for CallId={CallId}",
                     result.Content.CallId);
                 return;
             }
@@ -294,7 +298,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 
             if (functionCall is null)
             {
-                _logger.LogWarning("[ChatVM] Cannot process plan tool result - function call not found for CallId={CallId}",
+                this._logger.LogWarning("[ChatVM] Cannot process plan tool result - function call not found for CallId={CallId}",
                     result.Content.CallId);
                 return;
             }
@@ -310,12 +314,12 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 
             if (string.IsNullOrWhiteSpace(resultJson))
             {
-                _logger.LogWarning("[ChatVM] Plan tool result has empty data for {FunctionName} (CallId={CallId})",
+                this._logger.LogWarning("[ChatVM] Plan tool result has empty data for {FunctionName} (CallId={CallId})",
                     functionCall.Name, result.Content.CallId);
                 return;
             }
 
-            _logger.LogInformation("[ChatVM] Processing plan tool result: {FunctionName}, Data={Data}",
+            this._logger.LogInformation("[ChatVM] Processing plan tool result: {FunctionName}, Data={Data}",
                 functionCall.Name, resultJson.Substring(0, Math.Min(200, resultJson.Length)));
 
             // Apply the appropriate update based on function name
@@ -323,25 +327,25 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
             {
                 case "create_plan":
                     // create_plan returns a full plan snapshot
-                    ApplyPlanSnapshot(resultJson);
-                    _logger.LogInformation("[ChatVM] Applied plan snapshot from create_plan result");
+                    this.ApplyPlanSnapshot(resultJson);
+                    this._logger.LogInformation("[ChatVM] Applied plan snapshot from create_plan result");
                     break;
 
                 case "update_plan_step":
                     // update_plan_step returns a JSON patch
-                    ApplyPlanDelta(resultJson);
-                    _logger.LogInformation("[ChatVM] Applied plan delta from update_plan_step result");
+                    this.ApplyPlanDelta(resultJson);
+                    this._logger.LogInformation("[ChatVM] Applied plan delta from update_plan_step result");
                     break;
 
                 default:
-                    _logger.LogWarning("[ChatVM] Unknown plan function: {FunctionName}", functionCall.Name);
+                    this._logger.LogWarning("[ChatVM] Unknown plan function: {FunctionName}", functionCall.Name);
                     break;
             }
         }
         catch (Exception ex)
         {
             // Don't crash the UI if plan processing fails - just log it
-            _logger.LogError(ex, "[ChatVM] Error processing plan tool result");
+            this._logger.LogError(ex, "[ChatVM] Error processing plan tool result");
         }
     }
 
@@ -359,7 +363,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        _planSteps.Clear();
+        this.PlanSteps.Clear();
 
         foreach (JsonElement stepElement in stepsElement.EnumerateArray())
         {
@@ -379,13 +383,17 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
             }
 
 #pragma warning disable CA1308 // Normalize strings to uppercase
-            _planSteps.Add(new AgenticPlanPanel.AgenticPlanStep(description, status.ToLowerInvariant(), detail));
+            this.PlanSteps.Add(new AgenticPlanPanel.AgenticPlanStep(description, status.ToLowerInvariant(), detail));
 #pragma warning restore CA1308
         }
 
+        // FEATURE: Render plan inline with messages
+        // Create or update a plan message in the message list
+        this.UpdatePlanMessage();
+
         // Notify UI of plan changes
-        NotifyMessagesChanged();
-        OnPropertyChanged(nameof(PlanSteps));
+        this.NotifyMessagesChanged();
+        this.OnPropertyChanged(nameof(this.PlanSteps));
     }
 
     private void ApplyPlanDelta(string raw)
@@ -394,14 +402,14 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         {
             string normalizedPatch = NormalizeJsonPatch(raw);
             // Snapshot current state
-            var currentState = new AgentState([.. _planSteps]);
+            var currentState = new AgentState([.. this.PlanSteps]);
 
             // Apply patch
             var newState = JsonPatchHelper.ApplyPatch(currentState, normalizedPatch);
 
             if (newState?.Steps is not null)
             {
-                SyncPlanSteps(newState.Steps);
+                this.SyncPlanSteps(newState.Steps);
             }
         }
         catch
@@ -472,12 +480,12 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     private void SyncPlanSteps(List<AgenticPlanPanel.AgenticPlanStep> newSteps)
     {
         // If the structure changed significantly (count diff), reset
-        if (newSteps.Count != _planSteps.Count)
+        if (newSteps.Count != this.PlanSteps.Count)
         {
-            _planSteps.Clear();
+            this.PlanSteps.Clear();
             foreach (var step in newSteps)
             {
-                _planSteps.Add(step);
+                this.PlanSteps.Add(step);
             }
         }
         else
@@ -485,7 +493,7 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
             // Update in-place to minimize UI flickering
             for (int i = 0; i < newSteps.Count; i++)
             {
-                var current = _planSteps[i];
+                var current = this.PlanSteps[i];
                 var next = newSteps[i];
 
                 bool changed = !string.Equals(current.Description, next.Description, StringComparison.Ordinal) ||
@@ -494,16 +502,59 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 
                 if (changed)
                 {
-                    _planSteps[i] = next;
+                    this.PlanSteps[i] = next;
                 }
             }
         }
 
-        OnPropertyChanged(nameof(PlanSteps));
-        NotifyMessagesChanged();
+        // FEATURE: Update plan message after syncing steps
+        this.UpdatePlanMessage();
+
+        this.OnPropertyChanged(nameof(this.PlanSteps));
+        this.NotifyMessagesChanged();
     }
 
     private sealed record AgentState(List<AgenticPlanPanel.AgenticPlanStep> Steps);
+
+    private void UpdatePlanMessage()
+    {
+        // Create PlanContent from current PlanSteps
+        if (this.PlanSteps.Count == 0)
+        {
+            return;
+        }
+
+        var planContent = new PlanContent(
+            Steps: this.PlanSteps.ToList(),
+            Title: "Plan",
+            Subtitle: null
+        );
+
+        // Serialize PlanContent to JSON bytes for DataContent
+        byte[] planBytes = JsonSerializer.SerializeToUtf8Bytes(planContent, s_jsonOptions);
+
+        var dataContent = new DataContent(planBytes, "application/vnd.microsoft.agui.plan+json");
+
+        if (this._currentPlanMessage is not null)
+        {
+            // Update existing plan message
+            this._logger.LogInformation("[ChatVM] Updating existing plan message");
+
+            // Clear existing contents and add updated plan
+            this._currentPlanMessage.Contents.Clear();
+            this._currentPlanMessage.Contents.Add(dataContent);
+
+            // Notify that this specific message changed
+            ChatMessageItem.NotifyChanged(this._currentPlanMessage);
+        }
+        else
+        {
+            // Create new plan message
+            this._logger.LogInformation("[ChatVM] Creating new plan message");
+            this._currentPlanMessage = new ChatMessage(ChatRole.Assistant, [dataContent]);
+            this.Messages.Add(this._currentPlanMessage);
+        }
+    }
 
     private static bool TryReadJsonElement(string raw, out JsonElement element)
     {

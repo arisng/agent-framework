@@ -16,13 +16,6 @@
         {
             <div class="no-messages">@NoMessagesContent</div>
         }
-
-        @if (SupplementalContent is not null)
-        {
-            <div class="message-supplemental">
-                @SupplementalContent
-            </div>
-        }
     </chat-messages>
 </div>
 
@@ -36,11 +29,7 @@
     [Parameter]
     public RenderFragment? NoMessagesContent { get; set; }
 
-    [Parameter]
-    public RenderFragment? SupplementalContent { get; set; }
-
-    private bool IsEmpty => SupplementalContent is null
-        && !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
+    private bool IsEmpty => !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

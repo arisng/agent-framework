@@ -1,6 +1,8 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
 @using System.Linq
 @using AGUIWebChat.Client.Models.QuizModels
+@using AGUIWebChat.Client.Services
+@inject IQuizService QuizService
 
 @if (Card is not null)
 {
@@ -15,7 +17,16 @@
                 }
                 @if (Card.Question.MediaUrl is not null)
                 {
-                    <img src="@Card.Question.MediaUrl" alt="Question media" class="quiz-question-media" />
+                    @if (IsVideoUrl(Card.Question.MediaUrl))
+                    {
+                        <video src="@Card.Question.MediaUrl" controls class="quiz-question-media">
+                            Your browser does not support the video tag.
+                        </video>
+                    }
+                    else
+                    {
+                        <img src="@Card.Question.MediaUrl" alt="Question media" class="quiz-question-media" />
+                    }
                 }
             </div>
 
@@ -54,7 +65,14 @@
                             }
                             @if (answer.MediaUrl is not null)
                             {
-                                <img src="@answer.MediaUrl" alt="Answer media" class="quiz-answer-media" />
+                                @if (IsVideoUrl(answer.MediaUrl))
+                                {
+                                    <video src=\"@answer.MediaUrl\" controls class=\"quiz-answer-media\">\n                                        Your browser does not support the video tag.\n                                    </video>
+                                }
+                                else
+                                {
+                                    <img src=\"@answer.MediaUrl\" alt=\"Answer media\" class=\"quiz-answer-media\" />
+                                }
                             }
                         </div>
                     }
@@ -91,12 +109,46 @@
                             }
                             @if (answer.MediaUrl is not null)
                             {
-                                <img src="@answer.MediaUrl" alt="Answer media" class="quiz-answer-media" />
+                                @if (IsVideoUrl(answer.MediaUrl))
+                                {
+                                    <video src="@answer.MediaUrl" controls class="quiz-answer-media">
+                                        Your browser does not support the video tag.
+                                    </video>
+                                }
+                                else
+                                {
+                                    <img src="@answer.MediaUrl" alt="Answer media" class="quiz-answer-media" />
+                                }
                             }
                         </div>
                     }
                 }
             </div>
+
+            <!-- Submit Button Section -->
+            @if (!IsCardDisabled)
+            {
+                <div class="quiz-submit-section">
+                    <button type="button"
+                            class="quiz-submit-button"
+                            disabled="@IsSubmitDisabled"
+                            @onclick="OnSubmitAnswersAsync">
+                        @if (_isSubmitting)
+                        {
+                            <span class="quiz-submit-spinner">⏳</span>
+                            <span>Submitting...</span>
+                        }
+                        else
+                        {
+                            <span>Submit Answers</span>
+                        }
+                    </button>
+                    @if (!string.IsNullOrEmpty(_submitError))
+                    {
+                        <p class="quiz-submit-error">@_submitError</p>
+                    }
+                </div>
+            }
 
             <!-- Evaluation Section -->
             @if (Card.Evaluation is not null && ShouldShowEvaluation)
@@ -139,11 +191,22 @@
     [Parameter]
     public string MediaType { get; set; } = "application/vnd.quiz.card+json";
 
+    /// <summary>
+    /// The Quiz ID required for answer submission.
+    /// </summary>
+    [Parameter]
+    public string? QuizId { get; set; }
+
     private QuestionCard? Card => Data as QuestionCard;
+
+    private bool _isSubmitting = false;
+    private string? _submitError = null;
 
     private bool IsSingleSelect => Card?.Selection.Mode == "single";
 
     private bool IsCardDisabled => Card?.Evaluation is not null;
+
+    private bool IsSubmitDisabled => _isSubmitting || Card?.UserChoiceIds.Count == 0 || IsCardDisabled;
 
     private bool ShouldShowEvaluation => Card?.Evaluation is not null;
 
@@ -251,5 +314,52 @@
         }
 
         StateHasChanged();
+    }
+
+    private async Task OnSubmitAnswersAsync()
+    {
+        if (Card is null || string.IsNullOrEmpty(QuizId) || IsCardDisabled || _isSubmitting)
+        {
+            return;
+        }
+
+        if (Card.UserChoiceIds.Count == 0)
+        {
+            _submitError = "Please select at least one answer before submitting.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _submitError = null;
+        StateHasChanged();
+
+        try
+        {
+            CardEvaluation evaluation = await QuizService.SubmitAnswersAsync(QuizId, Card.Id, Card.UserChoiceIds);
+
+            // Update the card with the evaluation result
+            // Since Card is a record (immutable), we need to create a new instance
+            Data = Card with { Evaluation = evaluation };
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _submitError = $"Failed to submit answers: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Determines if a given URI is a video URL based on file extension.
+    /// </summary>
+    private static bool IsVideoUrl(Uri url)
+    {
+        string path = url.AbsolutePath.ToLowerInvariant();
+        return path.EndsWith(".mp4") || path.EndsWith(".webm") || path.EndsWith(".ogg") || path.EndsWith(".mov");
     }
 }

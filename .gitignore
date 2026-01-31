@@ -231,3 +231,5 @@ python/dotnet-ref
 
 # My custom ignores
 .ralph-sessions/
+node_modules/
+.playwright-cli/

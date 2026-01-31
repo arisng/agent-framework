@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 namespace AGUIWebChat.Client.Services;
 
@@ -15,7 +15,7 @@ public sealed class ComponentRegistry : IComponentRegistry
 {
     private readonly Dictionary<string, Type> _components = new(StringComparer.OrdinalIgnoreCase);
 
-    public IReadOnlyDictionary<string, Type> RegisteredComponents => _components;
+    public IReadOnlyDictionary<string, Type> RegisteredComponents => this._components;
 
     public void Register(string mediaType, Type componentType)
     {
@@ -29,7 +29,7 @@ public sealed class ComponentRegistry : IComponentRegistry
             throw new ArgumentNullException(nameof(componentType));
         }
 
-        _components[mediaType] = componentType;
+        this._components[mediaType] = componentType;
     }
 
     public bool TryGetComponentType(string mediaType, out Type? componentType)
@@ -40,6 +40,6 @@ public sealed class ComponentRegistry : IComponentRegistry
             return false;
         }
 
-        return _components.TryGetValue(mediaType, out componentType);
+        return this._components.TryGetValue(mediaType, out componentType);
     }
 }
