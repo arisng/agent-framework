@@ -220,6 +220,7 @@ public sealed class QuizGeneratorTool : IQuizGeneratorTool
     private static string GetQuizJsonSchema()
     {
         // JSON Schema for Quiz structure matching the data model
+        // OpenAI structured output requires ALL properties to be listed in required array
         return """
         {
           "type": "object",
@@ -238,10 +239,10 @@ public sealed class QuizGeneratorTool : IQuizGeneratorTool
                     "type": "object",
                     "properties": {
                       "text": { "type": "string" },
-                      "description": { "type": "string" },
+                      "description": { "type": ["string", "null"] },
                       "mediaUrl": { "type": ["string", "null"] }
                     },
-                    "required": ["text"],
+                    "required": ["text", "description", "mediaUrl"],
                     "additionalProperties": false
                   },
                   "answers": {
@@ -251,11 +252,11 @@ public sealed class QuizGeneratorTool : IQuizGeneratorTool
                       "properties": {
                         "id": { "type": "string" },
                         "text": { "type": "string" },
-                        "description": { "type": "string" },
+                        "description": { "type": ["string", "null"] },
                         "mediaUrl": { "type": ["string", "null"] },
                         "isDisabled": { "type": "boolean" }
                       },
-                      "required": ["id", "text"],
+                      "required": ["id", "text", "description", "mediaUrl", "isDisabled"],
                       "additionalProperties": false
                     }
                   },
@@ -266,7 +267,7 @@ public sealed class QuizGeneratorTool : IQuizGeneratorTool
                       "minSelections": { "type": "integer" },
                       "maxSelections": { "type": "integer" }
                     },
-                    "required": ["mode"],
+                    "required": ["mode", "minSelections", "maxSelections"],
                     "additionalProperties": false
                   },
                   "correctAnswerIds": {
@@ -279,7 +280,7 @@ public sealed class QuizGeneratorTool : IQuizGeneratorTool
                       "visibility": { "type": "string", "enum": ["never", "afterSubmit", "afterReveal", "always"] },
                       "allowReveal": { "type": "boolean" }
                     },
-                    "required": ["visibility"],
+                    "required": ["visibility", "allowReveal"],
                     "additionalProperties": false
                   },
                   "userChoiceIds": {
@@ -292,7 +293,7 @@ public sealed class QuizGeneratorTool : IQuizGeneratorTool
               }
             }
           },
-          "required": ["id", "title", "cards"],
+          "required": ["id", "title", "instructions", "cards"],
           "additionalProperties": false
         }
         """;

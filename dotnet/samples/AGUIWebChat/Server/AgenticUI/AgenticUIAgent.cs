@@ -50,7 +50,13 @@ internal sealed class AgenticUIAgent : DelegatingAIAgent
                 {
                     if (trackedFunctionCalls.TryGetValue(resultContent.CallId, out FunctionCallContent? matchedCall))
                     {
-                        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes((JsonElement)resultContent.Result!, this._jsonSerializerOptions);
+                        // Handle different result types: JsonElement, Dictionary, List, or any object
+                        byte[] bytes = resultContent.Result switch
+                        {
+                            JsonElement jsonElement => JsonSerializer.SerializeToUtf8Bytes(jsonElement, this._jsonSerializerOptions),
+                            string strResult => JsonSerializer.SerializeToUtf8Bytes(JsonDocument.Parse(strResult).RootElement, this._jsonSerializerOptions),
+                            _ => JsonSerializer.SerializeToUtf8Bytes(resultContent.Result!, this._jsonSerializerOptions)
+                        };
 
                         if (matchedCall.Name == "create_plan")
                         {

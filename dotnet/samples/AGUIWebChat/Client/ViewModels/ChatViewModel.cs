@@ -332,8 +332,13 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
                     break;
 
                 case "update_plan_step":
-                    // update_plan_step returns a JSON patch
-                    this.ApplyPlanDelta(resultJson);
+                    // update_plan_step returns a JSON patch - use imperative update for reliability
+                    if (!this.TryApplyPlanStepUpdateImperative(resultJson))
+                    {
+                        // Fall back to JSON Patch if imperative update fails
+                        this._logger.LogInformation("[ChatVM] Imperative update failed, falling back to JSON Patch");
+                        this.ApplyPlanDelta(resultJson);
+                    }
                     this._logger.LogInformation("[ChatVM] Applied plan delta from update_plan_step result");
                     break;
 
@@ -350,6 +355,165 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     }
 
     // --- JSON Patching Logic (Temporary Copy) ---
+
+    /// <summary>
+    /// Attempts to apply plan step updates imperatively by parsing the JSON Patch operations directly.
+    /// This bypasses the complex JSON Patch deserialization/serialization machinery which can fail
+    /// with immutable record types. Specifically handles /steps/{index}/status replace operations.
+    /// </summary>
+    /// <param name="jsonPatchRaw">The raw JSON Patch array string.</param>
+    /// <returns>True if at least one step was updated successfully, false otherwise.</returns>
+    private bool TryApplyPlanStepUpdateImperative(string jsonPatchRaw)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(jsonPatchRaw))
+            {
+                return false;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(jsonPatchRaw);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                this._logger.LogWarning("[ChatVM] Imperative update: Expected JSON array, got {ValueKind}", doc.RootElement.ValueKind);
+                return false;
+            }
+
+            bool anyUpdated = false;
+
+            foreach (JsonElement opElement in doc.RootElement.EnumerateArray())
+            {
+                // Extract operation fields
+                if (!opElement.TryGetProperty("op", out JsonElement opProp) ||
+                    !opElement.TryGetProperty("path", out JsonElement pathProp))
+                {
+                    continue;
+                }
+
+                string op = opProp.GetString() ?? string.Empty;
+                string path = pathProp.GetString() ?? string.Empty;
+
+                // Only handle "replace" operations on step status (most common case)
+                if (!string.Equals(op, "replace", StringComparison.OrdinalIgnoreCase))
+                {
+                    this._logger.LogDebug("[ChatVM] Imperative update: Skipping non-replace operation '{Op}'", op);
+                    continue;
+                }
+
+                // Parse path like /steps/0/status -> extract index and property
+                // Expected format: /steps/{index}/status
+                if (!TryParseStepStatusPath(path, out int stepIndex, out string propertyName))
+                {
+                    this._logger.LogDebug("[ChatVM] Imperative update: Could not parse path '{Path}'", path);
+                    continue;
+                }
+
+                // Validate step index
+                if (stepIndex < 0 || stepIndex >= this.PlanSteps.Count)
+                {
+                    this._logger.LogWarning("[ChatVM] Imperative update: Step index {Index} out of range (have {Count} steps)",
+                        stepIndex, this.PlanSteps.Count);
+                    continue;
+                }
+
+                // Get the value
+                if (!opElement.TryGetProperty("value", out JsonElement valueProp))
+                {
+                    this._logger.LogWarning("[ChatVM] Imperative update: No value property for replace operation");
+                    continue;
+                }
+
+                string newValue = valueProp.ValueKind == JsonValueKind.String
+                    ? (valueProp.GetString() ?? string.Empty)
+                    : valueProp.GetRawText();
+
+                // Apply the update based on property name
+                AgenticPlanPanel.AgenticPlanStep currentStep = this.PlanSteps[stepIndex];
+
+                if (string.Equals(propertyName, "status", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(currentStep.Status, newValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Create new step with updated status (AgenticPlanStep is immutable)
+#pragma warning disable CA1308 // Normalize strings to lowercase - required for status values
+                        AgenticPlanPanel.AgenticPlanStep updatedStep = new(
+                            currentStep.Description,
+                            newValue.ToLowerInvariant(),
+                            currentStep.Detail);
+#pragma warning restore CA1308
+
+                        this._logger.LogInformation("[ChatVM] Imperative update: Step {Index} status changed '{OldStatus}' -> '{NewStatus}'",
+                            stepIndex, currentStep.Status, newValue);
+
+                        this.PlanSteps[stepIndex] = updatedStep;
+                        anyUpdated = true;
+                    }
+                    else
+                    {
+                        this._logger.LogDebug("[ChatVM] Imperative update: Step {Index} status unchanged ('{Status}')",
+                            stepIndex, currentStep.Status);
+                    }
+                }
+                else
+                {
+                    this._logger.LogWarning("[ChatVM] Imperative update: Unsupported property '{Property}' on step {Index}",
+                        propertyName, stepIndex);
+                }
+            }
+
+            if (anyUpdated)
+            {
+                // Notify UI of plan changes
+                this.UpdatePlanMessage();
+                this.OnPropertyChanged(nameof(this.PlanSteps));
+                this.NotifyMessagesChanged();
+            }
+
+            return anyUpdated;
+        }
+        catch (Exception ex)
+        {
+            this._logger.LogError(ex, "[ChatVM] Imperative update failed to parse JSON Patch");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Parses a JSON Patch path to extract step index and property name.
+    /// Expected format: /steps/{index}/{property}
+    /// </summary>
+    private static bool TryParseStepStatusPath(string path, out int stepIndex, out string propertyName)
+    {
+        stepIndex = -1;
+        propertyName = string.Empty;
+
+        if (string.IsNullOrEmpty(path) || !path.StartsWith('/'))
+        {
+            return false;
+        }
+
+        // Split path: "/" -> "", "steps", "0", "status"
+        string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length != 3)
+        {
+            return false;
+        }
+
+        // Validate first segment is "steps"
+        if (!string.Equals(segments[0], "steps", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // Parse index
+        if (!int.TryParse(segments[1], out stepIndex))
+        {
+            return false;
+        }
+
+        propertyName = segments[2];
+        return true;
+    }
 
     private void ApplyPlanSnapshot(string raw)
     {
@@ -400,21 +564,33 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
+            this._logger.LogInformation("[ChatVM] ApplyPlanDelta received: {Data}", raw.Substring(0, Math.Min(500, raw.Length)));
+
             string normalizedPatch = NormalizeJsonPatch(raw);
-            // Snapshot current state
-            var currentState = new AgentState([.. this.PlanSteps]);
+            this._logger.LogInformation("[ChatVM] Normalized patch: {NormalizedPatch}", normalizedPatch);
+
+            // Snapshot current state using class-based AgentState for better JSON compatibility
+            var currentState = new AgentState { Steps = [.. this.PlanSteps] };
+            this._logger.LogInformation("[ChatVM] Current state has {StepCount} steps", currentState.Steps?.Count ?? 0);
 
             // Apply patch
             var newState = JsonPatchHelper.ApplyPatch(currentState, normalizedPatch);
 
             if (newState?.Steps is not null)
             {
+                this._logger.LogInformation("[ChatVM] Patch applied successfully, syncing {StepCount} steps", newState.Steps.Count);
                 this.SyncPlanSteps(newState.Steps);
             }
+            else
+            {
+                this._logger.LogWarning("[ChatVM] ApplyPatch returned null or Steps is null - patch may have failed silently");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore malformed patches to prevent UI crashes
+            // Log the exception instead of silently ignoring
+            this._logger.LogError(ex, "[ChatVM] ApplyPlanDelta failed to apply patch. Raw data: {RawData}",
+                raw.Substring(0, Math.Min(200, raw.Length)));
         }
     }
 
@@ -479,9 +655,14 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
 
     private void SyncPlanSteps(List<AgenticPlanPanel.AgenticPlanStep> newSteps)
     {
+        this._logger.LogDebug("[ChatVM] SyncPlanSteps called with {NewCount} steps, current has {CurrentCount} steps",
+            newSteps.Count, this.PlanSteps.Count);
+
         // If the structure changed significantly (count diff), reset
         if (newSteps.Count != this.PlanSteps.Count)
         {
+            this._logger.LogInformation("[ChatVM] SyncPlanSteps: Step count changed ({Old} -> {New}), replacing all",
+                this.PlanSteps.Count, newSteps.Count);
             this.PlanSteps.Clear();
             foreach (var step in newSteps)
             {
@@ -496,13 +677,21 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
                 var current = this.PlanSteps[i];
                 var next = newSteps[i];
 
-                bool changed = !string.Equals(current.Description, next.Description, StringComparison.Ordinal) ||
-                               !string.Equals(current.Status, next.Status, StringComparison.Ordinal) ||
-                               !string.Equals(current.Detail, next.Detail, StringComparison.Ordinal);
+                bool descChanged = !string.Equals(current.Description, next.Description, StringComparison.Ordinal);
+                bool statusChanged = !string.Equals(current.Status, next.Status, StringComparison.Ordinal);
+                bool detailChanged = !string.Equals(current.Detail, next.Detail, StringComparison.Ordinal);
+                bool changed = descChanged || statusChanged || detailChanged;
 
                 if (changed)
                 {
+                    this._logger.LogInformation("[ChatVM] SyncPlanSteps: Step {Index} changed - Status: '{OldStatus}' -> '{NewStatus}', Desc: {DescChanged}, Detail: {DetailChanged}",
+                        i, current.Status, next.Status, descChanged, detailChanged);
                     this.PlanSteps[i] = next;
+                }
+                else
+                {
+                    this._logger.LogDebug("[ChatVM] SyncPlanSteps: Step {Index} unchanged (Status='{Status}')",
+                        i, current.Status);
                 }
             }
         }
@@ -514,7 +703,17 @@ public sealed class ChatViewModel : INotifyPropertyChanged, IDisposable
         this.NotifyMessagesChanged();
     }
 
-    private sealed record AgentState(List<AgenticPlanPanel.AgenticPlanStep> Steps);
+    /// <summary>
+    /// Internal class for JSON Patch application. Uses class instead of record
+    /// for better JSON deserialization compatibility with JsonSerializerDefaults.Web.
+    /// Uses explicit JsonPropertyName to ensure correct property mapping regardless of
+    /// serializer naming policy.
+    /// </summary>
+    private sealed class AgentState
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("steps")]
+        public List<AgenticPlanPanel.AgenticPlanStep>? Steps { get; set; }
+    }
 
     private void UpdatePlanMessage()
     {
