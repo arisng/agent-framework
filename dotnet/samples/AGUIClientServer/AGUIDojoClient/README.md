@@ -104,7 +104,9 @@ Async tools with progress updates for long-running operations. Displays a Plan w
 
 Custom Blazor components render based on tool definitions. The client uses a ToolComponentRegistry to map tool names to UI components.
 
-**Demo:** Ask "What's the weather in New York?" - the tool result renders in a WeatherCard component with rich formatting, demonstrating dynamic component rendering based on tool type.
+**Demo:** Ask "What's the weather in New York?" - you'll see the tool call displayed with its arguments (location). The assistant then provides weather information in its text response.
+
+> **Note on WeatherDisplay Component:** The WeatherDisplay component infrastructure is fully implemented and registered in the ToolComponentRegistry. However, due to the AG-UI protocol's tool execution model, the component currently does not render. When tools execute server-side via the `FunctionInvokingChatClient`, tool results are consumed internally by the LLM to generate text responses rather than being streamed as separate `FunctionResultContent` events. The component would render correctly if `FunctionResultContent` were streamed separately. See [Known Limitations](#known-limitations) for more details.
 
 ---
 
@@ -239,3 +241,30 @@ export SERVER_URL="http://localhost:5100"
 - [AGUIClient](../AGUIClient) - Console client for AG-UI protocol testing
 - [AGUIServer](../AGUIServer) - Basic AG-UI server implementation
 - [AGUIWebChat](../../AGUIWebChat) - Original template this client was based on
+
+## Known Limitations
+
+### Tool Result Component Rendering (WeatherDisplay)
+
+**Limitation:** Custom components for tool results (like `WeatherDisplay`) do not render even though the infrastructure (ToolComponentRegistry, DynamicComponent, parsing logic) is fully implemented.
+
+**Cause:** The AG-UI protocol supports streaming `FunctionResultContent` via `ToolCallResultEvent`. However, when using `ChatClientAgent` with the `FunctionInvokingChatClient` from `Microsoft.Extensions.AI`, tool execution happens internally:
+
+1. LLM requests a tool call
+2. `FunctionInvokingChatClient` intercepts and executes the tool
+3. Tool result is fed back to the LLM (not streamed to client)
+4. LLM generates a text response incorporating the result
+
+The `FunctionCallContent` (tool invocation) IS streamed, which is why you see tool calls in the UI. But `FunctionResultContent` (tool output) is NOT separately streamed—it's consumed internally.
+
+**Impact:**
+- ✅ Tool calls display correctly (name, arguments)
+- ✅ Weather information appears in assistant's text response
+- ❌ WeatherDisplay card component does not render
+
+**Workarounds:**
+1. **Use DataContent:** For custom visualizations, emit state via `DataContent` events (as demonstrated in Shared State and Predictive State Updates features)
+2. **Parse TextContent:** Extract structured data from the assistant's natural language response
+3. **Future Enhancement:** The framework could add an option to stream `FunctionResultContent` separately before passing to the LLM
+
+**Infrastructure Ready:** The client-side code correctly handles `FunctionResultContent` and would render `WeatherDisplay` if such events were received. The integration tests in `ToolCallingTests.cs` verify this capability.

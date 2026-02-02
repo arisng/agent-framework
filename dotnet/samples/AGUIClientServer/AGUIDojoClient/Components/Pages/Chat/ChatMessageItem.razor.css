@@ -453,3 +453,127 @@
     font-size: 0.875rem;
     color: #7F1D1D;
 }
+
+/* Markdown Content Styles */
+.markdown-content {
+    line-height: 1.6;
+}
+
+    .markdown-content p {
+        margin: 0 0 0.75rem 0;
+    }
+
+    .markdown-content p:last-child {
+        margin-bottom: 0;
+    }
+
+    .markdown-content ul,
+    .markdown-content ol {
+        margin: 0.5rem 0 0.75rem 0;
+        padding-left: 1.5rem;
+    }
+
+    .markdown-content li {
+        margin: 0.25rem 0;
+    }
+
+    .markdown-content strong {
+        font-weight: 600;
+        color: #1F2937;
+    }
+
+    .markdown-content em {
+        font-style: italic;
+    }
+
+    .markdown-content code {
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        background: #F3F4F6;
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+        font-size: 0.875em;
+        color: #BE185D;
+    }
+
+    .markdown-content pre {
+        margin: 0.75rem 0;
+        padding: 0.75rem 1rem;
+        background: #1F2937;
+        border-radius: 0.375rem;
+        overflow-x: auto;
+    }
+
+    .markdown-content pre code {
+        background: transparent;
+        padding: 0;
+        color: #E5E7EB;
+        font-size: 0.8125rem;
+        line-height: 1.5;
+    }
+
+    .markdown-content blockquote {
+        margin: 0.75rem 0;
+        padding: 0.5rem 1rem;
+        border-left: 3px solid #6366F1;
+        background: #EEF2FF;
+        color: #4338CA;
+    }
+
+    .markdown-content h1,
+    .markdown-content h2,
+    .markdown-content h3,
+    .markdown-content h4,
+    .markdown-content h5,
+    .markdown-content h6 {
+        margin: 1rem 0 0.5rem 0;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .markdown-content h1 { font-size: 1.5rem; }
+    .markdown-content h2 { font-size: 1.25rem; }
+    .markdown-content h3 { font-size: 1.125rem; }
+    .markdown-content h4 { font-size: 1rem; }
+
+    .markdown-content a {
+        color: #4F46E5;
+        text-decoration: underline;
+    }
+
+    .markdown-content a:hover {
+        color: #4338CA;
+    }
+
+    .markdown-content table {
+        width: 100%;
+        margin: 0.75rem 0;
+        border-collapse: collapse;
+    }
+
+    .markdown-content th,
+    .markdown-content td {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #E5E7EB;
+        text-align: left;
+    }
+
+    .markdown-content th {
+        background: #F9FAFB;
+        font-weight: 600;
+    }
+
+    .markdown-content hr {
+        margin: 1rem 0;
+        border: none;
+        border-top: 1px solid #E5E7EB;
+    }
+
+    /* Task list styles for Markdig */
+    .markdown-content .task-list-item {
+        list-style: none;
+        margin-left: -1.5rem;
+    }
+
+    .markdown-content .task-list-item input[type="checkbox"] {
+        margin-right: 0.5rem;
+    }

@@ -19,14 +19,11 @@ public sealed class StateManager : IStateManager
         PropertyNameCaseInsensitive = true
     };
 
-    private Recipe _currentRecipe = new();
-    private bool _hasActiveState;
+    /// <inheritdoc />
+    public Recipe CurrentRecipe { get; private set; } = new();
 
     /// <inheritdoc />
-    public Recipe CurrentRecipe => _currentRecipe;
-
-    /// <inheritdoc />
-    public bool HasActiveState => _hasActiveState;
+    public bool HasActiveState { get; private set; }
 
     /// <inheritdoc />
     public event EventHandler<RecipeChangedEventArgs>? StateChanged;
@@ -34,41 +31,41 @@ public sealed class StateManager : IStateManager
     /// <inheritdoc />
     public void Initialize()
     {
-        _currentRecipe = CreateDefaultRecipe();
-        _hasActiveState = true;
-        OnStateChanged(_currentRecipe);
+        this.CurrentRecipe = CreateDefaultRecipe();
+        this.HasActiveState = true;
+        this.OnStateChanged(this.CurrentRecipe);
     }
 
     /// <inheritdoc />
     public void UpdateRecipe(Recipe recipe)
     {
         ArgumentNullException.ThrowIfNull(recipe);
-        _currentRecipe = recipe;
-        _hasActiveState = true;
-        OnStateChanged(_currentRecipe);
+        this.CurrentRecipe = recipe;
+        this.HasActiveState = true;
+        this.OnStateChanged(this.CurrentRecipe);
     }
 
     /// <inheritdoc />
     public void UpdateFromServerSnapshot(Recipe recipe)
     {
         ArgumentNullException.ThrowIfNull(recipe);
-        _currentRecipe = recipe;
-        _hasActiveState = true;
-        OnStateChanged(_currentRecipe);
+        this.CurrentRecipe = recipe;
+        this.HasActiveState = true;
+        this.OnStateChanged(this.CurrentRecipe);
     }
 
     /// <inheritdoc />
     public void Clear()
     {
-        _currentRecipe = new Recipe();
-        _hasActiveState = false;
-        OnStateChanged(_currentRecipe);
+        this.CurrentRecipe = new Recipe();
+        this.HasActiveState = false;
+        this.OnStateChanged(this.CurrentRecipe);
     }
 
     /// <inheritdoc />
     public DataContent CreateStateContent()
     {
-        string json = JsonSerializer.Serialize(_currentRecipe, s_jsonOptions);
+        string json = JsonSerializer.Serialize(this.CurrentRecipe, s_jsonOptions);
         byte[] bytes = Encoding.UTF8.GetBytes(json);
         return new DataContent(bytes, "application/json");
     }

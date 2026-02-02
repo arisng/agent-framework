@@ -5,6 +5,7 @@
 @using AGUIDojoClient.Services
 
 @inject IToolComponentRegistry ToolRegistry
+@inject IMarkdownService MarkdownService
 
 @if (Message.Role == ChatRole.User)
 {
@@ -28,8 +29,8 @@ else if (Message.Role == ChatRole.Assistant)
                         </div>
                     </div>
                     <div class="assistant-message-header">Assistant</div>
-                    <div class="assistant-message-text">
-                        <div>@((MarkupString)text)</div>
+                    <div class="assistant-message-text markdown-content">
+                        <div>@((MarkupString)MarkdownService.ToHtml(text))</div>
                     </div>
                 </div>
                 break;

@@ -30,6 +30,8 @@
     <PackageVersion Include="Mscc.GenerativeAI.Microsoft" Version="2.9.3" />
     <!-- Microsoft.Azure.* -->
     <PackageVersion Include="Microsoft.Azure.Cosmos" Version="3.54.0" />
+    <!-- Markdown -->
+    <PackageVersion Include="Markdig" Version="0.39.1" />
     <!-- Newtonsoft.Json -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- System.* -->

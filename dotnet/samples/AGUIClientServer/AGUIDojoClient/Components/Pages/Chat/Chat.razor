@@ -8,8 +8,6 @@
 @inject IApprovalHandler ApprovalHandler
 @inject IJsonPatchApplier JsonPatchApplier
 @inject IStateManager StateManager
-@inject ISseEventParser SseEventParser
-@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Nav
 @implements IDisposable
 
@@ -68,6 +66,7 @@
         ";
 
     private const string DefaultEndpointPath = "agentic_chat";
+    private const int ThrottleDelayMs = 100; // Throttle StateHasChanged to prevent render thrashing
 
     private int statefulMessageCount;
     private readonly ChatOptions chatOptions = new();
@@ -83,6 +82,10 @@
     private Plan? currentPlan;
     private DocumentState? currentDocumentState;
     private bool isDocumentPreview = true;
+    private DateTime lastStateChangeTime = DateTime.MinValue;
+    private readonly HashSet<string> seenFunctionCallIds = new();
+    private bool pendingStateChange = false;
+    private System.Timers.Timer? throttleTimer;
 
     /// <summary>
     /// Gets whether the currently selected endpoint is the Shared State endpoint.
@@ -110,6 +113,41 @@
         if (IsSharedStateEndpoint)
         {
             StateManager.Initialize();
+        }
+
+        // Initialize throttle timer for debounced UI updates
+        throttleTimer = new System.Timers.Timer(ThrottleDelayMs);
+        throttleTimer.AutoReset = false;
+        throttleTimer.Elapsed += OnThrottleElapsed;
+    }
+
+    /// <summary>
+    /// Throttled StateHasChanged to prevent render thrashing during rapid streaming updates.
+    /// </summary>
+    private void ThrottledStateHasChanged()
+    {
+        DateTime now = DateTime.UtcNow;
+        if ((now - lastStateChangeTime).TotalMilliseconds >= ThrottleDelayMs)
+        {
+            lastStateChangeTime = now;
+            InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            // Schedule a deferred update
+            pendingStateChange = true;
+            throttleTimer?.Stop();
+            throttleTimer?.Start();
+        }
+    }
+
+    private void OnThrottleElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        if (pendingStateChange)
+        {
+            pendingStateChange = false;
+            lastStateChangeTime = DateTime.UtcNow;
+            InvokeAsync(StateHasChanged);
         }
     }
 
@@ -177,16 +215,6 @@
             StateHasChanged();
             currentResponseCancellation = new();
 
-            // For Agentic Generative UI endpoint, start parallel STATE_DELTA streaming
-            // This workaround handles STATE_DELTA events that the AGUIChatClient library doesn't recognize
-            Task? stateDeltaStreamTask = null;
-            CancellationTokenSource? stateDeltaCts = null;
-            if (IsAgenticGenerativeUiEndpoint)
-            {
-                stateDeltaCts = CancellationTokenSource.CreateLinkedTokenSource(currentResponseCancellation.Token);
-                stateDeltaStreamTask = ProcessStateDeltaEventsAsync(stateDeltaCts.Token);
-            }
-
             try
             {
                 await foreach (var update in activeChatClient!.GetStreamingResponseAsync(messages.Skip(statefulMessageCount), chatOptions, currentResponseCancellation.Token))
@@ -222,8 +250,6 @@
                             }
                         }
                         // Handle Plan state deltas (JSON Patch for step updates)
-                        // Note: This path is rarely reached due to library limitations with STATE_DELTA events
-                        // The parallel STATE_DELTA stream (via SseEventParser) handles most delta events
                         else if (content is DataContent patchDc && IsPlanStateDelta(patchDc))
                         {
                             if (currentPlan is not null)
@@ -247,17 +273,44 @@
                         {
                             currentDocumentState = docState;
                             isDocumentPreview = true; // Still streaming
-                            StateHasChanged();
+                            ThrottledStateHasChanged();
                         }
                     }
 
-                    // Add all non-text content to messages (including request_approval FunctionCallContent)
-                    // The server's ServerFunctionApprovalAgent expects both the request_approval call
-                    // and the approval response in the subsequent request
-                    messages.AddMessages(update, filter: c => c is not TextContent);
+                    // Consolidate content: only add non-duplicate FunctionCallContent and skip redundant DataContent
+                    // This prevents excessive DOM elements from streaming updates
+                    foreach (AIContent content in update.Contents)
+                    {
+                        if (content is TextContent)
+                        {
+                            continue; // Text is handled separately via responseText accumulation
+                        }
+                        
+                        if (content is FunctionCallContent fcc)
+                        {
+                            // Only add FunctionCallContent once per CallId to avoid duplicates
+                            if (fcc.CallId is not null && !seenFunctionCallIds.Contains(fcc.CallId))
+                            {
+                                seenFunctionCallIds.Add(fcc.CallId);
+                                currentResponseMessage?.Contents.Add(content);
+                            }
+                        }
+                        else if (content is DataContent dc)
+                        {
+                            // For DataContent, consolidate by replacing previous instance of same category
+                            // This prevents accumulating ~200 state snapshots in the message
+                            ConsolidateDataContent(currentResponseMessage!, dc);
+                        }
+                        else
+                        {
+                            // Other content types (FunctionResultContent, ErrorContent) - add directly
+                            currentResponseMessage?.Contents.Add(content);
+                        }
+                    }
+                    
                     responseText.Text += update.Text;
                     chatOptions.ConversationId = update.ConversationId;
-                    ChatMessageItem.NotifyChanged(currentResponseMessage);
+                    ThrottledStateHasChanged();
                 }
             }
             catch (OperationCanceledException)
@@ -270,44 +323,13 @@
                 responseText.Text = $"Error: {ex.Message}";
                 ChatMessageItem.NotifyChanged(currentResponseMessage);
             }
-            catch (JsonException ex) when (IsAgenticGenerativeUiEndpoint && ex.Message.Contains("STATE_DELTA"))
-            {
-                // The AGUIChatClient library throws JsonException for STATE_DELTA events
-                // This is expected - the parallel STATE_DELTA stream handles these events
-                // Continue gracefully without showing an error
-            }
-            catch (Exception ex) when (IsAgenticGenerativeUiEndpoint && ex.Message.Contains("STATE_DELTA"))
-            {
-                // Handle STATE_DELTA-related errors gracefully for Agentic Generative UI
-                // The parallel stream captures these events, so this error is expected
-            }
+
             catch (Exception ex)
             {
                 // Handle unexpected errors gracefully
                 responseText.Text = $"An unexpected error occurred: {ex.Message}";
                 ChatMessageItem.NotifyChanged(currentResponseMessage);
             }
-            finally
-            {
-                // Cancel and wait for the STATE_DELTA stream task to complete
-                if (stateDeltaCts is not null)
-                {
-                    await stateDeltaCts.CancelAsync();
-                    stateDeltaCts.Dispose();
-                }
-                if (stateDeltaStreamTask is not null)
-                {
-                    try
-                    {
-                        await stateDeltaStreamTask;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Expected when cancelling
-                    }
-                }
-            }
-
             // Store the final response in the conversation
             messages.Add(currentResponseMessage!);
             currentResponseMessage = null;
@@ -393,6 +415,7 @@
         currentPlan = null;
         currentDocumentState = null;
         isDocumentPreview = true;
+        seenFunctionCallIds.Clear();
         ApprovalHandler.ClearPendingApprovals();
         chatSuggestions?.Clear();
         
@@ -528,68 +551,88 @@
     }
 
     /// <summary>
-    /// Processes STATE_DELTA events from a parallel raw SSE stream.
-    /// This handles STATE_DELTA events that the AGUIChatClient library doesn't recognize,
-    /// applying JSON patch operations to update Plan step statuses in real-time.
+    /// Consolidates DataContent in a message by replacing previous instance of same category.
+    /// Categories are determined by media type and content structure (is_state_snapshot, json-patch, etc.)
+    /// This prevents accumulating many redundant state updates in the DOM.
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token to stop the stream.</param>
-    private async Task ProcessStateDeltaEventsAsync(CancellationToken cancellationToken)
+    private static void ConsolidateDataContent(ChatMessage message, DataContent newContent)
     {
-        try
+        string category = GetDataContentCategory(newContent);
+        
+        // Find and replace existing DataContent of same category
+        for (int i = 0; i < message.Contents.Count; i++)
         {
-            HttpClient httpClient = HttpClientFactory.CreateClient("aguiserver");
-
-            // Build the request body matching what AGUIChatClient sends
-            var requestBody = new
+            if (message.Contents[i] is DataContent existing && GetDataContentCategory(existing) == category)
             {
-                threadId = chatOptions.ConversationId ?? $"thread_{Guid.NewGuid():N}",
-                runId = $"run_{Guid.NewGuid():N}",
-                messages = messages.Skip(statefulMessageCount).Select(m => new
-                {
-                    id = Guid.NewGuid().ToString("N"),
-                    role = m.Role.Value,
-                    content = m.Text ?? string.Empty
-                }).ToArray(),
-                context = Array.Empty<object>()
-            };
-
-            string jsonBody = JsonSerializer.Serialize(requestBody);
-            using StringContent content = new(jsonBody, Encoding.UTF8, "application/json");
-
-            await foreach (SseStateDeltaEvent evt in SseEventParser.StreamStateDeltaEventsAsync(
-                httpClient,
-                selectedEndpointPath,
-                content,
-                cancellationToken))
-            {
-                if (evt.Operations is not null && currentPlan is not null)
-                {
-                    // Apply the JSON patch operations to update Plan step statuses
-                    await InvokeAsync(() =>
-                    {
-                        JsonPatchApplier.ApplyPatch(currentPlan, evt.Operations);
-                        StateHasChanged();
-                    });
-                }
+                // Replace with newer content
+                message.Contents[i] = newContent;
+                return;
             }
         }
-        catch (OperationCanceledException)
+        
+        // No existing content of this category, add new
+        message.Contents.Add(newContent);
+    }
+
+    /// <summary>
+    /// Determines the category of DataContent for consolidation purposes.
+    /// Same category content will replace previous instances rather than accumulating.
+    /// </summary>
+    private static string GetDataContentCategory(DataContent dc)
+    {
+        // State deltas (JSON Patch) - consolidate per message
+        if (dc.MediaType == "application/json-patch+json")
         {
-            // Expected when cancelling
+            return "state-delta";
         }
-        catch (HttpRequestException)
+        
+        // State snapshots - consolidate per message
+        if (dc.MediaType == "application/json" && dc.AdditionalProperties?.ContainsKey("is_state_snapshot") == true)
         {
-            // HTTP errors are handled by the main stream
+            return "state-snapshot";
         }
-        catch (Exception)
+        
+        // Try to detect content type from JSON structure
+        if (dc.MediaType == "application/json" && dc.Data.Length > 0)
         {
-            // Silently handle other exceptions - the main stream will display errors
+            try
+            {
+                string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
+                using JsonDocument doc = JsonDocument.Parse(text);
+                
+                // Plan snapshots
+                if (doc.RootElement.TryGetProperty("steps", out _))
+                {
+                    return "plan-snapshot";
+                }
+                
+                // Recipe snapshots
+                if (doc.RootElement.TryGetProperty("ingredients", out _))
+                {
+                    return "recipe-snapshot";
+                }
+                
+                // Document state snapshots
+                if (doc.RootElement.TryGetProperty("document", out _))
+                {
+                    return "document-snapshot";
+                }
+            }
+            catch
+            {
+                // Parsing failed, treat as generic
+            }
         }
+        
+        // Generic DataContent - use media type as category
+        return dc.MediaType ?? "unknown";
     }
 
     public void Dispose()
     {
         currentResponseCancellation?.Cancel();
         approvalTaskSource?.TrySetCanceled();
+        throttleTimer?.Stop();
+        throttleTimer?.Dispose();
     }
 }
