@@ -1,10 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-// This is the AGUIDojoClient - a Blazor Server web chat application that demonstrates
-// all 7 AG-UI protocol features by connecting to the AGUIDojoServer.
-// It supports multiple endpoints: /agentic_chat, /backend_tool_rendering, /human_in_the_loop,
-// /agentic_generative_ui, /tool_based_generative_ui, /shared_state, and /predictive_state_updates.
-
 using AGUIDojoClient.Components;
 using AGUIDojoClient.Services;
 using Microsoft.Agents.AI.AGUI;
@@ -41,9 +36,8 @@ builder.Services.AddSingleton<IToolComponentRegistry, ToolComponentRegistry>();
 // This service manages bidirectional state sync with the server for Recipe data
 builder.Services.AddScoped<IStateManager, StateManager>();
 
-// Register SseEventParser for Agentic Generative UI feature
-// This service parses raw SSE events to handle STATE_DELTA events that the AGUIChatClient library doesn't recognize
-builder.Services.AddSingleton<ISseEventParser, SseEventParser>();
+// Register MarkdownService for rendering LLM markdown responses as HTML
+builder.Services.AddSingleton<IMarkdownService, MarkdownService>();
 
 // Register a default AGUIChatClient for backward compatibility
 // Components can also use IAGUIChatClientFactory to create clients for specific endpoints

@@ -18,7 +18,7 @@ namespace AGUIDojoServer;
 
 internal static class ChatClientAgentFactory
 {
-    private static ChatClient _chatClient = null!;
+    private static ChatClient chatClient = null!;
 
     public static void Initialize(IConfiguration configuration)
     {
@@ -36,13 +36,13 @@ internal static class ChatClientAgentFactory
                 new Uri(endpoint),
                 new DefaultAzureCredential());
 
-            _chatClient = azureOpenAIClient.GetChatClient(deploymentName);
+            chatClient = azureOpenAIClient.GetChatClient(deploymentName);
         }
         else if (!string.IsNullOrWhiteSpace(openAiApiKey) && !string.IsNullOrWhiteSpace(openAiModel))
         {
             // Create the OpenAI client using an API key.
             OpenAIClient openAIClient = new(openAiApiKey);
-            _chatClient = openAIClient.GetChatClient(openAiModel);
+            chatClient = openAIClient.GetChatClient(openAiModel);
         }
         else
         {
@@ -54,16 +54,25 @@ internal static class ChatClientAgentFactory
 
     public static ChatClientAgent CreateAgenticChat()
     {
-        return _chatClient.AsIChatClient().AsAIAgent(
+        return chatClient.AsIChatClient().AsAIAgent(
+            instructions: """
+            You are a helpful assistant that can chat with users using LLM capabilities. 
+            Format your user-facing text response as in markdown.
+            """,
             name: "AgenticChat",
-            description: "A simple chat agent using Azure OpenAI");
+            description: "A simple AI Assistant that can chat with users using LLM capabilities.");
     }
 
     public static ChatClientAgent CreateBackendToolRendering()
     {
-        return _chatClient.AsIChatClient().AsAIAgent(
+        return chatClient.AsIChatClient().AsAIAgent(
+            instructions: """
+                You are a helpful assistant that can chat with users and use backend tools to get information.
+                When the user asks for information that requires a tool, call the appropriate tool.
+                Format your user-facing text response as in markdown.
+                """,
             name: "BackendToolRenderer",
-            description: "An agent that can render backend tools using Azure OpenAI",
+            description: "A simple AI Assistant that can chat with users using LLM capabilities. Format your user-facing text response as in markdown.",
             tools: [AIFunctionFactory.Create(
                 GetWeather,
                 name: "get_weather",
@@ -89,7 +98,7 @@ internal static class ChatClientAgentFactory
                 description: "Send an email to a recipient.",
                 AGUIDojoServerSerializerContext.Default.Options));
 
-        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "HumanInTheLoopAgent",
             Description = "An agent that involves human feedback in its decision-making process",
@@ -101,6 +110,7 @@ internal static class ChatClientAgentFactory
                     Do NOT ask the user for confirmation in chat - the tool will automatically
                     prompt for approval through the UI. Just call the tool directly.
                     After the user approves or rejects, report the outcome.
+                    Format your user-facing text response as in markdown.
                     """,
                 Tools = [approvalTool]
             }
@@ -113,9 +123,10 @@ internal static class ChatClientAgentFactory
 
     public static ChatClientAgent CreateToolBasedGenerativeUI()
     {
-        return _chatClient.AsIChatClient().AsAIAgent(
+        return chatClient.AsIChatClient().AsAIAgent(
+            instructions: "Format your user-facing text response as in markdown.",
             name: "ToolBasedGenerativeUIAgent",
-            description: "An agent that uses tools to generate user interfaces using Azure OpenAI",
+            description: "A simple AI Assistant that demonstrates tool-based generative UI patterns.",
             tools: [AIFunctionFactory.Create(
                 GetWeather,
                 name: "get_weather",
@@ -125,7 +136,7 @@ internal static class ChatClientAgentFactory
 
     public static AIAgent CreateAgenticUI(JsonSerializerOptions options)
     {
-        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "AgenticUIAgent",
             Description = "An agent that generates agentic user interfaces using Azure OpenAI",
@@ -166,19 +177,19 @@ internal static class ChatClientAgentFactory
 
     public static AIAgent CreateSharedState(JsonSerializerOptions options)
     {
-        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(
+        var baseAgent = chatClient.AsIChatClient().AsAIAgent(
             name: "SharedStateAgent",
-            description: "An agent that demonstrates shared state patterns using Azure OpenAI");
+            description: "An agent that demonstrates shared state patterns. Format your user-facing text response as in markdown.");
 
         return new SharedStateAgent(baseAgent, options);
     }
 
     public static AIAgent CreatePredictiveStateUpdates(JsonSerializerOptions options)
     {
-        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "PredictiveStateUpdatesAgent",
-            Description = "An agent that demonstrates predictive state updates using Azure OpenAI",
+            Description = "An agent that demonstrates predictive state updates.",
             ChatOptions = new ChatOptions
             {
                 Instructions = """
@@ -210,14 +221,21 @@ internal static class ChatClientAgentFactory
     }
 
     [Description("Get the weather for a given location.")]
-    private static WeatherInfo GetWeather([Description("The location to get the weather for.")] string location) => new()
+    private static async Task<WeatherInfo> GetWeather([Description("The location to get the weather for.")] string location)
     {
-        Temperature = 20,
-        Conditions = "sunny",
-        Humidity = 50,
-        WindSpeed = 10,
-        FeelsLike = 25
-    };
+        // Add artificial delay to demonstrate tool call appearing before result in UI
+        // This allows users to see the tool call in progress before the LLM processes the result
+        await Task.Delay(1500);
+
+        return new WeatherInfo
+        {
+            Temperature = 20,
+            Conditions = "sunny",
+            Humidity = 50,
+            WindSpeed = 10,
+            FeelsLike = 25
+        };
+    }
 
     [Description("Send an email to a recipient.")]
     private static string SendEmail(

@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\Microsoft.Agents.AI.AGUI\Microsoft.Agents.AI.AGUI.csproj" />
   </ItemGroup>
 

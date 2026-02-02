@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Collections.Concurrent;
 using AGUIDojoClient.Components.ToolResults;
@@ -20,13 +20,13 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
     public ToolComponentRegistry()
     {
         // Register default tool components
-        RegisterDefaults();
+        this.RegisterDefaults();
     }
 
     /// <summary>
     /// Gets the collection of registered tool names.
     /// </summary>
-    public IEnumerable<string> RegisteredTools => _registry.Keys;
+    public IEnumerable<string> RegisteredTools => this._registry.Keys;
 
     /// <summary>
     /// Tries to get a Blazor component type for the specified tool name.
@@ -42,7 +42,7 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             return false;
         }
 
-        if (_registry.TryGetValue(toolName, out ToolRegistration? registration))
+        if (this._registry.TryGetValue(toolName, out ToolRegistration? registration))
         {
             componentType = registration.ComponentType;
             return true;
@@ -66,7 +66,7 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             return false;
         }
 
-        if (_registry.TryGetValue(toolName, out ToolRegistration? registration))
+        if (this._registry.TryGetValue(toolName, out ToolRegistration? registration))
         {
             parameterName = registration.ParameterName;
             return true;
@@ -88,7 +88,7 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName, nameof(toolName));
         ArgumentException.ThrowIfNullOrWhiteSpace(parameterName, nameof(parameterName));
 
-        _registry[toolName] = new ToolRegistration(typeof(TComponent), parameterName);
+        this._registry[toolName] = new ToolRegistration(typeof(TComponent), parameterName);
     }
 
     /// <summary>
@@ -103,7 +103,7 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             return false;
         }
 
-        return _registry.ContainsKey(toolName);
+        return this._registry.ContainsKey(toolName);
     }
 
     /// <summary>
@@ -112,7 +112,7 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
     private void RegisterDefaults()
     {
         // Register WeatherDisplay for the get_weather tool
-        Register<WeatherDisplay>("get_weather", "Weather");
+        this.Register<WeatherDisplay>("get_weather", "Weather");
     }
 
     /// <summary>

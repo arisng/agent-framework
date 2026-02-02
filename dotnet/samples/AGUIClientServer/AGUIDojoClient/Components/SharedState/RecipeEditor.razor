@@ -60,7 +60,7 @@
                     var index = i;
                     var ingredient = Recipe.Ingredients[i];
                     <div class="ingredient-row">
-                        <span class="ingredient-icon">@ingredient.Icon</span>
+                        <span class="ingredient-icon">@ingredient.GetSafeIcon()</span>
                         <input type="text" class="ingredient-name" value="@ingredient.Name"
                                placeholder="Ingredient name"
                                @oninput="@(e => OnIngredientNameChanged(index, e.Value?.ToString() ?? string.Empty))" />
