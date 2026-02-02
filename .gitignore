@@ -233,3 +233,5 @@ python/dotnet-ref
 .ralph-sessions/
 node_modules/
 .playwright-cli/
+*.db-shm
+*.db-wal
