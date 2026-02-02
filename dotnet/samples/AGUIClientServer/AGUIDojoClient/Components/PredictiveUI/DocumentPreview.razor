@@ -1,0 +1,63 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+
+@using AGUIDojoClient.Models
+
+<div class="document-preview @(IsPreview ? "is-preview" : "is-finalized")">
+    <div class="document-header">
+        <h3>@Title</h3>
+        <div class="preview-status">
+            @if (IsPreview)
+            {
+                <span class="status-badge preview">
+                    <span class="status-dot"></span>
+                    Streaming...
+                </span>
+            }
+            else
+            {
+                <span class="status-badge finalized">
+                    <span class="status-icon">✓</span>
+                    Finalized
+                </span>
+            }
+        </div>
+    </div>
+    <div class="document-content">
+        @if (!string.IsNullOrWhiteSpace(DocumentState?.Document))
+        {
+            <pre class="document-text">@DocumentState.Document</pre>
+        }
+        else
+        {
+            <p class="empty-state">Waiting for document content...</p>
+        }
+    </div>
+    <div class="document-footer">
+        <span class="char-count">@CharacterCount characters</span>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The current document state being previewed.
+    /// </summary>
+    [Parameter]
+    public DocumentState? DocumentState { get; set; }
+
+    /// <summary>
+    /// Indicates whether this is a preview (still streaming) or finalized state.
+    /// </summary>
+    [Parameter]
+    public bool IsPreview { get; set; } = true;
+
+    /// <summary>
+    /// Title to display in the header.
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "Document Preview";
+
+    /// <summary>
+    /// Gets the character count of the current document.
+    /// </summary>
+    private int CharacterCount => DocumentState?.Document?.Length ?? 0;
+}

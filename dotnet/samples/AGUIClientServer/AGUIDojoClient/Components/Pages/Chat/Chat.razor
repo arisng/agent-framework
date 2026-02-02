@@ -1,0 +1,595 @@
+@page "/"
+@using System.ComponentModel
+@using System.Net.Http.Headers
+@using System.Text
+@using System.Text.Json
+@using AGUIDojoClient.Models
+@inject IAGUIChatClientFactory ClientFactory
+@inject IApprovalHandler ApprovalHandler
+@inject IJsonPatchApplier JsonPatchApplier
+@inject IStateManager StateManager
+@inject ISseEventParser SseEventParser
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>AG-UI Dojo Chat</PageTitle>
+
+<ChatHeader OnNewChat="@ResetConversationAsync"
+            AvailableEndpoints="@ClientFactory.AvailableEndpoints"
+            SelectedEndpointPath="@selectedEndpointPath"
+            OnEndpointChanged="@OnEndpointChangedAsync" />
+
+<ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
+    <NoMessagesContent>
+        <div>Ask the assistant a question to start a conversation.</div>
+    </NoMessagesContent>
+</ChatMessageList>
+<div class="chat-container">
+    <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
+    <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+</div>
+
+@* Show approval dialog when there's a pending approval *@
+@if (currentPendingApproval is not null)
+{
+    <ApprovalDialog Approval="@currentPendingApproval"
+                    OnApproved="@OnApprovalApproved"
+                    OnRejected="@OnApprovalRejected" />
+}
+
+@* Show Plan Progress component when we have an active plan (Agentic Generative UI) *@
+@if (currentPlan is not null)
+{
+    <div class="plan-progress-container">
+        <PlanProgress Plan="@currentPlan" />
+    </div>
+}
+
+@* Show Recipe Editor when using the Shared State endpoint *@
+@if (IsSharedStateEndpoint)
+{
+    <div class="shared-state-container">
+        <RecipeEditor Recipe="@StateManager.CurrentRecipe" RecipeChanged="@OnRecipeChanged" />
+    </div>
+}
+
+@* Show Document Preview when using the Predictive State Updates endpoint *@
+@if (IsPredictiveStateEndpoint && currentDocumentState is not null)
+{
+    <div class="predictive-state-container">
+        <DocumentPreview DocumentState="@currentDocumentState" IsPreview="@isDocumentPreview" Title="Document Preview" />
+    </div>
+}
+
+@code {
+    private const string SystemPrompt = @"
+        You are a helpful assistant.
+        ";
+
+    private const string DefaultEndpointPath = "agentic_chat";
+
+    private int statefulMessageCount;
+    private readonly ChatOptions chatOptions = new();
+    private readonly List<ChatMessage> messages = new();
+    private CancellationTokenSource? currentResponseCancellation;
+    private ChatMessage? currentResponseMessage;
+    private ChatInput? chatInput;
+    private ChatSuggestions? chatSuggestions;
+    private string selectedEndpointPath = DefaultEndpointPath;
+    private IChatClient? activeChatClient;
+    private PendingApproval? currentPendingApproval;
+    private TaskCompletionSource<bool>? approvalTaskSource;
+    private Plan? currentPlan;
+    private DocumentState? currentDocumentState;
+    private bool isDocumentPreview = true;
+
+    /// <summary>
+    /// Gets whether the currently selected endpoint is the Shared State endpoint.
+    /// </summary>
+    private bool IsSharedStateEndpoint => selectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets whether the currently selected endpoint is the Predictive State Updates endpoint.
+    /// </summary>
+    private bool IsPredictiveStateEndpoint => selectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets whether the currently selected endpoint is the Agentic Generative UI endpoint.
+    /// This endpoint requires special handling for STATE_DELTA events.
+    /// </summary>
+    private bool IsAgenticGenerativeUiEndpoint => selectedEndpointPath.Equals("agentic_generative_ui", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        statefulMessageCount = 0;
+        messages.Add(new(ChatRole.System, SystemPrompt));
+        activeChatClient = ClientFactory.CreateClient(selectedEndpointPath);
+        
+        // Initialize state manager for Shared State feature
+        if (IsSharedStateEndpoint)
+        {
+            StateManager.Initialize();
+        }
+    }
+
+    /// <summary>
+    /// Handles endpoint selection change by creating a new client and resetting the conversation.
+    /// </summary>
+    private async Task OnEndpointChangedAsync(string newEndpointPath)
+    {
+        if (string.Equals(selectedEndpointPath, newEndpointPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        selectedEndpointPath = newEndpointPath;
+        activeChatClient = ClientFactory.CreateClient(selectedEndpointPath);
+        await ResetConversationAsync();
+        
+        // Initialize or clear state manager based on new endpoint
+        if (IsSharedStateEndpoint)
+        {
+            StateManager.Initialize();
+        }
+        else
+        {
+            StateManager.Clear();
+        }
+    }
+
+    private async Task AddUserMessageAsync(ChatMessage userMessage)
+    {
+        CancelAnyCurrentResponse();
+
+        // For shared state endpoint, add state DataContent to the user message
+        // AGUIChatClient extracts DataContent from the last message and sends it as state
+        if (IsSharedStateEndpoint && StateManager.HasActiveState)
+        {
+            DataContent stateContent = StateManager.CreateStateContent();
+            userMessage.Contents.Add(stateContent);
+        }
+
+        // Add the user message to the conversation
+        messages.Add(userMessage);
+        chatSuggestions?.Clear();
+        await chatInput!.FocusAsync();
+
+        await ProcessAgentResponseAsync();
+    }
+
+    /// <summary>
+    /// Processes the agent response, handling approval requests if they occur.
+    /// For the Agentic Generative UI endpoint, also starts a parallel stream to capture STATE_DELTA events.
+    /// </summary>
+    private async Task ProcessAgentResponseAsync()
+    {
+        bool hasApprovalResponses;
+
+        do
+        {
+            hasApprovalResponses = false;
+            List<FunctionResultContent> approvalResponses = [];
+
+            // Stream and display a new response from the IChatClient
+            var responseText = new TextContent("");
+            currentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
+            StateHasChanged();
+            currentResponseCancellation = new();
+
+            // For Agentic Generative UI endpoint, start parallel STATE_DELTA streaming
+            // This workaround handles STATE_DELTA events that the AGUIChatClient library doesn't recognize
+            Task? stateDeltaStreamTask = null;
+            CancellationTokenSource? stateDeltaCts = null;
+            if (IsAgenticGenerativeUiEndpoint)
+            {
+                stateDeltaCts = CancellationTokenSource.CreateLinkedTokenSource(currentResponseCancellation.Token);
+                stateDeltaStreamTask = ProcessStateDeltaEventsAsync(stateDeltaCts.Token);
+            }
+
+            try
+            {
+                await foreach (var update in activeChatClient!.GetStreamingResponseAsync(messages.Skip(statefulMessageCount), chatOptions, currentResponseCancellation.Token))
+                {
+                    // Check for approval requests and Plan state updates in the update
+                    foreach (var content in update.Contents)
+                    {
+                        if (content is FunctionCallContent fcc && ApprovalHandler.TryExtractApprovalRequest(fcc, out var approval) && approval is not null)
+                        {
+                            // Show approval dialog and wait for user decision
+                            currentPendingApproval = approval;
+                            approvalTaskSource = new TaskCompletionSource<bool>();
+                            StateHasChanged();
+
+                            bool approved = await approvalTaskSource.Task;
+
+                            // Create approval response
+                            var response = ApprovalHandler.CreateApprovalResponse(approval.ApprovalId, approved);
+                            approvalResponses.Add(response);
+
+                            currentPendingApproval = null;
+                            approvalTaskSource = null;
+                            StateHasChanged();
+                        }
+                        // Handle Plan state snapshots (Agentic Generative UI)
+                        else if (content is DataContent dc && IsPlanStateSnapshot(dc))
+                        {
+                            Plan? plan = TryParsePlanSnapshot(dc);
+                            if (plan is not null)
+                            {
+                                currentPlan = plan;
+                                StateHasChanged();
+                            }
+                        }
+                        // Handle Plan state deltas (JSON Patch for step updates)
+                        // Note: This path is rarely reached due to library limitations with STATE_DELTA events
+                        // The parallel STATE_DELTA stream (via SseEventParser) handles most delta events
+                        else if (content is DataContent patchDc && IsPlanStateDelta(patchDc))
+                        {
+                            if (currentPlan is not null)
+                            {
+                                List<JsonPatchOperation>? operations = TryParsePatchOperations(patchDc);
+                                if (operations is not null)
+                                {
+                                    JsonPatchApplier.ApplyPatch(currentPlan, operations);
+                                    StateHasChanged();
+                                }
+                            }
+                        }
+                        // Handle Recipe state snapshots (Shared State feature)
+                        else if (content is DataContent recipeDc && IsSharedStateEndpoint && StateManager.TryExtractRecipeSnapshot(recipeDc, out Recipe? recipe) && recipe is not null)
+                        {
+                            StateManager.UpdateFromServerSnapshot(recipe);
+                            StateHasChanged();
+                        }
+                        // Handle Document state snapshots (Predictive State Updates feature)
+                        else if (content is DataContent docDc && IsPredictiveStateEndpoint && TryExtractDocumentSnapshot(docDc, out DocumentState? docState) && docState is not null)
+                        {
+                            currentDocumentState = docState;
+                            isDocumentPreview = true; // Still streaming
+                            StateHasChanged();
+                        }
+                    }
+
+                    // Add all non-text content to messages (including request_approval FunctionCallContent)
+                    // The server's ServerFunctionApprovalAgent expects both the request_approval call
+                    // and the approval response in the subsequent request
+                    messages.AddMessages(update, filter: c => c is not TextContent);
+                    responseText.Text += update.Text;
+                    chatOptions.ConversationId = update.ConversationId;
+                    ChatMessageItem.NotifyChanged(currentResponseMessage);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // User cancelled the operation
+            }
+            catch (HttpRequestException ex)
+            {
+                // Handle HTTP errors (e.g., from rejected approvals that cause server errors)
+                responseText.Text = $"Error: {ex.Message}";
+                ChatMessageItem.NotifyChanged(currentResponseMessage);
+            }
+            catch (JsonException ex) when (IsAgenticGenerativeUiEndpoint && ex.Message.Contains("STATE_DELTA"))
+            {
+                // The AGUIChatClient library throws JsonException for STATE_DELTA events
+                // This is expected - the parallel STATE_DELTA stream handles these events
+                // Continue gracefully without showing an error
+            }
+            catch (Exception ex) when (IsAgenticGenerativeUiEndpoint && ex.Message.Contains("STATE_DELTA"))
+            {
+                // Handle STATE_DELTA-related errors gracefully for Agentic Generative UI
+                // The parallel stream captures these events, so this error is expected
+            }
+            catch (Exception ex)
+            {
+                // Handle unexpected errors gracefully
+                responseText.Text = $"An unexpected error occurred: {ex.Message}";
+                ChatMessageItem.NotifyChanged(currentResponseMessage);
+            }
+            finally
+            {
+                // Cancel and wait for the STATE_DELTA stream task to complete
+                if (stateDeltaCts is not null)
+                {
+                    await stateDeltaCts.CancelAsync();
+                    stateDeltaCts.Dispose();
+                }
+                if (stateDeltaStreamTask is not null)
+                {
+                    try
+                    {
+                        await stateDeltaStreamTask;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancelling
+                    }
+                }
+            }
+
+            // Store the final response in the conversation
+            messages.Add(currentResponseMessage!);
+            currentResponseMessage = null;
+
+            // If there were approval responses, add them as a tool message and continue
+            // IMPORTANT: Do NOT update statefulMessageCount here - we need to send the full 
+            // message history including the request_approval FunctionCallContent so the server's
+            // ProcessIncomingFunctionApprovals can match it with the approval response.
+            if (approvalResponses.Count > 0)
+            {
+                foreach (var response in approvalResponses)
+                {
+                    messages.Add(new ChatMessage(ChatRole.Tool, [response]));
+                }
+                hasApprovalResponses = true;
+            }
+            else
+            {
+                // Only update statefulMessageCount when there are no pending approval workflows
+                statefulMessageCount = chatOptions.ConversationId is not null ? messages.Count : 0;
+            }
+
+            // Mark document as finalized when streaming completes (for Predictive State Updates)
+            if (IsPredictiveStateEndpoint && currentDocumentState is not null)
+            {
+                isDocumentPreview = false;
+                StateHasChanged();
+            }
+
+        } while (hasApprovalResponses);
+
+        chatSuggestions?.Update(messages);
+    }
+
+    /// <summary>
+    /// Handles approval action from the dialog.
+    /// </summary>
+    private void OnApprovalApproved(string approvalId)
+    {
+        approvalTaskSource?.TrySetResult(true);
+    }
+
+    /// <summary>
+    /// Handles rejection action from the dialog.
+    /// </summary>
+    private void OnApprovalRejected(string approvalId)
+    {
+        approvalTaskSource?.TrySetResult(false);
+    }
+
+    /// <summary>
+    /// Handles recipe changes from the RecipeEditor component.
+    /// Updates the state manager with the new recipe data.
+    /// </summary>
+    private void OnRecipeChanged(Recipe recipe)
+    {
+        StateManager.UpdateRecipe(recipe);
+    }
+
+    private void CancelAnyCurrentResponse()
+    {
+        // If a response was cancelled while streaming, include it in the conversation so it's not lost
+        if (currentResponseMessage is not null)
+        {
+            messages.Add(currentResponseMessage);
+        }
+
+        currentResponseCancellation?.Cancel();
+        currentResponseMessage = null;
+        currentPendingApproval = null;
+        approvalTaskSource?.TrySetCanceled();
+        approvalTaskSource = null;
+        ApprovalHandler.ClearPendingApprovals();
+    }
+
+    private async Task ResetConversationAsync()
+    {
+        CancelAnyCurrentResponse();
+        messages.Clear();
+        messages.Add(new(ChatRole.System, SystemPrompt));
+        chatOptions.ConversationId = null;
+        statefulMessageCount = 0;
+        currentPlan = null;
+        currentDocumentState = null;
+        isDocumentPreview = true;
+        ApprovalHandler.ClearPendingApprovals();
+        chatSuggestions?.Clear();
+        
+        // Reinitialize state manager for Shared State endpoint
+        if (IsSharedStateEndpoint)
+        {
+            StateManager.Initialize();
+        }
+        else
+        {
+            StateManager.Clear();
+        }
+        
+        await chatInput!.FocusAsync();
+    }
+
+    /// <summary>
+    /// Determines if DataContent represents a Plan state snapshot (Agentic Generative UI).
+    /// Plan snapshots have media type application/json and contain a "steps" array.
+    /// </summary>
+    private static bool IsPlanStateSnapshot(DataContent dc)
+    {
+        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
+            using JsonDocument doc = JsonDocument.Parse(text);
+            return doc.RootElement.TryGetProperty("steps", out _);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Determines if DataContent represents a Plan state delta (JSON Patch).
+    /// </summary>
+    private static bool IsPlanStateDelta(DataContent dc)
+    {
+        return dc.MediaType == "application/json-patch+json" && dc.Data.Length > 0;
+    }
+
+    /// <summary>
+    /// Attempts to parse a DataContent as a Plan snapshot.
+    /// </summary>
+    private static Plan? TryParsePlanSnapshot(DataContent dc)
+    {
+        try
+        {
+            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
+            return JsonSerializer.Deserialize<Plan>(text, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to parse a DataContent as a list of JSON Patch operations.
+    /// </summary>
+    private static List<JsonPatchOperation>? TryParsePatchOperations(DataContent dc)
+    {
+        try
+        {
+            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
+            return JsonSerializer.Deserialize<List<JsonPatchOperation>>(text, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to extract a DocumentState snapshot from DataContent (Predictive State Updates).
+    /// Returns true if the DataContent is a valid DocumentState snapshot (contains "document" property).
+    /// </summary>
+    private static bool TryExtractDocumentSnapshot(DataContent dc, out DocumentState? documentState)
+    {
+        documentState = null;
+
+        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
+            using JsonDocument doc = JsonDocument.Parse(text);
+
+            // Verify this is a DocumentState (has "document" property but not "steps" or "ingredients")
+            if (!doc.RootElement.TryGetProperty("document", out _))
+            {
+                return false;
+            }
+
+            // Exclude Plan snapshots (have "steps")
+            if (doc.RootElement.TryGetProperty("steps", out _))
+            {
+                return false;
+            }
+
+            // Exclude Recipe snapshots (have "ingredients")
+            if (doc.RootElement.TryGetProperty("ingredients", out _))
+            {
+                return false;
+            }
+
+            documentState = JsonSerializer.Deserialize<DocumentState>(text, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return documentState is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Processes STATE_DELTA events from a parallel raw SSE stream.
+    /// This handles STATE_DELTA events that the AGUIChatClient library doesn't recognize,
+    /// applying JSON patch operations to update Plan step statuses in real-time.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to stop the stream.</param>
+    private async Task ProcessStateDeltaEventsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            HttpClient httpClient = HttpClientFactory.CreateClient("aguiserver");
+
+            // Build the request body matching what AGUIChatClient sends
+            var requestBody = new
+            {
+                threadId = chatOptions.ConversationId ?? $"thread_{Guid.NewGuid():N}",
+                runId = $"run_{Guid.NewGuid():N}",
+                messages = messages.Skip(statefulMessageCount).Select(m => new
+                {
+                    id = Guid.NewGuid().ToString("N"),
+                    role = m.Role.Value,
+                    content = m.Text ?? string.Empty
+                }).ToArray(),
+                context = Array.Empty<object>()
+            };
+
+            string jsonBody = JsonSerializer.Serialize(requestBody);
+            using StringContent content = new(jsonBody, Encoding.UTF8, "application/json");
+
+            await foreach (SseStateDeltaEvent evt in SseEventParser.StreamStateDeltaEventsAsync(
+                httpClient,
+                selectedEndpointPath,
+                content,
+                cancellationToken))
+            {
+                if (evt.Operations is not null && currentPlan is not null)
+                {
+                    // Apply the JSON patch operations to update Plan step statuses
+                    await InvokeAsync(() =>
+                    {
+                        JsonPatchApplier.ApplyPatch(currentPlan, evt.Operations);
+                        StateHasChanged();
+                    });
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancelling
+        }
+        catch (HttpRequestException)
+        {
+            // HTTP errors are handled by the main stream
+        }
+        catch (Exception)
+        {
+            // Silently handle other exceptions - the main stream will display errors
+        }
+    }
+
+    public void Dispose()
+    {
+        currentResponseCancellation?.Cancel();
+        approvalTaskSource?.TrySetCanceled();
+    }
+}

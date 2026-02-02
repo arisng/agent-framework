@@ -1,10 +1,54 @@
-# AG-UI Client and Server Sample
+# AG-UI Client and Server Samples
 
-This sample demonstrates how to use the AG-UI (Agent UI) protocol to enable communication between a client application and a remote agent server. The AG-UI protocol provides a standardized way for clients to interact with AI agents.
+This directory contains samples demonstrating how to use the AG-UI (Agentic Generative UI) protocol to enable communication between client applications and remote agent servers. The AG-UI protocol provides a standardized way for clients to interact with AI agents.
 
 ## Overview
 
-The demonstration has two components:
+The samples demonstrate different aspects of the AG-UI protocol:
+
+### Basic Samples
+1. **[AGUIServer](./AGUIServer)** - An ASP.NET Core web server that hosts an AI agent and exposes it via the AG-UI protocol
+2. **[AGUIClient](./AGUIClient)** - A console application that connects to the AG-UI server and displays streaming updates
+
+### Full Protocol Demo (7 Features)
+3. **[AGUIDojoServer](./AGUIDojoServer)** - An ASP.NET Core server exposing 7 endpoints, each demonstrating one AG-UI protocol feature
+4. **[AGUIDojoClient](./AGUIDojoClient)** - A Blazor Server web application that demonstrates all 7 AG-UI protocol features with rich UI
+
+## AG-UI Protocol Features
+
+The AGUIDojoServer and AGUIDojoClient samples demonstrate all 7 standardized AG-UI protocol features:
+
+| # | Feature | Endpoint | Description |
+|---|---------|----------|-------------|
+| 1 | **Agentic Chat** | `/agentic_chat` | Streaming chat with automatic tool calling |
+| 2 | **Backend Tool Rendering** | `/backend_tool_rendering` | Tools execute server-side; results stream to client |
+| 3 | **Human-in-the-Loop** | `/human_in_the_loop` | Approval workflows for sensitive tool calls |
+| 4 | **Agentic Generative UI** | `/agentic_generative_ui` | Async tools with progress updates for long-running operations |
+| 5 | **Tool-Based UI Rendering** | `/tool_based_generative_ui` | Custom components render based on tool definitions |
+| 6 | **Shared State** | `/shared_state` | Bidirectional state synchronization between agent and client |
+| 7 | **Predictive State Updates** | `/predictive_state_updates` | Stream tool arguments as optimistic updates |
+
+## Quick Start: Full Demo
+
+To try all 7 AG-UI features:
+
+```bash
+# Terminal 1: Start the server
+cd AGUIDojoServer
+dotnet run
+
+# Terminal 2: Start the Blazor web client
+cd AGUIDojoClient
+dotnet run
+```
+
+Open http://localhost:5000 and use the dropdown to switch between features.
+
+---
+
+## Basic Sample: AGUIServer + AGUIClient
+
+The basic demonstration has two components:
 
 1. **AGUIServer** - An ASP.NET Core web server that hosts an AI agent and exposes it via the AG-UI protocol
 2. **AGUIClient** - A console application that connects to the AG-UI server and displays streaming updates

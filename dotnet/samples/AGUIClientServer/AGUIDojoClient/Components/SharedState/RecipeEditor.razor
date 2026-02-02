@@ -1,0 +1,202 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+
+@using AGUIDojoClient.Models
+
+<div class="recipe-editor">
+    <div class="recipe-header">
+        <h3>🍳 Recipe Editor</h3>
+        <p class="help-text">Customize your recipe preferences, then ask the assistant to generate a recipe!</p>
+    </div>
+
+    <div class="recipe-form">
+        <div class="form-group">
+            <label for="recipe-title">Recipe Title (Optional)</label>
+            <input id="recipe-title" type="text" class="form-input" placeholder="e.g., Italian Pasta Dish"
+                   value="@Recipe.Title" @oninput="OnTitleChanged" />
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="skill-level">Skill Level</label>
+                <select id="skill-level" class="form-select" value="@Recipe.SkillLevel" @onchange="OnSkillLevelChanged">
+                    <option value="Beginner">Beginner</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Advanced">Advanced</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="cooking-time">Cooking Time</label>
+                <select id="cooking-time" class="form-select" value="@Recipe.CookingTime" @onchange="OnCookingTimeChanged">
+                    <option value="15 minutes">15 minutes</option>
+                    <option value="30 minutes">30 minutes</option>
+                    <option value="45 minutes">45 minutes</option>
+                    <option value="1 hour">1 hour</option>
+                    <option value="1.5 hours">1.5 hours</option>
+                    <option value="2+ hours">2+ hours</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Special Preferences</label>
+            <div class="preference-chips">
+                @foreach (var pref in _availablePreferences)
+                {
+                    <button type="button"
+                            class="@GetPreferenceClass(pref)"
+                            @onclick="@(() => TogglePreference(pref))">
+                        @pref
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Ingredients</label>
+            <div class="ingredients-list">
+                @for (int i = 0; i < Recipe.Ingredients.Count; i++)
+                {
+                    var index = i;
+                    var ingredient = Recipe.Ingredients[i];
+                    <div class="ingredient-row">
+                        <span class="ingredient-icon">@ingredient.Icon</span>
+                        <input type="text" class="ingredient-name" value="@ingredient.Name"
+                               placeholder="Ingredient name"
+                               @oninput="@(e => OnIngredientNameChanged(index, e.Value?.ToString() ?? string.Empty))" />
+                        <input type="text" class="ingredient-amount" value="@ingredient.Amount"
+                               placeholder="Amount"
+                               @oninput="@(e => OnIngredientAmountChanged(index, e.Value?.ToString() ?? string.Empty))" />
+                        <button type="button" class="remove-btn" @onclick="@(() => RemoveIngredient(index))">✕</button>
+                    </div>
+                }
+            </div>
+            <button type="button" class="add-ingredient-btn" @onclick="AddIngredient">
+                + Add Ingredient
+            </button>
+        </div>
+
+        @if (Recipe.Instructions.Count > 0)
+        {
+            <div class="form-group">
+                <label>Instructions</label>
+                <div class="instructions-list">
+                    @for (int i = 0; i < Recipe.Instructions.Count; i++)
+                    {
+                        <div class="instruction-step">
+                            <span class="step-number">@(i + 1).</span>
+                            <span class="step-text">@Recipe.Instructions[i]</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] _availablePreferences =
+    [
+        "Vegetarian",
+        "Vegan",
+        "Gluten-Free",
+        "Dairy-Free",
+        "Low-Carb",
+        "Spicy",
+        "Kid-Friendly",
+        "Quick & Easy"
+    ];
+
+    /// <summary>
+    /// The recipe being edited.
+    /// </summary>
+    [Parameter]
+    public Recipe Recipe { get; set; } = new();
+
+    /// <summary>
+    /// Callback when the recipe is modified.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Recipe> RecipeChanged { get; set; }
+
+    private string GetPreferenceClass(string preference)
+    {
+        return Recipe.SpecialPreferences.Contains(preference)
+            ? "preference-chip selected"
+            : "preference-chip";
+    }
+
+    private async Task TogglePreference(string preference)
+    {
+        if (Recipe.SpecialPreferences.Contains(preference))
+        {
+            Recipe.SpecialPreferences.Remove(preference);
+        }
+        else
+        {
+            Recipe.SpecialPreferences.Add(preference);
+        }
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnTitleChanged(ChangeEventArgs e)
+    {
+        Recipe.Title = e.Value?.ToString() ?? string.Empty;
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnSkillLevelChanged(ChangeEventArgs e)
+    {
+        Recipe.SkillLevel = e.Value?.ToString() ?? "Beginner";
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnCookingTimeChanged(ChangeEventArgs e)
+    {
+        Recipe.CookingTime = e.Value?.ToString() ?? "30 minutes";
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnIngredientNameChanged(int index, string name)
+    {
+        if (index >= 0 && index < Recipe.Ingredients.Count)
+        {
+            Recipe.Ingredients[index].Name = name;
+            await NotifyRecipeChanged();
+        }
+    }
+
+    private async Task OnIngredientAmountChanged(int index, string amount)
+    {
+        if (index >= 0 && index < Recipe.Ingredients.Count)
+        {
+            Recipe.Ingredients[index].Amount = amount;
+            await NotifyRecipeChanged();
+        }
+    }
+
+    private async Task AddIngredient()
+    {
+        Recipe.Ingredients.Add(new Ingredient
+        {
+            Icon = "🥗",
+            Name = string.Empty,
+            Amount = string.Empty
+        });
+        await NotifyRecipeChanged();
+    }
+
+    private async Task RemoveIngredient(int index)
+    {
+        if (index >= 0 && index < Recipe.Ingredients.Count)
+        {
+            Recipe.Ingredients.RemoveAt(index);
+            await NotifyRecipeChanged();
+        }
+    }
+
+    private async Task NotifyRecipeChanged()
+    {
+        await RecipeChanged.InvokeAsync(Recipe);
+    }
+}

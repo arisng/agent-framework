@@ -1,0 +1,58 @@
+<div class="chat-header-container main-background-gradient">
+    <div class="chat-header-controls page-width">
+        <div class="endpoint-selector">
+            <label for="endpoint-select">Endpoint:</label>
+            <select id="endpoint-select" @onchange="OnEndpointSelectionChangedAsync">
+                @foreach (var endpoint in AvailableEndpoints)
+                {
+                    <option value="@endpoint.Path" selected="@(endpoint.Path == SelectedEndpointPath)">
+                        @endpoint.DisplayName
+                    </option>
+                }
+            </select>
+        </div>
+        <button class="btn-default" @onclick="@OnNewChat">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="new-chat-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New chat
+        </button>
+    </div>
+
+    <h1 class="page-width">AG-UI Dojo Chat</h1>
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the callback invoked when the user clicks "New chat".
+    /// </summary>
+    [Parameter]
+    public EventCallback OnNewChat { get; set; }
+
+    /// <summary>
+    /// Gets or sets the list of available AG-UI endpoints.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<EndpointInfo> AvailableEndpoints { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the currently selected endpoint path.
+    /// </summary>
+    [Parameter]
+    public string SelectedEndpointPath { get; set; } = "agentic_chat";
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the endpoint selection changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnEndpointChanged { get; set; }
+
+    private async Task OnEndpointSelectionChangedAsync(ChangeEventArgs e)
+    {
+        string? newPath = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(newPath))
+        {
+            await OnEndpointChanged.InvokeAsync(newPath);
+        }
+    }
+}
