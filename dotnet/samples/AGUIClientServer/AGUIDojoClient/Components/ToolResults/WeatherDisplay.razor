@@ -1,0 +1,94 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+
+@* Weather display component for rendering WeatherInfo tool results with a visual weather card UI *@
+
+<div class="weather-card">
+    <div class="weather-header">
+        <div class="weather-icon">
+            @GetWeatherIcon()
+        </div>
+        <div class="weather-temp">
+            <span class="temp-value">@Weather.Temperature</span>
+            <span class="temp-unit">°F</span>
+        </div>
+    </div>
+    <div class="weather-conditions">@Weather.Conditions</div>
+    <div class="weather-details">
+        <div class="weather-detail">
+            <span class="detail-label">Feels Like</span>
+            <span class="detail-value">@Weather.FeelsLike°F</span>
+        </div>
+        <div class="weather-detail">
+            <span class="detail-label">Humidity</span>
+            <span class="detail-value">@Weather.Humidity%</span>
+        </div>
+        <div class="weather-detail">
+            <span class="detail-label">Wind</span>
+            <span class="detail-value">@Weather.WindSpeed mph</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The weather information to display.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required AGUIDojoClient.Models.WeatherInfo Weather { get; set; }
+
+    /// <summary>
+    /// Gets the appropriate weather icon SVG based on conditions.
+    /// </summary>
+    private MarkupString GetWeatherIcon()
+    {
+        string conditions = Weather.Conditions?.ToLowerInvariant() ?? "";
+        
+        // Sun icon for sunny/clear conditions
+        if (conditions.Contains("sunny") || conditions.Contains("clear"))
+        {
+            return new MarkupString("""
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                </svg>
+            """);
+        }
+        
+        // Cloud icon for cloudy/overcast conditions
+        if (conditions.Contains("cloud") || conditions.Contains("overcast"))
+        {
+            return new MarkupString("""
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
+                </svg>
+            """);
+        }
+        
+        // Rain icon for rainy/wet conditions
+        if (conditions.Contains("rain") || conditions.Contains("shower") || conditions.Contains("drizzle"))
+        {
+            return new MarkupString("""
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75v2.25M12 18.75v2.25M15.75 18.75v2.25" />
+                </svg>
+            """);
+        }
+        
+        // Snow icon for snowy/winter conditions
+        if (conditions.Contains("snow") || conditions.Contains("flurri"))
+        {
+            return new MarkupString("""
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m0-18L8.25 6.75M12 3l3.75 3.75m-3.75 14.25L8.25 17.25M12 21l3.75-3.75M3 12h18M3 12l3.75-3.75M3 12l3.75 3.75m14.25-3.75l-3.75-3.75m3.75 3.75l-3.75 3.75" />
+                </svg>
+            """);
+        }
+        
+        // Default: partly cloudy sun icon
+        return new MarkupString("""
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+            </svg>
+        """);
+    }
+}

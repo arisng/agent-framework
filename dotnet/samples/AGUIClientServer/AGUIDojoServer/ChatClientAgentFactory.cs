@@ -4,45 +4,64 @@ using System.ComponentModel;
 using System.Text.Json;
 using AGUIDojoServer.AgenticUI;
 using AGUIDojoServer.BackendToolRendering;
+using AGUIDojoServer.HumanInTheLoop;
 using AGUIDojoServer.PredictiveStateUpdates;
 using AGUIDojoServer.SharedState;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using ChatClient = OpenAI.Chat.ChatClient;
+using OpenAI;
+using OpenAI.Chat;
 
 namespace AGUIDojoServer;
 
 internal static class ChatClientAgentFactory
 {
-    private static AzureOpenAIClient? s_azureOpenAIClient;
-    private static string? s_deploymentName;
+    private static ChatClient _chatClient = null!;
 
     public static void Initialize(IConfiguration configuration)
     {
-        string endpoint = configuration["AZURE_OPENAI_ENDPOINT"] ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT is not set.");
-        s_deploymentName = configuration["AZURE_OPENAI_DEPLOYMENT_NAME"] ?? throw new InvalidOperationException("AZURE_OPENAI_DEPLOYMENT_NAME is not set.");
+        // Create the real ChatClientAgent with LLM backend
+        // Requires OpenAI or Azure OpenAI credentials
+        string? endpoint = configuration["AZURE_OPENAI_ENDPOINT"];
+        string? deploymentName = configuration["AZURE_OPENAI_DEPLOYMENT_NAME"];
+        string? openAiApiKey = configuration["OPENAI_API_KEY"]; // prefer this option over Azure OpenAI
+        string? openAiModel = configuration["OPENAI_MODEL"] ?? "gpt-5-mini";
 
-        s_azureOpenAIClient = new AzureOpenAIClient(
-            new Uri(endpoint),
-            new DefaultAzureCredential());
+        if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(deploymentName))
+        {
+            // Create the Azure OpenAI client using DefaultAzureCredential.
+            AzureOpenAIClient azureOpenAIClient = new(
+                new Uri(endpoint),
+                new DefaultAzureCredential());
+
+            _chatClient = azureOpenAIClient.GetChatClient(deploymentName);
+        }
+        else if (!string.IsNullOrWhiteSpace(openAiApiKey) && !string.IsNullOrWhiteSpace(openAiModel))
+        {
+            // Create the OpenAI client using an API key.
+            OpenAIClient openAIClient = new(openAiApiKey);
+            _chatClient = openAIClient.GetChatClient(openAiModel);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "Either AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NAME, or OPENAI_API_KEY and OPENAI_MODEL must be set. " +
+                "Alternatively, set USE_MOCK_AGENT=true to use the mock agent for testing without LLM credentials.");
+        }
     }
 
     public static ChatClientAgent CreateAgenticChat()
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
-
-        return chatClient.AsIChatClient().AsAIAgent(
+        return _chatClient.AsIChatClient().AsAIAgent(
             name: "AgenticChat",
             description: "A simple chat agent using Azure OpenAI");
     }
 
     public static ChatClientAgent CreateBackendToolRendering()
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
-
-        return chatClient.AsIChatClient().AsAIAgent(
+        return _chatClient.AsIChatClient().AsAIAgent(
             name: "BackendToolRenderer",
             description: "An agent that can render backend tools using Azure OpenAI",
             tools: [AIFunctionFactory.Create(
@@ -52,28 +71,61 @@ internal static class ChatClientAgentFactory
                 AGUIDojoServerSerializerContext.Default.Options)]);
     }
 
-    public static ChatClientAgent CreateHumanInTheLoop()
+#pragma warning disable MEAI001 // Type is for evaluation purposes only
+    /// <summary>
+    /// Creates a Human-in-the-Loop agent that requires approval for sensitive tool calls.
+    /// The agent wraps the send_email tool with ApprovalRequiredAIFunction to demonstrate
+    /// the approval workflow in AG-UI.
+    /// </summary>
+    /// <param name="jsonSerializerOptions">The JSON serializer options for approval data.</param>
+    /// <returns>An AIAgent wrapped with ServerFunctionApprovalAgent for approval handling.</returns>
+    public static AIAgent CreateHumanInTheLoop(JsonSerializerOptions jsonSerializerOptions)
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
+        // Create the approval-required tool
+        AITool approvalTool = new ApprovalRequiredAIFunction(
+            AIFunctionFactory.Create(
+                SendEmail,
+                name: "send_email",
+                description: "Send an email to a recipient.",
+                AGUIDojoServerSerializerContext.Default.Options));
 
-        return chatClient.AsIChatClient().AsAIAgent(
-            name: "HumanInTheLoopAgent",
-            description: "An agent that involves human feedback in its decision-making process using Azure OpenAI");
+        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        {
+            Name = "HumanInTheLoopAgent",
+            Description = "An agent that involves human feedback in its decision-making process",
+            ChatOptions = new ChatOptions
+            {
+                Instructions = """
+                    You are a helpful assistant that can send emails on behalf of the user.
+                    IMPORTANT: When asked to send an email, immediately call the send_email tool.
+                    Do NOT ask the user for confirmation in chat - the tool will automatically
+                    prompt for approval through the UI. Just call the tool directly.
+                    After the user approves or rejects, report the outcome.
+                    """,
+                Tools = [approvalTool]
+            }
+        });
+
+        // Wrap with ServerFunctionApprovalAgent to transform approval content to AG-UI format
+        return new ServerFunctionApprovalAgent(baseAgent, jsonSerializerOptions);
     }
+#pragma warning restore MEAI001
 
     public static ChatClientAgent CreateToolBasedGenerativeUI()
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
-
-        return chatClient.AsIChatClient().AsAIAgent(
+        return _chatClient.AsIChatClient().AsAIAgent(
             name: "ToolBasedGenerativeUIAgent",
-            description: "An agent that uses tools to generate user interfaces using Azure OpenAI");
+            description: "An agent that uses tools to generate user interfaces using Azure OpenAI",
+            tools: [AIFunctionFactory.Create(
+                GetWeather,
+                name: "get_weather",
+                description: "Get the weather for a given location.",
+                AGUIDojoServerSerializerContext.Default.Options)]);
     }
 
     public static AIAgent CreateAgenticUI(JsonSerializerOptions options)
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "AgenticUIAgent",
             Description = "An agent that generates agentic user interfaces using Azure OpenAI",
@@ -114,9 +166,7 @@ internal static class ChatClientAgentFactory
 
     public static AIAgent CreateSharedState(JsonSerializerOptions options)
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
-
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(
+        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(
             name: "SharedStateAgent",
             description: "An agent that demonstrates shared state patterns using Azure OpenAI");
 
@@ -125,9 +175,7 @@ internal static class ChatClientAgentFactory
 
     public static AIAgent CreatePredictiveStateUpdates(JsonSerializerOptions options)
     {
-        ChatClient chatClient = s_azureOpenAIClient!.GetChatClient(s_deploymentName!);
-
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = _chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "PredictiveStateUpdatesAgent",
             Description = "An agent that demonstrates predictive state updates using Azure OpenAI",
@@ -170,6 +218,16 @@ internal static class ChatClientAgentFactory
         WindSpeed = 10,
         FeelsLike = 25
     };
+
+    [Description("Send an email to a recipient.")]
+    private static string SendEmail(
+        [Description("The email address of the recipient.")] string to,
+        [Description("The subject line of the email.")] string subject,
+        [Description("The body content of the email.")] string body)
+    {
+        // Simulate sending email
+        return $"Email sent successfully to {to} with subject '{subject}'.";
+    }
 
     [Description("Write a document in markdown format.")]
     private static string WriteDocument([Description("The document content to write.")] string document)
