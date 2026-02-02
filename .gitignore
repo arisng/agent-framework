@@ -229,3 +229,4 @@ local.settings.json
 python/dotnet-ref
 .playwright-cli/**
 .ralph-sessions/**
+**/appsettings.Localhost.json
