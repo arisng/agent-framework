@@ -1,10 +1,7 @@
 @using System.Runtime.CompilerServices
-@using System.Text.Json
-@using System.Text.RegularExpressions
 @using System.Linq
 @using AGUIDojoClient.Services
 
-@inject IToolComponentRegistry ToolRegistry
 @inject IMarkdownService MarkdownService
 
 @if (Message.Role == ChatRole.User)
@@ -15,402 +12,97 @@
 }
 else if (Message.Role == ChatRole.Assistant)
 {
-    foreach (var content in Message.Contents)
+    @* Separate content into "thoughts" (non-text) and "messages" (text) *@
+    var sortedContents = SortContentsForDisplay(Message.Contents).ToList();
+    var thoughtContents = sortedContents.Where(c => c is not TextContent).ToList();
+    var textContents = sortedContents.OfType<TextContent>().Where(tc => tc.Text?.Length > 0).ToList();
+
+    @* Render collapsible thought block if there are any thought contents *@
+    @if (thoughtContents.Count > 0)
     {
-        @switch (content)
-        {
-            case TextContent { Text: { Length: > 0 } text }:
-                <div class="assistant-message">
-                    <div>
-                        <div class="assistant-message-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="assistant-message-header">Assistant</div>
-                    <div class="assistant-message-text markdown-content">
-                        <div>@((MarkupString)MarkdownService.ToHtml(text))</div>
-                    </div>
-                </div>
-                break;
+        <AssistantThought ThoughtContents="@thoughtContents" AllContents="@Message.Contents" InProgress="@InProgress" />
+    }
 
-            case FunctionCallContent fcc:
-                <div class="assistant-tool-call">
-                    <div class="tool-call-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z" />
-                        </svg>
-                    </div>
-                    <div class="tool-call-content">
-                        <div class="tool-call-header">
-                            <span class="tool-call-name">@fcc.Name</span>
-                            @if (InProgress)
-                            {
-                                <span class="tool-call-status running">Running...</span>
-                            }
-                        </div>
-                        @if (fcc.Arguments is { Count: > 0 })
-                        {
-                            <div class="tool-call-arguments">
-                                @foreach (var arg in fcc.Arguments)
-                                {
-                                    <div class="tool-call-argument">
-                                        <span class="argument-name">@arg.Key:</span>
-                                        <span class="argument-value">@FormatArgumentValue(arg.Value)</span>
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
+    @* Render final assistant message(s) after thoughts *@
+    @foreach (var tc in textContents)
+    {
+        <div class="assistant-message">
+            <div>
+                <div class="assistant-message-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+                    </svg>
                 </div>
-                break;
-
-            case FunctionResultContent frc:
-                var toolInfo = GetToolRenderingInfo(frc);
-                @if (toolInfo.HasComponent)
-                {
-                    @* Render using DynamicComponent from registry *@
-                    <div class="assistant-tool-result assistant-tool-result-dynamic">
-                        <div class="tool-result-icon tool-result-icon-dynamic">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-                            </svg>
-                        </div>
-                        <div class="tool-result-content tool-result-content-dynamic">
-                            <div class="tool-result-header">@(toolInfo.ToolName ?? "Tool") Result</div>
-                            <div class="tool-result-data">
-                                <DynamicComponent Type="toolInfo.ComponentType" Parameters="@(new Dictionary<string, object?> { { toolInfo.ParameterName!, toolInfo.ParsedData } })" />
-                            </div>
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    @* Fallback: Default tool result rendering for unknown tools *@
-                    <div class="assistant-tool-result">
-                        <div class="tool-result-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                            </svg>
-                        </div>
-                        <div class="tool-result-content">
-                            <div class="tool-result-header">@(toolInfo.ToolName ?? "Tool") Result</div>
-                            <div class="tool-result-data">
-                                @if (frc.Result is JsonElement json)
-                                {
-                                    <pre>@FormatJson(json)</pre>
-                                }
-                                else if (frc.Result is not null)
-                                {
-                                    <span>@frc.Result</span>
-                                }
-                                else
-                                {
-                                    <span class="tool-result-empty">(no result)</span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                }
-                break;
-
-            case DataContent dc when IsStateSnapshot(dc):
-                <div class="assistant-state-snapshot">
-                    <div class="state-snapshot-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-                        </svg>
-                    </div>
-                    <div class="state-snapshot-content">
-                        <div class="state-snapshot-header">State Snapshot</div>
-                        <div class="state-snapshot-data">
-                            <pre>@FormatDataContent(dc)</pre>
-                        </div>
-                    </div>
-                </div>
-                break;
-
-            case DataContent dc when IsStateDelta(dc):
-                <div class="assistant-state-delta">
-                    <div class="state-delta-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-                        </svg>
-                    </div>
-                    <div class="state-delta-content">
-                        <div class="state-delta-header">State Update (JSON Patch)</div>
-                        <div class="state-delta-data">
-                            <pre>@FormatDataContent(dc)</pre>
-                        </div>
-                    </div>
-                </div>
-                break;
-
-            case DataContent dc:
-                <div class="assistant-data-content">
-                    <div class="data-content-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                        </svg>
-                    </div>
-                    <div class="data-content-content">
-                        <div class="data-content-header">Data (@(dc.MediaType ?? "unknown"))</div>
-                        <div class="data-content-data">
-                            <pre>@FormatDataContent(dc)</pre>
-                        </div>
-                    </div>
-                </div>
-                break;
-
-            case ErrorContent ec:
-                <div class="assistant-error">
-                    <div class="error-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                        </svg>
-                    </div>
-                    <div class="error-content">
-                        <div class="error-header">
-                            Error
-                            @if (!string.IsNullOrEmpty(ec.ErrorCode))
-                            {
-                                <span class="error-code">(@ec.ErrorCode)</span>
-                            }
-                        </div>
-                        <div class="error-message">@ec.Message</div>
-                    </div>
-                </div>
-                break;
-        }
+            </div>
+            <div class="assistant-message-header">Assistant</div>
+            <div class="assistant-message-text markdown-content">
+                <div>@((MarkupString)MarkdownService.ToHtml(tc.Text!))</div>
+            </div>
+        </div>
     }
 }
 
 @code {
     private static readonly ConditionalWeakTable<ChatMessage, ChatMessageItem> SubscribersLookup = new();
 
+    /// <summary>
+    /// The chat message to display.
+    /// </summary>
     [Parameter, EditorRequired]
     public required ChatMessage Message { get; set; }
 
+    /// <summary>
+    /// Whether the message is currently being streamed (in progress).
+    /// </summary>
     [Parameter]
     public bool InProgress { get; set; }
 
+    /// <inheritdoc />
     protected override void OnInitialized()
     {
         SubscribersLookup.AddOrUpdate(Message, this);
     }
 
+    /// <summary>
+    /// Notifies the component instance that a given message has changed.
+    /// </summary>
+    /// <param name="source">The source chat message that changed.</param>
     public static void NotifyChanged(ChatMessage source)
     {
-        if (SubscribersLookup.TryGetValue(source, out var subscriber))
+        if (SubscribersLookup.TryGetValue(source, out ChatMessageItem? subscriber))
         {
             subscriber.StateHasChanged();
         }
     }
 
     /// <summary>
-    /// Formats a function argument value for display.
+    /// Sorts AIContent items for display by type priority.
+    /// Priority order: FunctionCallContent (1) → FunctionResultContent (2) → DataContent (3) → TextContent (4) → ErrorContent (5).
+    /// This ensures tool results appear before assistant messages in the UI, regardless of streaming arrival order.
     /// </summary>
-    private static string FormatArgumentValue(object? value)
+    /// <param name="contents">The contents to sort.</param>
+    /// <returns>The contents sorted by type priority for correct display order.</returns>
+    private static IEnumerable<AIContent> SortContentsForDisplay(IEnumerable<AIContent> contents)
     {
-        if (value is null)
-        {
-            return "(null)";
-        }
-
-        if (value is JsonElement json)
-        {
-            return json.ValueKind == JsonValueKind.String
-                ? json.GetString() ?? "(null)"
-                : json.ToString();
-        }
-
-        return value.ToString() ?? "(null)";
+        return contents.OrderBy(GetContentPriority);
     }
 
     /// <summary>
-    /// Formats a JsonElement for display with indentation.
+    /// Gets the display priority for an AIContent item.
+    /// Lower numbers display first.
     /// </summary>
-    private static string FormatJson(JsonElement json)
+    /// <param name="content">The content to get priority for.</param>
+    /// <returns>A priority value for sorting (lower = earlier in display).</returns>
+    private static int GetContentPriority(AIContent content)
     {
-        try
+        return content switch
         {
-            return JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true });
-        }
-        catch
-        {
-            return json.ToString();
-        }
-    }
-
-    /// <summary>
-    /// Formats DataContent for display.
-    /// </summary>
-    private static string FormatDataContent(DataContent dc)
-    {
-        if (dc.Data.Length == 0)
-        {
-            return "(no data)";
-        }
-
-        try
-        {
-            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
-
-            // Try to parse and format as JSON
-            if (dc.MediaType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                var jsonDoc = JsonDocument.Parse(text);
-                return JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
-            }
-
-            return text;
-        }
-        catch
-        {
-            return $"[Binary data: {dc.Data.Length} bytes]";
-        }
-    }
-
-    /// <summary>
-    /// Determines if DataContent represents a state snapshot.
-    /// </summary>
-    private static bool IsStateSnapshot(DataContent dc)
-    {
-        return dc.MediaType == "application/json" &&
-               dc.AdditionalProperties?.ContainsKey("is_state_snapshot") == true;
-    }
-
-    /// <summary>
-    /// Determines if DataContent represents a state delta (JSON Patch).
-    /// </summary>
-    private static bool IsStateDelta(DataContent dc)
-    {
-        return dc.MediaType == "application/json-patch+json" ||
-               (dc.MediaType == "application/json" && dc.AdditionalProperties?.ContainsKey("is_state_delta") == true);
-    }
-
-    /// <summary>
-    /// Gets all information needed to render a tool result, including whether a custom component exists.
-    /// </summary>
-    /// <param name="frc">The function result content.</param>
-    /// <returns>Tool rendering information including component type and parsed data if available.</returns>
-    private ToolRenderingInfo GetToolRenderingInfo(FunctionResultContent frc)
-    {
-        string? toolName = GetToolNameForResult(frc);
-        if (string.IsNullOrWhiteSpace(toolName))
-        {
-            return new ToolRenderingInfo(null, null, null, null);
-        }
-
-        // Check if registry has a component for this tool
-        if (!ToolRegistry.TryGetComponent(toolName, out Type? componentType) || componentType is null)
-        {
-            return new ToolRenderingInfo(toolName, null, null, null);
-        }
-
-        if (!ToolRegistry.TryGetParameterName(toolName, out string? parameterName) || parameterName is null)
-        {
-            return new ToolRenderingInfo(toolName, null, null, null);
-        }
-
-        // Try to parse the result data for the registered component
-        object? parsedData = TryParseToolResult(toolName, frc);
-        if (parsedData is null)
-        {
-            return new ToolRenderingInfo(toolName, null, null, null);
-        }
-
-        return new ToolRenderingInfo(toolName, componentType, parameterName, parsedData);
-    }
-
-    /// <summary>
-    /// Gets the tool name for a FunctionResultContent by finding the matching FunctionCallContent.
-    /// </summary>
-    /// <param name="frc">The function result content.</param>
-    /// <returns>The tool name if found; otherwise, null.</returns>
-    private string? GetToolNameForResult(FunctionResultContent frc)
-    {
-        if (frc.CallId is null)
-        {
-            return null;
-        }
-
-        // Find the matching FunctionCallContent by CallId
-        foreach (AIContent content in Message.Contents)
-        {
-            if (content is FunctionCallContent fcc && fcc.CallId == frc.CallId)
-            {
-                return fcc.Name;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Attempts to parse a FunctionResultContent for the specified tool type.
-    /// </summary>
-    /// <param name="toolName">The name of the tool.</param>
-    /// <param name="frc">The function result content containing the result data.</param>
-    /// <returns>The parsed data object if successful; otherwise, null.</returns>
-    private static object? TryParseToolResult(string toolName, FunctionResultContent frc)
-    {
-        try
-        {
-            JsonElement? jsonElement = frc.Result switch
-            {
-                JsonElement je => je,
-                string s when !string.IsNullOrWhiteSpace(s) => JsonDocument.Parse(s).RootElement,
-                _ => null
-            };
-
-            if (jsonElement is null)
-            {
-                return null;
-            }
-
-            JsonSerializerOptions options = new() { PropertyNameCaseInsensitive = true };
-
-            // Parse based on tool name - this enables tool-specific deserialization
-            return toolName.ToLowerInvariant() switch
-            {
-                "get_weather" => TryDeserializeWeatherInfo(jsonElement.Value, options),
-                _ => null // Unknown tool type
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Attempts to deserialize a JsonElement as WeatherInfo.
-    /// </summary>
-    private static WeatherInfo? TryDeserializeWeatherInfo(JsonElement json, JsonSerializerOptions options)
-    {
-        // Verify this looks like a WeatherInfo object by checking for required properties
-        if (json.TryGetProperty("temperature", out _) &&
-            json.TryGetProperty("conditions", out _))
-        {
-            return json.Deserialize<WeatherInfo>(options);
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Contains all information needed to render a tool result.
-    /// </summary>
-    /// <param name="ToolName">The name of the tool.</param>
-    /// <param name="ComponentType">The Blazor component type for rendering, if registered.</param>
-    /// <param name="ParameterName">The component parameter name for passing data.</param>
-    /// <param name="ParsedData">The parsed tool result data.</param>
-    private sealed record ToolRenderingInfo(string? ToolName, Type? ComponentType, string? ParameterName, object? ParsedData)
-    {
-        /// <summary>
-        /// Gets whether a custom component is available for rendering.
-        /// </summary>
-        public bool HasComponent => ComponentType is not null && ParsedData is not null;
+            FunctionCallContent => 1,      // Tool calls first
+            FunctionResultContent => 2,    // Tool results second
+            DataContent => 3,              // Data content (state snapshots, deltas) third
+            TextContent => 4,              // Text/assistant messages fourth
+            ErrorContent => 5,             // Errors last
+            _ => 99                         // Unknown types at the end
+        };
     }
 }

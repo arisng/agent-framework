@@ -189,6 +189,55 @@
     font-style: italic;
 }
 
+/* Tool Result Rejected Styles */
+.assistant-tool-result-rejected {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: 0.25rem;
+    margin: 0.5rem 0;
+}
+
+.tool-result-icon-rejected {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.25rem;
+    color: #DC2626;
+}
+
+    .tool-result-icon-rejected svg {
+        width: 1rem;
+        height: 1rem;
+    }
+
+.tool-result-content-rejected {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+}
+
+    .tool-result-content-rejected .tool-result-header {
+        font-weight: 600;
+        color: #B91C1C;
+        margin-bottom: 0.25rem;
+    }
+
+    .tool-result-content-rejected .tool-result-data {
+        font-size: 0.875rem;
+        color: #7F1D1D;
+    }
+
+        .tool-result-content-rejected .tool-result-data pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.8125rem;
+            line-height: 1.4;
+            color: #7F1D1D;
+        }
+
 /* Weather Tool Result Styles */
 .assistant-tool-result-weather {
     display: grid;

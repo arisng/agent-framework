@@ -1,0 +1,453 @@
+/* AssistantThought component styles */
+/* Collapsible thought block for tool calls, tool results, data content, state updates */
+
+.assistant-thought {
+    margin: 0.5rem 0;
+    border: 1px solid #E5E7EB;
+    border-radius: 0.5rem;
+    background: #FAFAFA;
+    overflow: hidden;
+}
+
+.assistant-thought.expanded {
+    border-color: #C7D2FE;
+    background: #F8FAFC;
+}
+
+/* Toggle button (collapsed summary) */
+.thought-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.875rem;
+    color: #4B5563;
+    transition: background-color 0.15s ease;
+}
+
+.thought-toggle:hover {
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.thought-toggle:focus {
+    outline: 2px solid #6366F1;
+    outline-offset: -2px;
+}
+
+.thought-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.thought-summary {
+    flex: 1;
+    font-weight: 500;
+    color: #374151;
+}
+
+.thought-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: #6B7280;
+    transition: transform 0.2s ease;
+}
+
+.thought-chevron svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Expanded content area */
+.thought-content {
+    padding: 0 0.875rem 0.875rem 0.875rem;
+    border-top: 1px solid #E5E7EB;
+}
+
+/* Nested content styles (reuse from ChatMessageItem) */
+.assistant-thought .assistant-tool-call,
+.assistant-thought .assistant-tool-result,
+.assistant-thought .assistant-state-snapshot,
+.assistant-thought .assistant-state-delta,
+.assistant-thought .assistant-data-content,
+.assistant-thought .assistant-error {
+    margin: 0.5rem 0;
+}
+
+.assistant-thought .assistant-tool-call:first-child,
+.assistant-thought .assistant-tool-result:first-child,
+.assistant-thought .assistant-state-snapshot:first-child,
+.assistant-thought .assistant-state-delta:first-child,
+.assistant-thought .assistant-data-content:first-child,
+.assistant-thought .assistant-error:first-child {
+    margin-top: 0.75rem;
+}
+
+.assistant-thought .assistant-tool-call:last-child,
+.assistant-thought .assistant-tool-result:last-child,
+.assistant-thought .assistant-state-snapshot:last-child,
+.assistant-thought .assistant-state-delta:last-child,
+.assistant-thought .assistant-data-content:last-child,
+.assistant-thought .assistant-error:last-child {
+    margin-bottom: 0;
+}
+
+/* Tool Call Styles (inside thought block) */
+.assistant-thought .assistant-tool-call {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.375rem;
+}
+
+.assistant-thought .tool-call-icon {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.125rem;
+    color: #6366F1;
+}
+
+.assistant-thought .tool-call-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.assistant-thought .tool-call-content {
+    background: #EEF2FF;
+    border: 1px solid #C7D2FE;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .tool-call-header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.assistant-thought .tool-call-name {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-weight: 600;
+    color: #4F46E5;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .tool-call-status {
+    font-size: 0.6875rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 9999px;
+}
+
+.assistant-thought .tool-call-status.running {
+    background: #FEF3C7;
+    color: #92400E;
+}
+
+.assistant-thought .tool-call-arguments {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+}
+
+.assistant-thought .tool-call-argument {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.0625rem 0;
+}
+
+.assistant-thought .argument-name {
+    color: #6B7280;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.assistant-thought .argument-value {
+    color: #1F2937;
+    word-break: break-word;
+}
+
+/* Tool Result Styles (inside thought block) */
+.assistant-thought .assistant-tool-result {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.375rem;
+}
+
+.assistant-thought .tool-result-icon {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.125rem;
+    color: #10B981;
+}
+
+.assistant-thought .tool-result-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.assistant-thought .tool-result-content {
+    background: #ECFDF5;
+    border: 1px solid #A7F3D0;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .tool-result-header {
+    font-weight: 600;
+    color: #047857;
+    margin-bottom: 0.125rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .tool-result-data {
+    font-size: 0.75rem;
+}
+
+.assistant-thought .tool-result-data pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.assistant-thought .tool-result-empty {
+    color: #9CA3AF;
+    font-style: italic;
+}
+
+/* Tool Result Rejected Styles (inside thought block) */
+.assistant-thought .assistant-tool-result-rejected .tool-result-icon,
+.assistant-thought .tool-result-icon-rejected {
+    color: #DC2626;
+}
+
+.assistant-thought .assistant-tool-result-rejected .tool-result-content,
+.assistant-thought .tool-result-content-rejected {
+    background: #FEF2F2;
+    border-color: #FECACA;
+}
+
+.assistant-thought .assistant-tool-result-rejected .tool-result-header,
+.assistant-thought .tool-result-content-rejected .tool-result-header {
+    color: #B91C1C;
+}
+
+.assistant-thought .assistant-tool-result-rejected .tool-result-data,
+.assistant-thought .tool-result-content-rejected .tool-result-data {
+    color: #7F1D1D;
+}
+
+.assistant-thought .tool-result-content-rejected .tool-result-data pre {
+    color: #7F1D1D;
+}
+
+/* Dynamic Tool Result Styles (inside thought block) */
+.assistant-thought .assistant-tool-result-dynamic .tool-result-icon,
+.assistant-thought .tool-result-icon-dynamic {
+    color: #8B5CF6;
+}
+
+.assistant-thought .assistant-tool-result-dynamic .tool-result-content,
+.assistant-thought .tool-result-content-dynamic {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.assistant-thought .tool-result-content-dynamic .tool-result-header {
+    color: #6D28D9;
+    margin-bottom: 0.375rem;
+}
+
+/* State Snapshot Styles (inside thought block) */
+.assistant-thought .assistant-state-snapshot {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.375rem;
+}
+
+.assistant-thought .state-snapshot-icon {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.125rem;
+    color: #8B5CF6;
+}
+
+.assistant-thought .state-snapshot-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.assistant-thought .state-snapshot-content {
+    background: #F5F3FF;
+    border: 1px solid #DDD6FE;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .state-snapshot-header {
+    font-weight: 600;
+    color: #6D28D9;
+    margin-bottom: 0.125rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .state-snapshot-data pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* State Delta Styles (inside thought block) */
+.assistant-thought .assistant-state-delta {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.375rem;
+}
+
+.assistant-thought .state-delta-icon {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.125rem;
+    color: #F59E0B;
+}
+
+.assistant-thought .state-delta-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.assistant-thought .state-delta-content {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .state-delta-header {
+    font-weight: 600;
+    color: #B45309;
+    margin-bottom: 0.125rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .state-delta-data pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+/* Generic Data Content Styles (inside thought block) */
+.assistant-thought .assistant-data-content {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.375rem;
+}
+
+.assistant-thought .data-content-icon {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.125rem;
+    color: #6B7280;
+}
+
+.assistant-thought .data-content-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.assistant-thought .data-content-content {
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .data-content-header {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.125rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .data-content-data pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* Error Content Styles (inside thought block) */
+.assistant-thought .assistant-error {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: 0.375rem;
+}
+
+.assistant-thought .error-icon {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 0.125rem;
+    color: #DC2626;
+}
+
+.assistant-thought .error-icon svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.assistant-thought .error-content {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .error-header {
+    font-weight: 600;
+    color: #B91C1C;
+    margin-bottom: 0.125rem;
+    font-size: 0.8125rem;
+}
+
+.assistant-thought .error-code {
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: #991B1B;
+    margin-left: 0.125rem;
+}
+
+.assistant-thought .error-message {
+    font-size: 0.75rem;
+    color: #7F1D1D;
+}

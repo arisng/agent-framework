@@ -84,6 +84,7 @@
     private bool isDocumentPreview = true;
     private DateTime lastStateChangeTime = DateTime.MinValue;
     private readonly HashSet<string> seenFunctionCallIds = new();
+    private readonly HashSet<string> seenFunctionResultCallIds = new();
     private bool pendingStateChange = false;
     private System.Timers.Timer? throttleTimer;
 
@@ -235,6 +236,13 @@
                             var response = ApprovalHandler.CreateApprovalResponse(approval.ApprovalId, approved);
                             approvalResponses.Add(response);
 
+                            // Also add rejection response to currentResponseMessage for immediate display
+                            // This ensures the rejection message is rendered with appropriate styling
+                            if (!approved && currentResponseMessage is not null)
+                            {
+                                currentResponseMessage.Contents.Add(response);
+                            }
+
                             currentPendingApproval = null;
                             approvalTaskSource = null;
                             StateHasChanged();
@@ -301,9 +309,25 @@
                             // This prevents accumulating ~200 state snapshots in the message
                             ConsolidateDataContent(currentResponseMessage!, dc);
                         }
+                        else if (content is FunctionResultContent frc)
+                        {
+                            // Only add FunctionResultContent once per CallId to avoid duplicates
+                            // Duplicates occur because SSE streaming may emit the same result multiple times
+                            // as the response progresses, and conversation history reconstruction may re-send results
+                            if (frc.CallId is not null && !seenFunctionResultCallIds.Contains(frc.CallId))
+                            {
+                                seenFunctionResultCallIds.Add(frc.CallId);
+                                currentResponseMessage?.Contents.Add(content);
+                            }
+                            else if (frc.CallId is null)
+                            {
+                                // No CallId means we can't dedupe - add it directly
+                                currentResponseMessage?.Contents.Add(content);
+                            }
+                        }
                         else
                         {
-                            // Other content types (FunctionResultContent, ErrorContent) - add directly
+                            // Other content types (ErrorContent) - add directly
                             currentResponseMessage?.Contents.Add(content);
                         }
                     }
@@ -340,11 +364,31 @@
             // ProcessIncomingFunctionApprovals can match it with the approval response.
             if (approvalResponses.Count > 0)
             {
+                // Check if any responses were rejections
+                bool hasAnyRejection = approvalResponses.Any(r => IsRejectionResponse(r));
+
                 foreach (var response in approvalResponses)
                 {
                     messages.Add(new ChatMessage(ChatRole.Tool, [response]));
                 }
-                hasApprovalResponses = true;
+
+                // If rejection occurred, don't continue the approval loop.
+                // Continuing after rejection can cause HTTP 400 errors because the
+                // conversation history becomes malformed when sent to the LLM provider.
+                // (Error: "An assistant message with 'tool_calls' must be followed by 
+                // tool messages responding to each 'tool_call_id'")
+                // The user can send a new message to try again with a fresh conversation.
+                if (hasAnyRejection)
+                {
+                    hasApprovalResponses = false;
+                    // Reset conversation state so the next user message starts fresh
+                    chatOptions.ConversationId = null;
+                    statefulMessageCount = messages.Count;
+                }
+                else
+                {
+                    hasApprovalResponses = true;
+                }
             }
             else
             {
@@ -416,6 +460,7 @@
         currentDocumentState = null;
         isDocumentPreview = true;
         seenFunctionCallIds.Clear();
+        seenFunctionResultCallIds.Clear();
         ApprovalHandler.ClearPendingApprovals();
         chatSuggestions?.Clear();
         
@@ -626,6 +671,30 @@
         
         // Generic DataContent - use media type as category
         return dc.MediaType ?? "unknown";
+    }
+
+    /// <summary>
+    /// Determines if a FunctionResultContent represents a rejection response from HITL approval.
+    /// Rejection responses have {"approved": false} in their Result.
+    /// </summary>
+    private static bool IsRejectionResponse(FunctionResultContent functionResult)
+    {
+        try
+        {
+            if (functionResult.Result is JsonElement jsonElement)
+            {
+                if (jsonElement.TryGetProperty("approved", out JsonElement approvedProp))
+                {
+                    return !approvedProp.GetBoolean();
+                }
+            }
+        }
+        catch
+        {
+            // Failed to parse result - treat as not a rejection
+        }
+
+        return false;
     }
 
     public void Dispose()
