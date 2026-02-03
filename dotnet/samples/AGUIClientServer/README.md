@@ -18,15 +18,15 @@ The samples demonstrate different aspects of the AG-UI protocol:
 
 The AGUIDojoServer and AGUIDojoClient samples demonstrate all 7 standardized AG-UI protocol features:
 
-| # | Feature | Endpoint | Description |
-|---|---------|----------|-------------|
-| 1 | **Agentic Chat** | `/agentic_chat` | Streaming chat with automatic tool calling |
-| 2 | **Backend Tool Rendering** | `/backend_tool_rendering` | Tools execute server-side; results stream to client |
-| 3 | **Human-in-the-Loop** | `/human_in_the_loop` | Approval workflows for sensitive tool calls |
-| 4 | **Agentic Generative UI** | `/agentic_generative_ui` | Async tools with progress updates for long-running operations |
-| 5 | **Tool-Based UI Rendering** | `/tool_based_generative_ui` | Custom components render based on tool definitions |
-| 6 | **Shared State** | `/shared_state` | Bidirectional state synchronization between agent and client |
-| 7 | **Predictive State Updates** | `/predictive_state_updates` | Stream tool arguments as optimistic updates |
+| #   | Feature                      | Endpoint                    | Description                                                   |
+| --- | ---------------------------- | --------------------------- | ------------------------------------------------------------- |
+| 1   | **Agentic Chat**             | `/agentic_chat`             | Streaming chat with automatic tool calling                    |
+| 2   | **Backend Tool Rendering**   | `/backend_tool_rendering`   | Tools execute server-side; results stream to client           |
+| 3   | **Human-in-the-Loop**        | `/human_in_the_loop`        | Approval workflows for sensitive tool calls                   |
+| 4   | **Agentic Generative UI**    | `/agentic_generative_ui`    | Async tools with progress updates for long-running operations |
+| 5   | **Tool-Based UI Rendering**  | `/tool_based_generative_ui` | Custom components render based on tool definitions            |
+| 6   | **Shared State**             | `/shared_state`             | Bidirectional state synchronization between agent and client  |
+| 7   | **Predictive State Updates** | `/predictive_state_updates` | Stream tool arguments as optimistic updates                   |
 
 ## Quick Start: Full Demo
 
@@ -42,7 +42,7 @@ cd AGUIDojoClient
 dotnet run
 ```
 
-Open http://localhost:5000 and use the dropdown to switch between features.
+Open http://localhost:6001 and use the dropdown to switch between features.
 
 ---
 
@@ -250,3 +250,15 @@ The `RunStreamingAsync` method:
   - Subsequent updates contain streaming content as the agent processes
   - The **last** `AgentResponseUpdate` in a run indicates the run has finished
   - If an error occurs, the update will contain `ErrorContent`
+
+## My Customization on top of Microsoft's codebas
+
+As a convention, I'm using following comment to flag my custom code changes overridding Microsoft's codebase.
+This repo is a forked repo from Microsoft. I want to keep this repo's main branch alinged with Microsoft releases.
+This convention will help me streamline the management of my custom code changes to make merge decisions and avoid future conflicts.
+The rule is that for all codebase not written by me in this forked repo, if there are any custome changes on top of Microsoft's codebase, then this comment must be added.
+
+This is the conventional comment:
+```txt
+// MY CUSTOMIZATION POINT: This is to flag my custom changes on top of Microsoft codebase.
+```
