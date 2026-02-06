@@ -1,48 +1,307 @@
 # AG-UI Client and Server Samples
 
-This directory contains samples demonstrating how to use the AG-UI (Agentic Generative UI) protocol to enable communication between client applications and remote agent servers. The AG-UI protocol provides a standardized way for clients to interact with AI agents.
+This directory contains samples demonstrating how to use the AG-UI (Agentic Generative UI) protocol to enable communication between client applications and remote agent servers. The AG-UI protocol provides a standardized way for clients to interact with AI agents through Server-Sent Events (SSE) streaming.
 
-## Overview
+## Samples Overview
 
-The samples demonstrate different aspects of the AG-UI protocol:
+| Sample | Type | Description |
+|--------|------|-------------|
+| **[AGUIServer](./AGUIServer)** | Minimal API | ASP.NET Core server exposing an AI agent via the AG-UI protocol |
+| **[AGUIClient](./AGUIClient)** | Console App | Console client that connects to the AG-UI server and displays streaming updates |
+| **[AGUIDojoServer](./AGUIDojoServer)** | Unified Backend | Full-featured server with 7 AG-UI endpoints, business APIs, JWT auth, OpenTelemetry, and shared services |
+| **[AGUIDojoClient](./AGUIDojoClient)** | Blazor Server BFF | Production-ready Blazor web chat UI with YARP proxy, all 7 AG-UI features, Polly resilience, and health checks |
 
-### Basic Samples
-1. **[AGUIServer](./AGUIServer)** - An ASP.NET Core web server that hosts an AI agent and exposes it via the AG-UI protocol
-2. **[AGUIClient](./AGUIClient)** - A console application that connects to the AG-UI server and displays streaming updates
+## Architecture Overview
 
-### Full Protocol Demo (7 Features)
-3. **[AGUIDojoServer](./AGUIDojoServer)** - An ASP.NET Core server exposing 7 endpoints, each demonstrating one AG-UI protocol feature
-4. **[AGUIDojoClient](./AGUIDojoClient)** - A Blazor Server web application that demonstrates all 7 AG-UI protocol features with rich UI
+The AGUIDojoClient and AGUIDojoServer implement a **Backend-for-Frontend (BFF) pattern** with YARP reverse proxy integration:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                AGUIDojoClient (Blazor Server :5000/5001)            │
+│                              [BFF Layer]                            │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────┐  ┌─────────────────────────────────────┐  │
+│  │   Agentic Chat UI   │  │     Business API Consumption        │  │
+│  │  (Direct HttpClient │  │     (YARP Reverse Proxy)            │  │
+│  │   to SSE endpoints) │  │     /api/* → :5100/api/*            │  │
+│  └─────────────────────┘  └─────────────────────────────────────┘  │
+│                                                                     │
+│  Features: OpenTelemetry · Polly Resilience · Health Checks         │
+└─────────────────────────────────────────────────────────────────────┘
+                     │                              │
+                     │ SSE Streaming                 │ YARP Proxied
+                     ▼                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                AGUIDojoServer (Minimal API :5100)                    │
+│                         [Unified Backend]                            │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────┐  ┌───────────────────────────────────┐   │
+│  │     AG-UI Layer      │  │       Business API Layer          │   │
+│  │    (MapAGUI POST)    │  │       (Minimal API GET/POST)      │   │
+│  ├──────────────────────┤  ├───────────────────────────────────┤   │
+│  │ /agentic_chat        │  │ GET  /api/weather/{location}      │   │
+│  │ /backend_tool_*      │  │ POST /api/email                   │   │
+│  │ /human_in_the_loop   │  │ POST /api/auth/token (dev only)   │   │
+│  │ /shared_state        │  │ GET  /health                      │   │
+│  │ /predictive_state_*  │  └───────────────────────────────────┘   │
+│  └──────────────────────┘                                           │
+│                     │                       │                       │
+│                     ▼                       ▼                       │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │               Shared Business Services (DI)                  │   │
+│  ├──────────────────────────────────────────────────────────────┤   │
+│  │  IWeatherService  │  IEmailService  │  IDocumentService      │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                     ▲                       ▲                       │
+│  ┌──────────────────────┐  ┌───────────────────────────────────┐   │
+│  │      AI Tools        │  │       API Handlers                │   │
+│  │  (KeyedSingleton,    │  │    (inject same services)         │   │
+│  │   IHttpContextAccessor│ │                                   │   │
+│  │   for scoped access) │  │                                   │   │
+│  └──────────────────────┘  └───────────────────────────────────┘   │
+│                                                                     │
+│  Features: JWT Auth · OpenTelemetry · ProblemDetails · Health Checks│
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Design Decisions:**
+- **YARP Reverse Proxy**: Business APIs (`/api/*`) route through YARP for unified routing; Blazor routes precede YARP (`Order = int.MaxValue`) to avoid conflicts
+- **Direct SSE Streaming**: AG-UI endpoints use direct `HttpClient` to `:5100` (bypassing YARP) for optimal streaming without buffering
+- **Shared Services**: `IWeatherService`, `IEmailService`, `IDocumentService` registered as Scoped, shared between Minimal API handlers and AI Tools
+- **AI Tool DI Pattern**: Tools are `KeyedSingleton` and use `IHttpContextAccessor.HttpContext.RequestServices` to access scoped services
+- **No Route Conflicts**: MapAGUI uses POST only; Minimal API endpoints use `/api/` prefix with GET/POST
 
 ## AG-UI Protocol Features
 
 The AGUIDojoServer and AGUIDojoClient samples demonstrate all 7 standardized AG-UI protocol features:
 
-| #   | Feature                      | Endpoint                    | Description                                                   |
-| --- | ---------------------------- | --------------------------- | ------------------------------------------------------------- |
-| 1   | **Agentic Chat**             | `/agentic_chat`             | Streaming chat with automatic tool calling                    |
-| 2   | **Backend Tool Rendering**   | `/backend_tool_rendering`   | Tools execute server-side; results stream to client           |
-| 3   | **Human-in-the-Loop**        | `/human_in_the_loop`        | Approval workflows for sensitive tool calls                   |
-| 4   | **Agentic Generative UI**    | `/agentic_generative_ui`    | Async tools with progress updates for long-running operations |
-| 5   | **Tool-Based UI Rendering**  | `/tool_based_generative_ui` | Custom components render based on tool definitions            |
-| 6   | **Shared State**             | `/shared_state`             | Bidirectional state synchronization between agent and client  |
-| 7   | **Predictive State Updates** | `/predictive_state_updates` | Stream tool arguments as optimistic updates                   |
+| # | Feature | Endpoint | Server Component | Client Component | Description |
+|---|---------|----------|------------------|------------------|-------------|
+| 1 | **Agentic Chat** | `/agentic_chat` | `ChatClientAgent` | `Chat.razor`, `ChatMessageItem.razor` | Streaming chat with automatic tool calling, collapsible thought blocks |
+| 2 | **Backend Tool Rendering** | `/backend_tool_rendering` | `WeatherTool` | `WeatherDisplay.razor` | Server-side tool execution with typed results rendered in custom Blazor components |
+| 3 | **Human-in-the-Loop** | `/human_in_the_loop` | `ApprovalTool` | `ApprovalDialog.razor` | Approval workflows with distinct styling for approved (green ✓) vs rejected (red ✗) results |
+| 4 | **Agentic Generative UI** | `/agentic_generative_ui` | Async tools | `PlanProgress.razor` | Long-running operations with real-time progress step updates |
+| 5 | **Tool-Based UI Rendering** | `/tool_based_generative_ui` | `WeatherTool` | `WeatherDisplay.razor` (via `ToolComponentRegistry`) | `DynamicComponent` rendering based on tool definitions |
+| 6 | **Shared State** | `/shared_state` | `STATE_DELTA` events | `RecipeEditor.razor` | Bidirectional state sync between agent and client via JSON Patch |
+| 7 | **Predictive State Updates** | `/predictive_state_updates` | `DocumentTool` | `DocumentPreview.razor` | Optimistic UI updates by streaming tool arguments as they arrive |
+
+### Client UX Features
+
+The Blazor client includes production-quality UX patterns:
+
+- **Collapsible Thought Blocks** (`AssistantThought.razor`): Non-text content (tool calls, tool results, data) wrapped in collapsible "🤔 Thinking (N steps)" blocks that auto-collapse on completion
+- **Sorted Message Display**: Contents sorted by type priority (tool-call → tool-result → data → text → error) for logical reading order
+- **HITL Rejection Styling**: Rejected tool calls display with red/orange theme and ✗ icon; approved calls show green ✓
+- **Markdown Rendering**: Agent responses rendered as formatted Markdown via `MarkdownService`
+
+### Business APIs (via Minimal API)
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| GET | `/api/weather/{location}` | Yes | Get weather for a location (shared `IWeatherService`) |
+| POST | `/api/email` | Yes | Send email via shared `IEmailService` |
+| POST | `/api/auth/token` | No (dev only) | Generate JWT token for development testing |
+| GET | `/health` | No | Health check endpoint |
+
+## Project Structure
+
+### AGUIDojoServer
+
+```
+AGUIDojoServer/
+├── Program.cs                     # Entry point: DI, JWT auth, OpenTelemetry, MapAGUI + Minimal API
+├── ChatClientAgentFactory.cs      # DI-based agent factory with OpenTelemetry wrapping
+├── AGUIDojoServerSerializerContext.cs  # JSON source gen context
+├── Services/                      # Shared business services (Scoped)
+│   ├── IWeatherService.cs / WeatherService.cs
+│   ├── IEmailService.cs / EmailService.cs
+│   └── IDocumentService.cs / DocumentService.cs
+├── Tools/                         # DI-compatible AI tools (KeyedSingleton)
+│   ├── WeatherTool.cs             # Uses IHttpContextAccessor for scoped service access
+│   ├── EmailTool.cs
+│   └── DocumentTool.cs
+├── Api/                           # Minimal API endpoint groups
+│   ├── WeatherEndpoints.cs        # RequireAuthorization
+│   ├── EmailEndpoints.cs          # RequireAuthorization
+│   └── AuthEndpoints.cs           # Dev-only JWT token generation
+├── AgenticUI/                     # Feature-specific agent configurations
+├── BackendToolRendering/
+├── HumanInTheLoop/
+├── SharedState/
+├── PredictiveStateUpdates/
+└── appsettings.{Environment}.json # Multi-environment configuration
+```
+
+### AGUIDojoClient
+
+```
+AGUIDojoClient/
+├── Program.cs                     # Entry point: YARP, OpenTelemetry, Polly, health checks
+├── Components/
+│   ├── Pages/Chat/                # Core chat UI
+│   │   ├── Chat.razor             # Main chat page with feature dropdown
+│   │   ├── ChatHeader.razor       # Header with endpoint selector
+│   │   ├── ChatMessageItem.razor  # Individual message rendering
+│   │   ├── ChatMessageList.razor  # Scrollable message container
+│   │   ├── ChatInput.razor        # User input with send button
+│   │   ├── ChatSuggestions.razor  # Suggested prompts per feature
+│   │   ├── ChatCitation.razor     # Citation rendering
+│   │   └── AssistantThought.razor # Collapsible thought blocks
+│   ├── Approvals/
+│   │   └── ApprovalDialog.razor   # HITL approve/reject dialog
+│   ├── GenerativeUI/
+│   │   └── PlanProgress.razor     # Async operation progress display
+│   ├── ToolResults/
+│   │   └── WeatherDisplay.razor   # Weather card with temperature, conditions
+│   ├── SharedState/
+│   │   └── RecipeEditor.razor     # Bidirectional state sync editor
+│   └── PredictiveUI/
+│       └── DocumentPreview.razor  # Optimistic document preview
+├── Services/
+│   ├── IAGUIChatClientFactory.cs / AGUIChatClientFactory.cs  # SSE client factory
+│   ├── ApprovalHandler.cs         # HITL approval state management
+│   ├── IMarkdownService.cs / MarkdownService.cs              # Markdown → HTML rendering
+│   ├── IStateManager.cs / StateManager.cs                    # Shared state management
+│   ├── IToolComponentRegistry.cs / ToolComponentRegistry.cs  # DynamicComponent registration
+│   ├── IWeatherApiClient.cs / WeatherApiClient.cs            # Typed HTTP client (YARP-proxied)
+│   ├── JsonPatchApplier.cs        # JSON Patch operations for STATE_DELTA
+│   └── EndpointInfo.cs            # AG-UI endpoint metadata
+├── Models/
+│   ├── WeatherInfo.cs, Plan.cs, Step.cs, StepStatus.cs
+│   ├── Recipe.cs, Ingredient.cs
+│   ├── DocumentState.cs, JsonPatchOperation.cs
+└── appsettings.{Environment}.json # YARP configuration
+```
+
+## Cross-Cutting Concerns
+
+### Authentication (JWT)
+
+The server supports JWT Bearer authentication:
+- **Development**: Use `/api/auth/token` to generate tokens for testing
+- **Production**: Configure `Jwt__SigningKey` environment variable (256-bit key)
+- **YARP Forwarding**: Authorization headers are automatically forwarded through the YARP proxy
+- Business API endpoints require authentication (`RequireAuthorization`)
+
+### Observability (OpenTelemetry)
+
+Both projects are instrumented with OpenTelemetry:
+- **W3C Trace Context**: Automatic trace propagation through YARP (client → proxy → backend)
+- **ASP.NET Core Instrumentation**: HTTP request/response metrics and traces
+- **OTLP Exporter**: Configured via `OTEL_EXPORTER_OTLP_ENDPOINT` for tools like Aspire Dashboard, Jaeger, etc.
+- **Health Checks**: Both services expose `/health` endpoints
+
+### Resilience (Polly)
+
+The client uses Polly for resilience:
+- **Circuit Breaker**: Protects against cascading failures when the backend is down
+- **Configured via `Microsoft.Extensions.Http.Resilience`** on named `HttpClient` instances
+
+### Error Handling
+
+- **REST APIs**: Return `ProblemDetails` (RFC 9457) for structured error responses
+- **SSE Streams**: Return `RunErrorEvent` within the AG-UI event stream for in-band error reporting
+
+## Environment Variables
+
+### AGUIDojoServer (Backend)
+
+Configure ONE of the following LLM providers:
+
+**Option A: OpenAI (quickest setup)**
+```bash
+export OPENAI_API_KEY="sk-your-api-key"
+export OPENAI_MODEL="gpt-4.1-mini"  # Optional, defaults to gpt-5-mini
+```
+
+**Option B: Azure OpenAI with API Key**
+```bash
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_API_KEY="your-api-key"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
+```
+
+**Option C: Azure OpenAI with Managed Identity (recommended for production)**
+```bash
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
+# No API key needed - uses DefaultAzureCredential
+```
+
+**Optional Variables:**
+```bash
+export ASPNETCORE_ENVIRONMENT="Development"  # Development, Staging, Production
+export ASPNETCORE_URLS="http://localhost:5100"
+export Jwt__SigningKey="your-256-bit-key"  # Required when auth is enabled
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"  # OpenTelemetry collector
+```
+
+### AGUIDojoClient (BFF)
+
+```bash
+export SERVER_URL="http://localhost:5100"  # Backend server URL
+export ASPNETCORE_ENVIRONMENT="Development"
+```
+
+**YARP Backend Override (production):**
+```bash
+export ReverseProxy__Clusters__backend__Destinations__primary__Address="https://api.production.example.com/"
+```
 
 ## Quick Start: Full Demo
 
-To try all 7 AG-UI features:
+### Development Setup
 
 ```bash
-# Terminal 1: Start the server
+# Terminal 1: Start the backend server
 cd AGUIDojoServer
+dotnet build
 dotnet run
 
-# Terminal 2: Start the Blazor web client
+# Terminal 2: Start the Blazor BFF client
 cd AGUIDojoClient
+dotnet build
 dotnet run
 ```
 
-Open http://localhost:6001 and use the dropdown to switch between features.
+Open http://localhost:5000 and use the dropdown to switch between the 7 AG-UI features.
+
+### Production Setup
+
+```bash
+# Set production environment
+export ASPNETCORE_ENVIRONMENT=Production
+
+# Configure production secrets (example for Azure OpenAI)
+export AZURE_OPENAI_ENDPOINT="https://prod-resource.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
+export Jwt__SigningKey="your-production-256-bit-key"
+
+# Configure YARP to point to production backend
+export ReverseProxy__Clusters__backend__Destinations__primary__Address="https://api.yourdomain.com/"
+
+# Start server (uses appsettings.Production.json)
+cd AGUIDojoServer && dotnet run
+
+# Start client BFF
+cd AGUIDojoClient && dotnet run
+```
+
+### Verify Setup
+
+```bash
+# Check server health
+curl http://localhost:5100/health
+
+# Check client health (verifies backend connectivity)
+curl http://localhost:5000/health
+
+# Test business API directly
+curl http://localhost:5100/api/weather/Seattle
+
+# Test via YARP proxy (from client)
+curl http://localhost:5000/api/weather/Seattle
+```
 
 ---
 
@@ -251,12 +510,124 @@ The `RunStreamingAsync` method:
   - The **last** `AgentResponseUpdate` in a run indicates the run has finished
   - If an error occurs, the update will contain `ErrorContent`
 
-## My Customization on top of Microsoft's codebas
+---
 
-As a convention, I'm using following comment to flag my custom code changes overridding Microsoft's codebase.
-This repo is a forked repo from Microsoft. I want to keep this repo's main branch alinged with Microsoft releases.
+## Troubleshooting
+
+### Common Issues
+
+#### Server Won't Start - "LLM provider not configured"
+
+**Symptom**: Server starts but logs warning about missing LLM configuration.
+
+**Solution**: Set the required environment variables for your LLM provider:
+```bash
+# For OpenAI
+export OPENAI_API_KEY="sk-your-key"
+
+# OR for Azure OpenAI
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
+```
+
+#### YARP Proxy Returns 502/504
+
+**Symptom**: Requests to `/api/*` through the client return 502 Bad Gateway or 504 Gateway Timeout.
+
+**Causes & Solutions**:
+1. **Backend not running**: Ensure AGUIDojoServer is running on port 5100
+   ```bash
+   curl http://localhost:5100/health  # Should return healthy
+   ```
+2. **Timeout on long requests**: The YARP ActivityTimeout is set to 10 minutes. For longer operations, increase it in `appsettings.json`:
+   ```json
+   "HttpRequest": { "ActivityTimeout": "00:30:00" }
+   ```
+
+#### Blazor SignalR Connection Fails
+
+**Symptom**: Blazor pages load but interactivity doesn't work; browser console shows SignalR connection errors.
+
+**Causes & Solutions**:
+1. **YARP routing conflict**: Blazor routes MUST be registered BEFORE YARP in `Program.cs`. YARP uses `Order = int.MaxValue` to ensure it acts as a catch-all:
+   ```csharp
+   app.MapRazorComponents<App>()...;  // FIRST
+   app.MapReverseProxy()...;          // AFTER (Order = int.MaxValue)
+   ```
+2. **YARP matching `/_blazor`**: Check YARP route patterns don't match Blazor paths. Use specific patterns like `/api/{**remainder}`.
+
+#### SSE Streaming Appears Buffered
+
+**Symptom**: Agent responses arrive in large batches instead of character-by-character.
+
+**Causes & Solutions**:
+1. **Response buffering enabled**: YARP's `AllowResponseBuffering` is `false` by default — do NOT set it to `true`
+2. **Intermediate proxy**: If behind Nginx/CDN, add `X-Accel-Buffering: no` header
+3. **AG-UI endpoints bypass YARP**: The client uses direct `HttpClient` to `:5100` for SSE endpoints, not the YARP proxy
+
+#### Authentication Token Not Forwarded
+
+**Symptom**: Backend returns 401 Unauthorized even with valid token.
+
+**Solution**: YARP preserves the Authorization header by default. Verify no transform is stripping it:
+```csharp
+builder.Services.AddReverseProxy()
+    .AddTransforms(ctx => {
+        ctx.AddRequestTransform(async transformContext => {
+            var authHeader = transformContext.HttpContext.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(authHeader)) {
+                transformContext.ProxyRequest.Headers.Authorization = 
+                    System.Net.Http.Headers.AuthenticationHeaderValue.Parse(authHeader);
+            }
+        });
+    });
+```
+
+#### HITL Rejection Causes Errors
+
+**Symptom**: HTTP 400 error after rejecting an approval in Human-in-the-Loop feature.
+
+**Solution**: This was a known issue where malformed conversation history (missing tool result messages after rejection) caused LLM errors. The fix resets conversation state (`ConversationId = null`) after rejection so the next message starts a fresh conversation.
+
+### Health Check Endpoints
+
+Both services expose health check endpoints for monitoring:
+
+| Service | Endpoint | Purpose |
+|---------|----------|---------|
+| AGUIDojoServer | `http://localhost:5100/health` | Verifies server running + LLM config |
+| AGUIDojoClient | `http://localhost:5000/health` | Verifies BFF running + backend reachable |
+
+### Viewing Logs
+
+**Development mode** enables detailed logging:
+```bash
+export ASPNETCORE_ENVIRONMENT=Development
+dotnet run
+```
+
+**YARP-specific logs** can be enabled in `appsettings.json`:
+```json
+"Logging": {
+  "LogLevel": {
+    "Yarp.ReverseProxy": "Debug"
+  }
+}
+```
+
+**OpenTelemetry traces** can be viewed by pointing the OTLP exporter to a collector:
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+```
+
+---
+
+## My Customization on top of Microsoft's Codebase
+
+As a convention, I'm using the following comment to flag my custom code changes overriding Microsoft's codebase.
+This repo is a forked repo from Microsoft. I want to keep this repo's main branch aligned with Microsoft releases.
 This convention will help me streamline the management of my custom code changes to make merge decisions and avoid future conflicts.
-The rule is that for all codebase not written by me in this forked repo, if there are any custome changes on top of Microsoft's codebase, then this comment must be added.
+The rule is that for all codebase not written by me in this forked repo, if there are any custom changes on top of Microsoft's codebase, then this comment must be added.
 
 This is the conventional comment:
 ```txt

@@ -1,12 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System.ComponentModel;
 using System.Text.Json;
 using AGUIDojoServer.AgenticUI;
-using AGUIDojoServer.BackendToolRendering;
 using AGUIDojoServer.HumanInTheLoop;
 using AGUIDojoServer.PredictiveStateUpdates;
 using AGUIDojoServer.SharedState;
+using AGUIDojoServer.Tools;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
@@ -16,13 +15,63 @@ using OpenAI.Chat;
 
 namespace AGUIDojoServer;
 
-internal static class ChatClientAgentFactory
+/// <summary>
+/// Factory for creating AI agents with various capabilities for AG-UI protocol demonstrations.
+/// </summary>
+/// <remarks>
+/// <para>
+/// This factory is registered as a Singleton in the DI container. It creates <see cref="ChatClient"/>
+/// during construction based on configuration (Azure OpenAI or OpenAI) and provides methods to
+/// create pre-configured agents for different AG-UI scenarios.
+/// </para>
+/// <para>
+/// Tools are injected via DI-compatible tool classes (<see cref="WeatherTool"/>, <see cref="EmailTool"/>,
+/// <see cref="DocumentTool"/>) which use <see cref="IHttpContextAccessor"/> to resolve scoped services
+/// at execution time (per research findings Q1.15-Q1.18).
+/// </para>
+/// <para>
+/// All agents are wrapped with OpenTelemetry instrumentation via <see cref="OpenTelemetryAgentBuilderExtensions.UseOpenTelemetry"/>
+/// to provide distributed tracing capabilities (per research findings Q1.26).
+/// </para>
+/// </remarks>
+public sealed class ChatClientAgentFactory
 {
-    private static ChatClient chatClient = null!;
+    /// <summary>
+    /// The source name for OpenTelemetry instrumentation, identifying telemetry from this server.
+    /// </summary>
+    private const string SourceName = "AGUIDojoServer";
 
-    public static void Initialize(IConfiguration configuration)
+    private readonly ChatClient _chatClient;
+    private readonly WeatherTool _weatherTool;
+    private readonly EmailTool _emailTool;
+    private readonly DocumentTool _documentTool;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChatClientAgentFactory"/> class.
+    /// </summary>
+    /// <param name="configuration">The configuration containing LLM provider settings.</param>
+    /// <param name="weatherTool">The weather tool for AI function calls.</param>
+    /// <param name="emailTool">The email tool for AI function calls.</param>
+    /// <param name="documentTool">The document tool for AI function calls.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when neither Azure OpenAI nor OpenAI credentials are configured.
+    /// </exception>
+    public ChatClientAgentFactory(
+        IConfiguration configuration,
+        WeatherTool weatherTool,
+        EmailTool emailTool,
+        DocumentTool documentTool)
     {
-        // Create the real ChatClientAgent with LLM backend
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(weatherTool);
+        ArgumentNullException.ThrowIfNull(emailTool);
+        ArgumentNullException.ThrowIfNull(documentTool);
+
+        this._weatherTool = weatherTool;
+        this._emailTool = emailTool;
+        this._documentTool = documentTool;
+
+        // Create the real ChatClient with LLM backend
         // Requires OpenAI or Azure OpenAI credentials
         string? endpoint = configuration["AZURE_OPENAI_ENDPOINT"];
         string? deploymentName = configuration["AZURE_OPENAI_DEPLOYMENT_NAME"];
@@ -36,13 +85,13 @@ internal static class ChatClientAgentFactory
                 new Uri(endpoint),
                 new DefaultAzureCredential());
 
-            chatClient = azureOpenAIClient.GetChatClient(deploymentName);
+            this._chatClient = azureOpenAIClient.GetChatClient(deploymentName);
         }
         else if (!string.IsNullOrWhiteSpace(openAiApiKey) && !string.IsNullOrWhiteSpace(openAiModel))
         {
             // Create the OpenAI client using an API key.
             OpenAIClient openAIClient = new(openAiApiKey);
-            chatClient = openAIClient.GetChatClient(openAiModel);
+            this._chatClient = openAIClient.GetChatClient(openAiModel);
         }
         else
         {
@@ -52,20 +101,31 @@ internal static class ChatClientAgentFactory
         }
     }
 
-    public static ChatClientAgent CreateAgenticChat()
+    /// <summary>
+    /// Creates an agent for basic agentic chat using LLM capabilities.
+    /// </summary>
+    /// <returns>An <see cref="AIAgent"/> configured for general conversation, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateAgenticChat()
     {
-        return chatClient.AsIChatClient().AsAIAgent(
+        return this._chatClient.AsIChatClient().AsAIAgent(
             instructions: """
             You are a helpful assistant that can chat with users using LLM capabilities. 
             Format your user-facing text response as in markdown.
             """,
             name: "AgenticChat",
-            description: "A simple AI Assistant that can chat with users using LLM capabilities.");
+            description: "A simple AI Assistant that can chat with users using LLM capabilities.")
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 
-    public static ChatClientAgent CreateBackendToolRendering()
+    /// <summary>
+    /// Creates an agent for backend tool rendering demonstrations.
+    /// </summary>
+    /// <returns>An <see cref="AIAgent"/> configured with weather tool for backend rendering, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateBackendToolRendering()
     {
-        return chatClient.AsIChatClient().AsAIAgent(
+        return this._chatClient.AsIChatClient().AsAIAgent(
             instructions: """
                 You are a helpful assistant that can chat with users and use backend tools to get information.
                 When the user asks for information that requires a tool, call the appropriate tool.
@@ -74,10 +134,13 @@ internal static class ChatClientAgentFactory
             name: "BackendToolRenderer",
             description: "A simple AI Assistant that can chat with users using LLM capabilities. Format your user-facing text response as in markdown.",
             tools: [AIFunctionFactory.Create(
-                GetWeather,
+                this._weatherTool.GetWeatherAsync,
                 name: "get_weather",
                 description: "Get the weather for a given location.",
-                AGUIDojoServerSerializerContext.Default.Options)]);
+                AGUIDojoServerSerializerContext.Default.Options)])
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 
 #pragma warning disable MEAI001 // Type is for evaluation purposes only
@@ -87,18 +150,18 @@ internal static class ChatClientAgentFactory
     /// the approval workflow in AG-UI.
     /// </summary>
     /// <param name="jsonSerializerOptions">The JSON serializer options for approval data.</param>
-    /// <returns>An AIAgent wrapped with ServerFunctionApprovalAgent for approval handling.</returns>
-    public static AIAgent CreateHumanInTheLoop(JsonSerializerOptions jsonSerializerOptions)
+    /// <returns>An AIAgent wrapped with ServerFunctionApprovalAgent and OpenTelemetry instrumentation for approval handling.</returns>
+    public AIAgent CreateHumanInTheLoop(JsonSerializerOptions jsonSerializerOptions)
     {
-        // Create the approval-required tool
+        // Create the approval-required tool using DI-compatible EmailTool
         AITool approvalTool = new ApprovalRequiredAIFunction(
             AIFunctionFactory.Create(
-                SendEmail,
+                this._emailTool.SendEmailAsync,
                 name: "send_email",
                 description: "Send an email to a recipient.",
                 AGUIDojoServerSerializerContext.Default.Options));
 
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "HumanInTheLoopAgent",
             Description = "An agent that involves human feedback in its decision-making process",
@@ -117,26 +180,42 @@ internal static class ChatClientAgentFactory
         });
 
         // Wrap with ServerFunctionApprovalAgent to transform approval content to AG-UI format
-        return new ServerFunctionApprovalAgent(baseAgent, jsonSerializerOptions);
+        // Then wrap with OpenTelemetry for distributed tracing
+        return new ServerFunctionApprovalAgent(baseAgent, jsonSerializerOptions)
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 #pragma warning restore MEAI001
 
-    public static ChatClientAgent CreateToolBasedGenerativeUI()
+    /// <summary>
+    /// Creates an agent for tool-based generative UI demonstrations.
+    /// </summary>
+    /// <returns>An <see cref="AIAgent"/> configured with weather tool for UI generation, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateToolBasedGenerativeUI()
     {
-        return chatClient.AsIChatClient().AsAIAgent(
+        return this._chatClient.AsIChatClient().AsAIAgent(
             instructions: "Format your user-facing text response as in markdown.",
             name: "ToolBasedGenerativeUIAgent",
             description: "A simple AI Assistant that demonstrates tool-based generative UI patterns.",
             tools: [AIFunctionFactory.Create(
-                GetWeather,
+                this._weatherTool.GetWeatherAsync,
                 name: "get_weather",
                 description: "Get the weather for a given location.",
-                AGUIDojoServerSerializerContext.Default.Options)]);
+                AGUIDojoServerSerializerContext.Default.Options)])
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 
-    public static AIAgent CreateAgenticUI(JsonSerializerOptions options)
+    /// <summary>
+    /// Creates an agent for agentic UI demonstrations with planning capabilities.
+    /// </summary>
+    /// <param name="options">The JSON serializer options for UI state.</param>
+    /// <returns>An <see cref="AIAgent"/> configured for agentic planning UI, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateAgenticUI(JsonSerializerOptions options)
     {
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "AgenticUIAgent",
             Description = "An agent that generates agentic user interfaces using Azure OpenAI",
@@ -172,21 +251,39 @@ internal static class ChatClientAgentFactory
             }
         });
 
-        return new AgenticUIAgent(baseAgent, options);
+        // Wrap with AgenticUIAgent for agentic UI state management, then with OpenTelemetry
+        return new AgenticUIAgent(baseAgent, options)
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 
-    public static AIAgent CreateSharedState(JsonSerializerOptions options)
+    /// <summary>
+    /// Creates an agent for shared state demonstrations.
+    /// </summary>
+    /// <param name="options">The JSON serializer options for state management.</param>
+    /// <returns>An <see cref="AIAgent"/> configured for shared state patterns, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateSharedState(JsonSerializerOptions options)
     {
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(
+        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(
             name: "SharedStateAgent",
             description: "An agent that demonstrates shared state patterns. Format your user-facing text response as in markdown.");
 
-        return new SharedStateAgent(baseAgent, options);
+        // Wrap with SharedStateAgent for state management, then with OpenTelemetry
+        return new SharedStateAgent(baseAgent, options)
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 
-    public static AIAgent CreatePredictiveStateUpdates(JsonSerializerOptions options)
+    /// <summary>
+    /// Creates an agent for predictive state updates demonstrations.
+    /// </summary>
+    /// <param name="options">The JSON serializer options for state updates.</param>
+    /// <returns>An <see cref="AIAgent"/> configured for predictive state update patterns, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreatePredictiveStateUpdates(JsonSerializerOptions options)
     {
-        var baseAgent = chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
         {
             Name = "PredictiveStateUpdatesAgent",
             Description = "An agent that demonstrates predictive state updates.",
@@ -209,7 +306,7 @@ internal static class ChatClientAgentFactory
                     """,
                 Tools = [
                     AIFunctionFactory.Create(
-                        WriteDocument,
+                        this._documentTool.WriteDocumentAsync,
                         name: "write_document",
                         description: "Write a document. Use markdown formatting to format the document.",
                         AGUIDojoServerSerializerContext.Default.Options)
@@ -217,40 +314,10 @@ internal static class ChatClientAgentFactory
             }
         });
 
-        return new PredictiveStateUpdatesAgent(baseAgent, options);
-    }
-
-    [Description("Get the weather for a given location.")]
-    private static async Task<WeatherInfo> GetWeather([Description("The location to get the weather for.")] string location)
-    {
-        // Add artificial delay to demonstrate tool call appearing before result in UI
-        // This allows users to see the tool call in progress before the LLM processes the result
-        await Task.Delay(1500);
-
-        return new WeatherInfo
-        {
-            Temperature = 20,
-            Conditions = "sunny",
-            Humidity = 50,
-            WindSpeed = 10,
-            FeelsLike = 25
-        };
-    }
-
-    [Description("Send an email to a recipient.")]
-    private static string SendEmail(
-        [Description("The email address of the recipient.")] string to,
-        [Description("The subject line of the email.")] string subject,
-        [Description("The body content of the email.")] string body)
-    {
-        // Simulate sending email
-        return $"Email sent successfully to {to} with subject '{subject}'.";
-    }
-
-    [Description("Write a document in markdown format.")]
-    private static string WriteDocument([Description("The document content to write.")] string document)
-    {
-        // Simply return success - the document is tracked via state updates
-        return "Document written successfully";
+        // Wrap with PredictiveStateUpdatesAgent for state updates, then with OpenTelemetry
+        return new PredictiveStateUpdatesAgent(baseAgent, options)
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
     }
 }
