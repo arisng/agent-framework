@@ -4,11 +4,11 @@ This directory contains samples demonstrating how to use the AG-UI (Agentic Gene
 
 ## Samples Overview
 
-| Sample | Type | Description |
-|--------|------|-------------|
-| **[AGUIServer](./AGUIServer)** | Minimal API | ASP.NET Core server exposing an AI agent via the AG-UI protocol |
-| **[AGUIClient](./AGUIClient)** | Console App | Console client that connects to the AG-UI server and displays streaming updates |
-| **[AGUIDojoServer](./AGUIDojoServer)** | Unified Backend | Full-featured server with 7 AG-UI endpoints, business APIs, JWT auth, OpenTelemetry, and shared services |
+| Sample                                 | Type              | Description                                                                                                    |
+| -------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| **[AGUIServer](./AGUIServer)**         | Minimal API       | ASP.NET Core server exposing an AI agent via the AG-UI protocol                                                |
+| **[AGUIClient](./AGUIClient)**         | Console App       | Console client that connects to the AG-UI server and displays streaming updates                                |
+| **[AGUIDojoServer](./AGUIDojoServer)** | Unified Backend   | Full-featured server with 7 AG-UI endpoints, business APIs, JWT auth, OpenTelemetry, and shared services       |
 | **[AGUIDojoClient](./AGUIDojoClient)** | Blazor Server BFF | Production-ready Blazor web chat UI with YARP proxy, all 7 AG-UI features, Polly resilience, and health checks |
 
 ## Architecture Overview
@@ -17,7 +17,7 @@ The AGUIDojoClient and AGUIDojoServer implement a **Backend-for-Frontend (BFF) p
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                AGUIDojoClient (Blazor Server :5000/5001)            │
+│                AGUIDojoClient (Blazor Server :6000/6001)            │
 │                              [BFF Layer]                            │
 ├─────────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────┐  ┌─────────────────────────────────────┐  │
@@ -75,15 +75,15 @@ The AGUIDojoClient and AGUIDojoServer implement a **Backend-for-Frontend (BFF) p
 
 The AGUIDojoServer and AGUIDojoClient samples demonstrate all 7 standardized AG-UI protocol features:
 
-| # | Feature | Endpoint | Server Component | Client Component | Description |
-|---|---------|----------|------------------|------------------|-------------|
-| 1 | **Agentic Chat** | `/agentic_chat` | `ChatClientAgent` | `Chat.razor`, `ChatMessageItem.razor` | Streaming chat with automatic tool calling, collapsible thought blocks |
-| 2 | **Backend Tool Rendering** | `/backend_tool_rendering` | `WeatherTool` | `WeatherDisplay.razor` | Server-side tool execution with typed results rendered in custom Blazor components |
-| 3 | **Human-in-the-Loop** | `/human_in_the_loop` | `ApprovalTool` | `ApprovalDialog.razor` | Approval workflows with distinct styling for approved (green ✓) vs rejected (red ✗) results |
-| 4 | **Agentic Generative UI** | `/agentic_generative_ui` | Async tools | `PlanProgress.razor` | Long-running operations with real-time progress step updates |
-| 5 | **Tool-Based UI Rendering** | `/tool_based_generative_ui` | `WeatherTool` | `WeatherDisplay.razor` (via `ToolComponentRegistry`) | `DynamicComponent` rendering based on tool definitions |
-| 6 | **Shared State** | `/shared_state` | `STATE_DELTA` events | `RecipeEditor.razor` | Bidirectional state sync between agent and client via JSON Patch |
-| 7 | **Predictive State Updates** | `/predictive_state_updates` | `DocumentTool` | `DocumentPreview.razor` | Optimistic UI updates by streaming tool arguments as they arrive |
+| #   | Feature                      | Endpoint                    | Server Component     | Client Component                                     | Description                                                                                 |
+| --- | ---------------------------- | --------------------------- | -------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1   | **Agentic Chat**             | `/agentic_chat`             | `ChatClientAgent`    | `Chat.razor`, `ChatMessageItem.razor`                | Streaming chat with automatic tool calling, collapsible thought blocks                      |
+| 2   | **Backend Tool Rendering**   | `/backend_tool_rendering`   | `WeatherTool`        | `WeatherDisplay.razor`                               | Server-side tool execution with typed results rendered in custom Blazor components          |
+| 3   | **Human-in-the-Loop**        | `/human_in_the_loop`        | `ApprovalTool`       | `ApprovalDialog.razor`                               | Approval workflows with distinct styling for approved (green ✓) vs rejected (red ✗) results |
+| 4   | **Agentic Generative UI**    | `/agentic_generative_ui`    | Async tools          | `PlanProgress.razor`                                 | Long-running operations with real-time progress step updates                                |
+| 5   | **Tool-Based UI Rendering**  | `/tool_based_generative_ui` | `WeatherTool`        | `WeatherDisplay.razor` (via `ToolComponentRegistry`) | `DynamicComponent` rendering based on tool definitions                                      |
+| 6   | **Shared State**             | `/shared_state`             | `STATE_DELTA` events | `RecipeEditor.razor`                                 | Bidirectional state sync between agent and client via JSON Patch                            |
+| 7   | **Predictive State Updates** | `/predictive_state_updates` | `DocumentTool`       | `DocumentPreview.razor`                              | Optimistic UI updates by streaming tool arguments as they arrive                            |
 
 ### Client UX Features
 
@@ -96,12 +96,12 @@ The Blazor client includes production-quality UX patterns:
 
 ### Business APIs (via Minimal API)
 
-| Method | Endpoint | Auth Required | Description |
-|--------|----------|---------------|-------------|
-| GET | `/api/weather/{location}` | Yes | Get weather for a location (shared `IWeatherService`) |
-| POST | `/api/email` | Yes | Send email via shared `IEmailService` |
-| POST | `/api/auth/token` | No (dev only) | Generate JWT token for development testing |
-| GET | `/health` | No | Health check endpoint |
+| Method | Endpoint                  | Auth Required | Description                                           |
+| ------ | ------------------------- | ------------- | ----------------------------------------------------- |
+| GET    | `/api/weather/{location}` | Yes           | Get weather for a location (shared `IWeatherService`) |
+| POST   | `/api/email`              | Yes           | Send email via shared `IEmailService`                 |
+| POST   | `/api/auth/token`         | No (dev only) | Generate JWT token for development testing            |
+| GET    | `/health`                 | No            | Health check endpoint                                 |
 
 ## Project Structure
 
@@ -264,7 +264,7 @@ dotnet build
 dotnet run
 ```
 
-Open http://localhost:5000 and use the dropdown to switch between the 7 AG-UI features.
+Open http://localhost:6001 and use the dropdown to switch between the 7 AG-UI features.
 
 ### Production Setup
 
@@ -294,13 +294,13 @@ cd AGUIDojoClient && dotnet run
 curl http://localhost:5100/health
 
 # Check client health (verifies backend connectivity)
-curl http://localhost:5000/health
+curl http://localhost:6001/health
 
 # Test business API directly
 curl http://localhost:5100/api/weather/Seattle
 
 # Test via YARP proxy (from client)
-curl http://localhost:5000/api/weather/Seattle
+curl http://localhost:6001/api/weather/Seattle
 ```
 
 ---
@@ -593,10 +593,10 @@ builder.Services.AddReverseProxy()
 
 Both services expose health check endpoints for monitoring:
 
-| Service | Endpoint | Purpose |
-|---------|----------|---------|
-| AGUIDojoServer | `http://localhost:5100/health` | Verifies server running + LLM config |
-| AGUIDojoClient | `http://localhost:5000/health` | Verifies BFF running + backend reachable |
+| Service        | Endpoint                       | Purpose                                  |
+| -------------- | ------------------------------ | ---------------------------------------- |
+| AGUIDojoServer | `http://localhost:5100/health` | Verifies server running + LLM config     |
+| AGUIDojoClient | `http://localhost:6001/health` | Verifies BFF running + backend reachable |
 
 ### Viewing Logs
 

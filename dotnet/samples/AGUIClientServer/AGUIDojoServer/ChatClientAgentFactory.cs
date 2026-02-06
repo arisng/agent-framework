@@ -266,8 +266,19 @@ public sealed class ChatClientAgentFactory
     public AIAgent CreateSharedState(JsonSerializerOptions options)
     {
         var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(
+            instructions: """
+                You are a recipe assistant that helps users create and manage recipes.
+                When users provide recipe information (ingredients, cooking instructions, preferences),
+                update the recipe state accordingly.
+                
+                If users ask about non-recipe topics, politely guide them back to recipe creation.
+                For example, if they mention a favorite color, you might suggest creating a recipe
+                that uses ingredients of that color (e.g., blueberry recipes for blue, tomato recipes for red).
+                
+                Format your user-facing text response as in markdown.
+                """,
             name: "SharedStateAgent",
-            description: "An agent that demonstrates shared state patterns. Format your user-facing text response as in markdown.");
+            description: "An agent that demonstrates shared state patterns for recipe management.");
 
         // Wrap with SharedStateAgent for state management, then with OpenTelemetry
         return new SharedStateAgent(baseAgent, options)
