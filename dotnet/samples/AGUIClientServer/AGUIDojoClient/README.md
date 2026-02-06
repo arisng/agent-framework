@@ -1,6 +1,58 @@
 # AGUIDojoClient - AG-UI Protocol Demonstration Web Client
 
-A Blazor Server web application that demonstrates all 7 AG-UI protocol features by connecting to the AGUIDojoServer. This application provides a visual, interactive way to explore the full capabilities of the AG-UI (Agentic Generative UI) protocol.
+A Blazor Server web application implementing a **Backend-for-Frontend (BFF)** pattern that demonstrates all 7 AG-UI protocol features by connecting to the AGUIDojoServer. This application uses YARP reverse proxy for business API routing while maintaining direct HTTP connections for AG-UI SSE streaming.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│              AGUIDojoClient (Blazor Server :5000/5001)              │
+│                         [BFF with YARP]                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌────────────────────┐   ┌────────────────────────────────────┐    │
+│  │   Blazor Components │   │        Routing Layer              │    │
+│  │   (Interactive SSR) │   ├────────────────────────────────────┤    │
+│  │                     │   │  /_blazor    → SignalR (local)    │    │
+│  │  - Chat.razor      │   │  /api/*      → YARP → Backend      │    │
+│  │  - ApprovalDialog  │   │  /static     → StaticFiles (local) │    │
+│  │  - PlanProgress    │   │  AG-UI SSE   → Direct HttpClient   │    │
+│  │  - RecipeEditor    │   └────────────────────────────────────┘    │
+│  │  - DocumentPreview │                                              │
+│  └────────────────────┘                                              │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                    Services Layer                               │ │
+│  ├────────────────────────────────────────────────────────────────┤ │
+│  │  AGUIChatClientFactory  │ Creates clients for 7 AG-UI endpoints│ │
+│  │  ApprovalHandler        │ Human-in-the-loop workflows         │ │
+│  │  StateManager           │ Bidirectional state sync            │ │
+│  │  JsonPatchApplier       │ Incremental state updates           │ │
+│  │  ToolComponentRegistry  │ Maps tools to Blazor components     │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+                           │                     │
+                           │ SSE (Direct)        │ REST (YARP)
+                           ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              AGUIDojoServer (Minimal API :5100)                      │
+│                      [Unified Backend]                               │
+├─────────────────────────────────────────────────────────────────────┤
+│   AG-UI Endpoints          │    Business APIs                        │
+│   ──────────────────       │    ─────────────                        │
+│   POST /agentic_chat       │    GET  /api/weather/{location}         │
+│   POST /backend_tool_*     │    POST /api/email                      │
+│   POST /human_in_the_loop  │    GET  /health                         │
+│   POST /shared_state       │                                         │
+│   POST /predictive_state_* │                                         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Design Decisions:**
+- **YARP for Business APIs**: `/api/*` requests route through YARP reverse proxy for consistent auth and observability
+- **Direct SSE for AG-UI**: AG-UI endpoints use direct HttpClient to avoid potential buffering issues
+- **Blazor Routes First**: Middleware ordering ensures `/_blazor` SignalR hub is handled locally, not proxied
+- **Scoped Services**: Request-specific services (ApprovalHandler, StateManager) are scoped per connection
 
 ## Overview
 
@@ -14,21 +66,64 @@ AGUIDojoClient is a single-page Blazor application that connects to AGUIDojoServ
 
 ### Environment Variables
 
-Configure one of the following AI model providers:
-
-**Option 1: Azure OpenAI (Recommended)**
+**Client/BFF Configuration:**
 ```bash
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4.1-mini"
+# Backend server URL (default: http://localhost:5100)
+export SERVER_URL="http://localhost:5100"
+
+# Environment (Development, Staging, Production)
+export ASPNETCORE_ENVIRONMENT="Development"
 ```
 
-> **Note:** Uses `DefaultAzureCredential` for authentication. Ensure you're authenticated with Azure (e.g., via `az login`).
-
-**Option 2: OpenAI API**
+**YARP Proxy Override (for production):**
 ```bash
+# Override backend URL in YARP configuration
+export ReverseProxy__Clusters__backend__Destinations__primary__Address="https://api.production.example.com/"
+```
+
+**Server-side AI Model Configuration:**
+The AI model is configured on the **AGUIDojoServer**, not the client. See [AGUIDojoServer README](../AGUIDojoServer/README.md) for LLM configuration options. Quick setup:
+
+```bash
+# For OpenAI (set on the SERVER)
 export OPENAI_API_KEY="sk-your-api-key"
-export OPENAI_MODEL_NAME="gpt-4.1-mini"  # Optional, defaults to gpt-4.1-mini
+
+# OR for Azure OpenAI (set on the SERVER)
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
 ```
+
+## YARP Reverse Proxy Configuration
+
+The client uses YARP to proxy `/api/*` requests to the backend. Configuration is in `appsettings.json`:
+
+```json
+{
+  "ReverseProxy": {
+    "Routes": {
+      "apiRoute": {
+        "ClusterId": "backend",
+        "Match": { "Path": "/api/{**remainder}" }
+      }
+    },
+    "Clusters": {
+      "backend": {
+        "Destinations": {
+          "primary": { "Address": "http://localhost:5100/" }
+        },
+        "HttpRequest": {
+          "ActivityTimeout": "00:10:00"
+        }
+      }
+    }
+  }
+}
+```
+
+**Key Configuration Points:**
+- `ActivityTimeout`: Set to 10 minutes to support long-running agent operations
+- Route pattern `/api/{**remainder}` ensures only business APIs are proxied
+- AG-UI SSE endpoints use direct HttpClient, bypassing YARP
 
 ## Running the Sample
 
@@ -41,7 +136,7 @@ dotnet build
 dotnet run
 ```
 
-The server starts at `http://localhost:5100` and exposes 7 AG-UI endpoints.
+The server starts at `http://localhost:5100` and exposes 7 AG-UI endpoints plus business APIs.
 
 ### Step 2: Start the AGUIDojoClient
 
@@ -54,7 +149,18 @@ dotnet run
 
 The client starts at `http://localhost:5000` (or `https://localhost:5001`).
 
-### Step 3: Interact with the Application
+### Step 3: Verify YARP Proxy
+
+Test that the YARP proxy is working:
+```bash
+# Direct to backend
+curl http://localhost:5100/api/weather/Seattle
+
+# Through YARP proxy (same result)
+curl http://localhost:5000/api/weather/Seattle
+```
+
+### Step 4: Interact with the Application
 
 1. Open your browser and navigate to `http://localhost:5000`
 2. Use the endpoint dropdown in the header to select an AG-UI feature
@@ -223,17 +329,61 @@ export SERVER_URL="http://localhost:5100"
 
 ### Server Connection Issues
 - Ensure AGUIDojoServer is running on `http://localhost:5100`
-- Check that CORS is properly configured on the server
-- Verify environment variables for AI model access
+  ```bash
+  curl http://localhost:5100/health  # Should return "Healthy"
+  ```
+- Check that CORS is properly configured on the server (not needed when using YARP proxy)
+- Verify environment variables for AI model access on the **server** (not client)
+
+### YARP Proxy Issues
+
+**502 Bad Gateway:**
+- Backend server not running: Start AGUIDojoServer first
+- Verify YARP destination URL matches server: Check `appsettings.json` → `ReverseProxy:Clusters:backend:Destinations:primary:Address`
+
+**504 Gateway Timeout:**
+- Long-running requests: Increase `ActivityTimeout` in appsettings.json
+  ```json
+  "HttpRequest": { "ActivityTimeout": "00:30:00" }
+  ```
+
+**Requests Not Proxied:**
+- Ensure route pattern matches: `/api/{**remainder}` should catch all `/api/*` requests
+- Check middleware ordering in Program.cs: YARP must come AFTER Blazor routes
+
+### Blazor SignalR Issues
+
+**Interactive features not working:**
+- Check browser console for SignalR connection errors
+- Ensure `/_blazor` is NOT matched by YARP routes (handled by local Blazor middleware)
+- Verify `MapRazorComponents<App>()` is registered BEFORE `MapReverseProxy()`
 
 ### Feature Not Working
 - Use browser DevTools to inspect network requests
 - Check console output on both client and server
 - Ensure you've selected the correct endpoint for the feature
 
+### SSE Streaming Issues
+
+**Responses arrive in batches instead of streaming:**
+- Don't set `AllowResponseBuffering: true` in YARP config
+- If behind Nginx/CDN, add `X-Accel-Buffering: no` header
+- AG-UI endpoints should use direct HttpClient (default behavior)
+
 ### Build Errors
 - Run `dotnet restore` to ensure all packages are installed
 - Verify .NET 10.0 SDK is installed: `dotnet --version`
+
+### Health Checks
+
+Both services provide health endpoints:
+```bash
+# Client BFF health
+curl http://localhost:5000/health
+
+# Backend server health
+curl http://localhost:5100/health
+```
 
 ## Related Samples
 

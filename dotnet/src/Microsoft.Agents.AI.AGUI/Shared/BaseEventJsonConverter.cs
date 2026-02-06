@@ -47,7 +47,10 @@ internal sealed class BaseEventJsonConverter : JsonConverter<BaseEvent>
             AGUIEventTypes.ToolCallEnd => jsonElement.Deserialize(options.GetTypeInfo(typeof(ToolCallEndEvent))) as ToolCallEndEvent,
             AGUIEventTypes.ToolCallResult => jsonElement.Deserialize(options.GetTypeInfo(typeof(ToolCallResultEvent))) as ToolCallResultEvent,
             AGUIEventTypes.StateSnapshot => jsonElement.Deserialize(options.GetTypeInfo(typeof(StateSnapshotEvent))) as StateSnapshotEvent,
+
+            // MY CUSTOMIZATION POINT: This is to flag my custom changes on top of Microsoft codebase.
             AGUIEventTypes.StateDelta => jsonElement.Deserialize(options.GetTypeInfo(typeof(StateDeltaEvent))) as StateDeltaEvent,
+
             _ => throw new JsonException($"Unknown BaseEvent type discriminator: '{discriminator}'")
         };
 

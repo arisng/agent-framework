@@ -317,11 +317,21 @@ internal static class ChatResponseUpdateAGUIExtensions
         return null;
     }
 
+    // MY CUSTOMIZATION POINT: This is to flag my custom changes on top of Microsoft codebase.
     private static object? DeserializeResultIfAvailable(ToolCallResultEvent toolCallResult, JsonSerializerOptions options)
     {
         if (!string.IsNullOrEmpty(toolCallResult.Content))
         {
-            return JsonSerializer.Deserialize(toolCallResult.Content, options.GetTypeInfo(typeof(JsonElement)));
+            // Try to deserialize as JSON, but fall back to string if it fails
+            // This handles non-JSON results like "Tool call invocation rejected."
+            try
+            {
+                return JsonSerializer.Deserialize(toolCallResult.Content, options.GetTypeInfo(typeof(JsonElement)));
+            }
+            catch (JsonException)
+            {
+                return toolCallResult.Content;
+            }
         }
 
         return null;
