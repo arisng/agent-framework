@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Override the inherited multi-targeting from samples/Directory.Build.props -->
+    <!-- Test project should only target net10.0 to match AGUIDojoServer -->
+    <TargetFrameworks>net10.0</TargetFrameworks>
+  </PropertyGroup>
+</Project>

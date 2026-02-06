@@ -26,11 +26,11 @@ trap cleanup EXIT SIGINT SIGTERM
 echo "Starting AGUIDojoServer on http://localhost:5100..."
 dotnet run --project "$SERVER_PROJECT" --framework net10.0 --urls=http://localhost:5100 2>&1 | sed $'s/^/\033[31m[SERVER]\033[0m /' &
 
-echo "Starting AGUIDojoClient on http://localhost:5200..."
-SERVER_URL=http://localhost:5100 dotnet run --project "$CLIENT_PROJECT" --framework net10.0 --urls=http://localhost:5200 2>&1 | sed $'s/^/\033[32m[CLIENT]\033[0m /' &
+echo "Starting AGUIDojoClient on http://localhost:6001..."
+SERVER_URL=http://localhost:5100 dotnet run --project "$CLIENT_PROJECT" --framework net10.0 --urls=http://localhost:6001 2>&1 | sed $'s/^/\033[32m[CLIENT]\033[0m /' &
 
 echo "Both services are running. Press Ctrl+C to stop."
-echo "Client: http://localhost:5200"
+echo "Client: http://localhost:6001"
 echo "Server: http://localhost:5100"
 
 # Wait for processes
