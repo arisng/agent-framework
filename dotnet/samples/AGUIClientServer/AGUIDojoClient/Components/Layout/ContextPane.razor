@@ -1,0 +1,17 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: ContextPane wrapper component for chat/negotiation sidebar *@
+@using BlazorBlueprint.Components.ScrollArea
+
+<div class="context-pane">
+    <ScrollArea Class="context-pane__scroll">
+        @ChildContent
+    </ScrollArea>
+</div>
+
+@code {
+    /// <summary>
+    /// Content to render inside the context pane (chat messages, input, suggestions, approvals).
+    /// </summary>
+    [Parameter]
+    public RenderFragment ChildContent { get; set; } = default!;
+}

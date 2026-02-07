@@ -2,4 +2,5 @@
 <Solution xmlns="http://schemas.microsoft.com/vs/2022/solution">
   <Project Path="AGUIDojoClient/AGUIDojoClient.csproj" />
   <Project Path="AGUIDojoServer/AGUIDojoServer.csproj" />
+  <Project Path="AGUIClientServer.AppHost/AGUIClientServer.AppHost.csproj" />
 </Solution>

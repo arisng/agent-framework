@@ -1,3 +1,11 @@
+/* MY CUSTOMIZATION POINT: Full-height layout root for DualPaneLayout support */
+.layout-root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
 #blazor-error-ui {
     color-scheme: light only;
     background: lightyellow;

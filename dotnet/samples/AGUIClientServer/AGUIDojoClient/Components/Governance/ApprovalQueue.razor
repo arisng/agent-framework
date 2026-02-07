@@ -1,0 +1,144 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — ApprovalQueue: Non-modal inline approval card replacing ApprovalDialog modal *@
+
+@using System.Text.Json
+@using AGUIDojoClient.Models
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Separator
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<Card Class="approval-queue-card">
+    <CardHeader>
+        <CardTitle>
+            <LucideIcon Name="shield-check" Size="16" />
+            Approval Required
+        </CardTitle>
+        <CardDescription>
+            The agent is requesting permission to execute an action.
+        </CardDescription>
+    </CardHeader>
+    <CardContent>
+        <div class="approval-detail">
+            <span class="approval-detail-label">Function</span>
+            <span class="approval-detail-value">@FunctionName</span>
+        </div>
+
+        <Separator />
+
+        @if (Arguments is not null && Arguments.Count > 0)
+        {
+            <div class="approval-detail">
+                <span class="approval-detail-label">Arguments</span>
+                <div class="approval-arguments">
+                    @foreach (var arg in Arguments)
+                    {
+                        <div class="approval-argument-item">
+                            <span class="approval-argument-name">@arg.Key:</span>
+                            <span class="approval-argument-value">@FormatArgumentValue(arg.Value)</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <Separator />
+        }
+
+        <div class="approval-detail">
+            <span class="approval-detail-label">Risk Level</span>
+            <RiskBadge Level="@RiskLevel" />
+        </div>
+    </CardContent>
+    <CardFooter>
+        <div class="approval-actions">
+            <Button Variant="ButtonVariant.Outline" OnClick="@HandleReject" Disabled="@_isProcessing">
+                <LucideIcon Name="x" Size="16" />
+                Reject
+            </Button>
+            <Button Variant="ButtonVariant.Default" OnClick="@HandleApprove" Disabled="@_isProcessing">
+                <LucideIcon Name="check" Size="16" />
+                Approve
+            </Button>
+        </div>
+    </CardFooter>
+</Card>
+
+@code {
+    /// <summary>
+    /// The name of the function/tool the agent wants to execute.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required string FunctionName { get; set; }
+
+    /// <summary>
+    /// The arguments the agent intends to pass to the function.
+    /// </summary>
+    [Parameter]
+    public IDictionary<string, object?>? Arguments { get; set; }
+
+    /// <summary>
+    /// The assessed risk level for this action.
+    /// </summary>
+    [Parameter]
+    public RiskLevel RiskLevel { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user makes a decision.
+    /// True = approved, False = rejected.
+    /// CRITICAL: The parent Chat.razor preserves TaskCompletionSource blocking
+    /// semantic — this component only replaces the modal UI, not the protocol flow.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required EventCallback<bool> OnDecision { get; set; }
+
+    private bool _isProcessing;
+
+    private async Task HandleApprove()
+    {
+        if (_isProcessing)
+        {
+            return;
+        }
+
+        _isProcessing = true;
+        await OnDecision.InvokeAsync(true);
+    }
+
+    private async Task HandleReject()
+    {
+        if (_isProcessing)
+        {
+            return;
+        }
+
+        _isProcessing = true;
+        await OnDecision.InvokeAsync(false);
+    }
+
+    /// <summary>
+    /// Formats an argument value for display.
+    /// Handles JSON elements, nulls, and other types.
+    /// </summary>
+    private static string FormatArgumentValue(object? value)
+    {
+        if (value is null)
+        {
+            return "(null)";
+        }
+
+        if (value is JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind switch
+            {
+                JsonValueKind.String => jsonElement.GetString() ?? "(null)",
+                JsonValueKind.Number => jsonElement.ToString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Null => "(null)",
+                _ => jsonElement.ToString()
+            };
+        }
+
+        return value.ToString() ?? "(null)";
+    }
+}

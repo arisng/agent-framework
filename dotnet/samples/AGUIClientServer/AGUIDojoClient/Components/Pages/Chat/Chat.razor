@@ -9,6 +9,13 @@
 @inject IJsonPatchApplier JsonPatchApplier
 @inject IStateManager StateManager
 @inject NavigationManager Nav
+@* MY CUSTOMIZATION POINT: Inject ObservabilityService for tool call tracking *@
+@inject IObservabilityService ObservabilityService
+@* MY CUSTOMIZATION POINT: Inject governance services for HITL governance pattern *@
+@inject IRiskAssessmentService RiskAssessmentService
+@inject ICheckpointService CheckpointService
+@* MY CUSTOMIZATION POINT: Inject ViewportService for responsive mobile layout *@
+@inject ViewportService ViewportService
 @implements IDisposable
 
 <PageTitle>AG-UI Dojo Chat</PageTitle>
@@ -18,47 +25,91 @@
             SelectedEndpointPath="@selectedEndpointPath"
             OnEndpointChanged="@OnEndpointChangedAsync" />
 
-<ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
-    <NoMessagesContent>
-        <div>Ask the assistant a question to start a conversation.</div>
-    </NoMessagesContent>
-</ChatMessageList>
-<div class="chat-container">
-    <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
-    <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+@* MY CUSTOMIZATION POINT: PanicButton — emergency stop visible during agent execution *@
+<div class="panic-button-container">
+    <PanicButton IsAgentRunning="@(currentResponseCancellation is not null && !currentResponseCancellation.IsCancellationRequested)"
+                 OnPanic="@HandlePanic" />
 </div>
 
-@* Show approval dialog when there's a pending approval *@
-@if (currentPendingApproval is not null)
-{
-    <ApprovalDialog Approval="@currentPendingApproval"
-                    OnApproved="@OnApprovalApproved"
-                    OnRejected="@OnApprovalRejected" />
-}
+@* MY CUSTOMIZATION POINT: Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
+<DualPaneLayout>
+    <ContextPaneContent>
+        <ContextPane>
+            <ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
+                <NoMessagesContent>
+                    <div>Ask the assistant a question to start a conversation.</div>
+                </NoMessagesContent>
+            </ChatMessageList>
+            <div class="chat-container">
+                <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
+                <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+            </div>
 
-@* Show Plan Progress component when we have an active plan (Agentic Generative UI) *@
-@if (currentPlan is not null)
-{
-    <div class="plan-progress-container">
-        <PlanProgress Plan="@currentPlan" />
-    </div>
-}
+            @* MY CUSTOMIZATION POINT: Conditional approval UI — SwipeApproval on mobile, ApprovalQueue on desktop *@
+            @if (currentPendingApproval is not null)
+            {
+                @if (ViewportService.IsMobile)
+                {
+                    <SwipeApproval FunctionName="@currentPendingApproval.FunctionName"
+                                   Arguments="@ConvertApprovalArguments(currentPendingApproval.FunctionArguments)"
+                                   RiskLevel="@RiskAssessmentService.AssessRisk(currentPendingApproval.FunctionName)"
+                                   OnDecision="@OnApprovalDecision" />
+                }
+                else
+                {
+                    <ApprovalQueue FunctionName="@currentPendingApproval.FunctionName"
+                                   Arguments="@ConvertApprovalArguments(currentPendingApproval.FunctionArguments)"
+                                   RiskLevel="@RiskAssessmentService.AssessRisk(currentPendingApproval.FunctionName)"
+                                   OnDecision="@OnApprovalDecision" />
+                }
+            }
+        </ContextPane>
+    </ContextPaneContent>
+    <CanvasPaneContent>
+        <CanvasPane>
+            @* MY CUSTOMIZATION POINT: Observability components displayed in Canvas Pane *@
+            <MemoryInspector ConversationId="@chatOptions.ConversationId"
+                             SelectedEndpoint="@selectedEndpointPath"
+                             MessageCount="@messages.Count"
+                             PlanStepCount="@(currentPlan?.Steps?.Count)"
+                             PlanCompletedCount="@(currentPlan?.Steps?.Count(s => s.Status == StepStatus.Completed))"
+                             RecipeName="@(IsSharedStateEndpoint ? StateManager.CurrentRecipe?.Title : null)"
+                             DocumentLength="@(IsPredictiveStateEndpoint ? currentDocumentState?.Document?.Length : null)"
+                             ToolInvocations="@GetToolInvocationSummary()" />
 
-@* Show Recipe Editor when using the Shared State endpoint *@
-@if (IsSharedStateEndpoint)
-{
-    <div class="shared-state-container">
-        <RecipeEditor Recipe="@StateManager.CurrentRecipe" RecipeChanged="@OnRecipeChanged" />
-    </div>
-}
+            <ToolExecutionTracker Steps="@ObservabilityService.GetSteps()" />
 
-@* Show Document Preview when using the Predictive State Updates endpoint *@
-@if (IsPredictiveStateEndpoint && currentDocumentState is not null)
-{
-    <div class="predictive-state-container">
-        <DocumentPreview DocumentState="@currentDocumentState" IsPreview="@isDocumentPreview" Title="Document Preview" />
-    </div>
-}
+            @* MY CUSTOMIZATION POINT: Governance components displayed in Canvas Pane *@
+            <CheckpointManager Checkpoints="@CheckpointService.GetAllCheckpoints()"
+                               OnRevert="@HandleCheckpointRevert" />
+
+            @if (_lastDiffBefore is not null || _lastDiffAfter is not null)
+            {
+                <DiffPreview Before="@_lastDiffBefore" After="@_lastDiffAfter" Title="@_lastDiffTitle" />
+            }
+
+            @* MY CUSTOMIZATION POINT: Artifact components displayed in Canvas Pane *@
+
+            @* Show Plan Progress component when we have an active plan (Agentic Generative UI) *@
+            @if (currentPlan is not null)
+            {
+                <PlanProgress Plan="@currentPlan" />
+            }
+
+            @* Show Recipe Editor when using the Shared State endpoint *@
+            @if (IsSharedStateEndpoint)
+            {
+                <RecipeEditor Recipe="@StateManager.CurrentRecipe" RecipeChanged="@OnRecipeChanged" />
+            }
+
+            @* Show Document Preview when using the Predictive State Updates endpoint *@
+            @if (IsPredictiveStateEndpoint && currentDocumentState is not null)
+            {
+                <DocumentPreview DocumentState="@currentDocumentState" IsPreview="@isDocumentPreview" Title="Document Preview" />
+            }
+        </CanvasPane>
+    </CanvasPaneContent>
+</DualPaneLayout>
 
 @code {
     private const string SystemPrompt = @"
@@ -87,6 +138,11 @@
     private readonly HashSet<string> seenFunctionResultCallIds = new();
     private bool pendingStateChange = false;
     private System.Timers.Timer? throttleTimer;
+
+    // MY CUSTOMIZATION POINT: Governance state — diff preview tracking
+    private object? _lastDiffBefore;
+    private object? _lastDiffAfter;
+    private string _lastDiffTitle = "State Diff";
 
     /// <summary>
     /// Gets whether the currently selected endpoint is the Shared State endpoint.
@@ -120,6 +176,22 @@
         throttleTimer = new System.Timers.Timer(ThrottleDelayMs);
         throttleTimer.AutoReset = false;
         throttleTimer.Elapsed += OnThrottleElapsed;
+    }
+
+    // MY CUSTOMIZATION POINT: Initialize ViewportService for responsive mobile layout
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ViewportService.InitializeAsync();
+            ViewportService.OnViewportChanged += OnViewportChanged;
+        }
+    }
+
+    // MY CUSTOMIZATION POINT: Re-render when viewport crosses mobile breakpoint
+    private void OnViewportChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -253,7 +325,12 @@
                             Plan? plan = TryParsePlanSnapshot(dc);
                             if (plan is not null)
                             {
+                                // MY CUSTOMIZATION POINT: Checkpoint before plan snapshot update
+                                CheckpointService.CreateCheckpoint("Before plan update", currentPlan, IsSharedStateEndpoint ? StateManager.CurrentRecipe : null, currentDocumentState, messages.Count);
+                                _lastDiffBefore = currentPlan;
                                 currentPlan = plan;
+                                _lastDiffAfter = currentPlan;
+                                _lastDiffTitle = "Plan State Change";
                                 StateHasChanged();
                             }
                         }
@@ -265,6 +342,8 @@
                                 List<JsonPatchOperation>? operations = TryParsePatchOperations(patchDc);
                                 if (operations is not null)
                                 {
+                                    // MY CUSTOMIZATION POINT: Checkpoint before plan delta
+                                    CheckpointService.CreateCheckpoint("Before plan step update", currentPlan, IsSharedStateEndpoint ? StateManager.CurrentRecipe : null, currentDocumentState, messages.Count);
                                     JsonPatchApplier.ApplyPatch(currentPlan, operations);
                                     StateHasChanged();
                                 }
@@ -273,12 +352,22 @@
                         // Handle Recipe state snapshots (Shared State feature)
                         else if (content is DataContent recipeDc && IsSharedStateEndpoint && StateManager.TryExtractRecipeSnapshot(recipeDc, out Recipe? recipe) && recipe is not null)
                         {
+                            // MY CUSTOMIZATION POINT: Checkpoint before recipe update
+                            CheckpointService.CreateCheckpoint("Before recipe update", currentPlan, StateManager.CurrentRecipe, currentDocumentState, messages.Count);
+                            _lastDiffBefore = StateManager.CurrentRecipe;
                             StateManager.UpdateFromServerSnapshot(recipe);
+                            _lastDiffAfter = StateManager.CurrentRecipe;
+                            _lastDiffTitle = "Recipe State Change";
                             StateHasChanged();
                         }
                         // Handle Document state snapshots (Predictive State Updates feature)
                         else if (content is DataContent docDc && IsPredictiveStateEndpoint && TryExtractDocumentSnapshot(docDc, out DocumentState? docState) && docState is not null)
                         {
+                            // MY CUSTOMIZATION POINT: Checkpoint before document update (only first snapshot per response)
+                            if (currentDocumentState is null)
+                            {
+                                CheckpointService.CreateCheckpoint("Before document update", currentPlan, null, currentDocumentState, messages.Count);
+                            }
                             currentDocumentState = docState;
                             isDocumentPreview = true; // Still streaming
                             ThrottledStateHasChanged();
@@ -301,6 +390,9 @@
                             {
                                 seenFunctionCallIds.Add(fcc.CallId);
                                 currentResponseMessage?.Contents.Add(content);
+
+                                // MY CUSTOMIZATION POINT: Track tool call start for observability
+                                ObservabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
                             }
                         }
                         else if (content is DataContent dc)
@@ -318,6 +410,9 @@
                             {
                                 seenFunctionResultCallIds.Add(frc.CallId);
                                 currentResponseMessage?.Contents.Add(content);
+
+                                // MY CUSTOMIZATION POINT: Track tool call completion for observability
+                                ObservabilityService.CompleteToolCall(frc.CallId, frc.Result);
                             }
                             else if (frc.CallId is null)
                             {
@@ -408,20 +503,155 @@
         chatSuggestions?.Update(messages);
     }
 
+    // MY CUSTOMIZATION POINT: Unified approval decision handler for ApprovalQueue
     /// <summary>
-    /// Handles approval action from the dialog.
+    /// Handles the user's approval/rejection decision from the non-modal ApprovalQueue.
+    /// Preserves the TaskCompletionSource blocking semantic (per A6/K5 research).
     /// </summary>
-    private void OnApprovalApproved(string approvalId)
+    private void OnApprovalDecision(bool approved)
     {
-        approvalTaskSource?.TrySetResult(true);
+        approvalTaskSource?.TrySetResult(approved);
     }
 
+    // MY CUSTOMIZATION POINT: PanicButton handler — emergency stop + revert to last checkpoint
     /// <summary>
-    /// Handles rejection action from the dialog.
+    /// Handles the emergency stop action. Cancels the current agent response,
+    /// reverts to the last checkpoint state, and resets conversation context.
     /// </summary>
-    private void OnApprovalRejected(string approvalId)
+    private async Task HandlePanic()
     {
-        approvalTaskSource?.TrySetResult(false);
+        CancelAnyCurrentResponse();
+
+        var checkpoint = CheckpointService.GetLatestCheckpoint();
+        if (checkpoint is not null)
+        {
+            // Restore plan state from checkpoint
+            if (checkpoint.PlanSnapshot is not null)
+            {
+                currentPlan = JsonSerializer.Deserialize<Plan>(checkpoint.PlanSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            else
+            {
+                currentPlan = null;
+            }
+
+            // Restore recipe state from checkpoint
+            if (checkpoint.RecipeSnapshot is not null && IsSharedStateEndpoint)
+            {
+                var recipe = JsonSerializer.Deserialize<Recipe>(checkpoint.RecipeSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (recipe is not null)
+                {
+                    StateManager.UpdateFromServerSnapshot(recipe);
+                }
+            }
+
+            // Restore document state from checkpoint
+            if (checkpoint.DocumentSnapshot is not null && IsPredictiveStateEndpoint)
+            {
+                currentDocumentState = JsonSerializer.Deserialize<DocumentState>(checkpoint.DocumentSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                isDocumentPreview = false;
+            }
+            else if (IsPredictiveStateEndpoint)
+            {
+                currentDocumentState = null;
+            }
+
+            // Trim messages to checkpoint state
+            if (checkpoint.MessageCount < messages.Count)
+            {
+                messages.RemoveRange(checkpoint.MessageCount, messages.Count - checkpoint.MessageCount);
+            }
+        }
+
+        // Reset conversation context to start fresh
+        chatOptions.ConversationId = null;
+        statefulMessageCount = messages.Count;
+        _lastDiffBefore = null;
+        _lastDiffAfter = null;
+
+        StateHasChanged();
+        await chatInput!.FocusAsync();
+    }
+
+    // MY CUSTOMIZATION POINT: CheckpointManager revert handler
+    /// <summary>
+    /// Handles reverting to a specific checkpoint from the CheckpointManager timeline.
+    /// </summary>
+    private async Task HandleCheckpointRevert(string checkpointId)
+    {
+        CancelAnyCurrentResponse();
+
+        var checkpoint = CheckpointService.RevertToCheckpoint(checkpointId);
+        if (checkpoint is null)
+        {
+            return;
+        }
+
+        // Restore plan state
+        if (checkpoint.PlanSnapshot is not null)
+        {
+            currentPlan = JsonSerializer.Deserialize<Plan>(checkpoint.PlanSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        else
+        {
+            currentPlan = null;
+        }
+
+        // Restore recipe state
+        if (checkpoint.RecipeSnapshot is not null && IsSharedStateEndpoint)
+        {
+            var recipe = JsonSerializer.Deserialize<Recipe>(checkpoint.RecipeSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (recipe is not null)
+            {
+                StateManager.UpdateFromServerSnapshot(recipe);
+            }
+        }
+
+        // Restore document state
+        if (checkpoint.DocumentSnapshot is not null && IsPredictiveStateEndpoint)
+        {
+            currentDocumentState = JsonSerializer.Deserialize<DocumentState>(checkpoint.DocumentSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            isDocumentPreview = false;
+        }
+        else if (IsPredictiveStateEndpoint)
+        {
+            currentDocumentState = null;
+        }
+
+        // Trim messages to checkpoint state
+        if (checkpoint.MessageCount < messages.Count)
+        {
+            messages.RemoveRange(checkpoint.MessageCount, messages.Count - checkpoint.MessageCount);
+        }
+
+        // Reset conversation context
+        chatOptions.ConversationId = null;
+        statefulMessageCount = messages.Count;
+        _lastDiffBefore = null;
+        _lastDiffAfter = null;
+
+        StateHasChanged();
+        await chatInput!.FocusAsync();
+    }
+
+    // MY CUSTOMIZATION POINT: Convert PendingApproval's JsonElement arguments to IDictionary for ApprovalQueue
+    /// <summary>
+    /// Converts a nullable JsonElement (from PendingApproval) to an IDictionary for the ApprovalQueue component.
+    /// </summary>
+    private static IDictionary<string, object?>? ConvertApprovalArguments(JsonElement? arguments)
+    {
+        if (arguments is null || arguments.Value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var dict = new Dictionary<string, object?>();
+        foreach (var property in arguments.Value.EnumerateObject())
+        {
+            dict[property.Name] = property.Value;
+        }
+
+        return dict;
     }
 
     /// <summary>
@@ -463,6 +693,10 @@
         seenFunctionResultCallIds.Clear();
         ApprovalHandler.ClearPendingApprovals();
         chatSuggestions?.Clear();
+        // MY CUSTOMIZATION POINT: Clear checkpoints and diff state on conversation reset
+        CheckpointService.Clear();
+        _lastDiffBefore = null;
+        _lastDiffAfter = null;
         
         // Reinitialize state manager for Shared State endpoint
         if (IsSharedStateEndpoint)
@@ -697,8 +931,27 @@
         return false;
     }
 
+    // MY CUSTOMIZATION POINT: Tool invocation summary for MemoryInspector
+    /// <summary>
+    /// Builds a dictionary of tool name → invocation count from the ObservabilityService steps.
+    /// </summary>
+    private IReadOnlyDictionary<string, int>? GetToolInvocationSummary()
+    {
+        var steps = ObservabilityService.GetSteps();
+        if (steps.Count == 0)
+        {
+            return null;
+        }
+
+        return steps
+            .GroupBy(s => s.ToolName)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
     public void Dispose()
     {
+        // MY CUSTOMIZATION POINT: Unsubscribe from viewport changes
+        ViewportService.OnViewportChanged -= OnViewportChanged;
         currentResponseCancellation?.Cancel();
         approvalTaskSource?.TrySetCanceled();
         throttleTimer?.Stop();

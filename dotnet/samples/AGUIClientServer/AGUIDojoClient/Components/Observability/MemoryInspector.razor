@@ -1,0 +1,147 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: MemoryInspector — displays active agent context for observability *@
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Components.Badge
+@using BlazorBlueprint.Components.Separator
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<Card Class="memory-inspector">
+    <CardHeader>
+        <CardTitle>
+            <LucideIcon Name="brain" Size="16" />
+            Agent Context
+        </CardTitle>
+        <CardDescription>Active session state and memory</CardDescription>
+    </CardHeader>
+    <CardContent>
+        @* Session Info Section *@
+        <div class="memory-section">
+            <div class="memory-section-title">Session</div>
+            <div class="memory-item">
+                <span class="memory-label">Conversation</span>
+                <Badge Variant="BadgeVariant.Outline">@(ConversationId ?? "N/A")</Badge>
+            </div>
+            <div class="memory-item">
+                <span class="memory-label">Endpoint</span>
+                <Badge Variant="BadgeVariant.Secondary">@(SelectedEndpoint ?? "N/A")</Badge>
+            </div>
+            <div class="memory-item">
+                <span class="memory-label">Messages</span>
+                <Badge>@MessageCount</Badge>
+            </div>
+        </div>
+
+        <Separator />
+
+        @* Active State Objects Section *@
+        <div class="memory-section">
+            <div class="memory-section-title">State</div>
+            @if (PlanStepCount.HasValue)
+            {
+                <div class="memory-item">
+                    <span class="memory-label">Plan Steps</span>
+                    <Badge Variant="BadgeVariant.Secondary">@PlanStepCount.Value total</Badge>
+                    @if (PlanCompletedCount.HasValue)
+                    {
+                        <Badge>@PlanCompletedCount.Value done</Badge>
+                    }
+                </div>
+            }
+            @if (RecipeName is not null)
+            {
+                <div class="memory-item">
+                    <span class="memory-label">Recipe</span>
+                    <Badge Variant="BadgeVariant.Secondary">@RecipeName</Badge>
+                </div>
+            }
+            @if (DocumentLength.HasValue)
+            {
+                <div class="memory-item">
+                    <span class="memory-label">Document</span>
+                    <Badge Variant="BadgeVariant.Secondary">@DocumentLength.Value chars</Badge>
+                </div>
+            }
+            @if (!PlanStepCount.HasValue && RecipeName is null && !DocumentLength.HasValue)
+            {
+                <div class="memory-item">
+                    <span class="memory-label">No active state</span>
+                    <Badge Variant="BadgeVariant.Outline">N/A</Badge>
+                </div>
+            }
+        </div>
+
+        <Separator />
+
+        @* Tool Invocation Summary Section *@
+        <div class="memory-section">
+            <div class="memory-section-title">Tools</div>
+            @if (ToolInvocations is not null && ToolInvocations.Count > 0)
+            {
+                @foreach (var tool in ToolInvocations)
+                {
+                    <div class="memory-item">
+                        <span class="memory-label">@tool.Key</span>
+                        <Badge>@tool.Value</Badge>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="memory-item">
+                    <span class="memory-label">No tools called</span>
+                    <Badge Variant="BadgeVariant.Outline">N/A</Badge>
+                </div>
+            }
+        </div>
+    </CardContent>
+</Card>
+
+@code {
+    /// <summary>
+    /// The current conversation ID, if active.
+    /// </summary>
+    [Parameter]
+    public string? ConversationId { get; set; }
+
+    /// <summary>
+    /// The currently selected AG-UI endpoint path.
+    /// </summary>
+    [Parameter]
+    public string? SelectedEndpoint { get; set; }
+
+    /// <summary>
+    /// The total number of messages in the conversation.
+    /// </summary>
+    [Parameter]
+    public int MessageCount { get; set; }
+
+    /// <summary>
+    /// The total number of steps in the current plan, if any.
+    /// </summary>
+    [Parameter]
+    public int? PlanStepCount { get; set; }
+
+    /// <summary>
+    /// The number of completed plan steps, if a plan is active.
+    /// </summary>
+    [Parameter]
+    public int? PlanCompletedCount { get; set; }
+
+    /// <summary>
+    /// The name of the active recipe, if using the Shared State endpoint.
+    /// </summary>
+    [Parameter]
+    public string? RecipeName { get; set; }
+
+    /// <summary>
+    /// The character length of the current document, if using the Predictive State endpoint.
+    /// </summary>
+    [Parameter]
+    public int? DocumentLength { get; set; }
+
+    /// <summary>
+    /// A dictionary mapping tool names to their invocation counts.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyDictionary<string, int>? ToolInvocations { get; set; }
+}

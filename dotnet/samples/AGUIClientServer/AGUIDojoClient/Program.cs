@@ -47,6 +47,7 @@
 using System.Net.Http.Headers;
 using AGUIDojoClient.Components;
 using AGUIDojoClient.Services;
+using BlazorBlueprint.Primitives.Extensions;
 using Microsoft.Agents.AI.AGUI;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -62,7 +63,16 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        // MY CUSTOMIZATION POINT: Enable detailed circuit errors in development
+        // to surface unhandled exceptions during Blazor component lifecycle.
+        options.DetailedErrors = builder.Environment.IsDevelopment();
+    });
+
+// MY CUSTOMIZATION POINT: Register BlazorBlueprint Primitives services (IPortalService, etc.)
+// Required for PortalHost overlay rendering used by Dialog, Sheet, Drawer, Tooltip, etc.
+builder.Services.AddBlazorBlueprintPrimitives();
 
 // -----------------------------------------------------------------------------
 // BACKEND CONNECTION CONFIGURATION
@@ -173,6 +183,22 @@ builder.Services.AddSingleton<IToolComponentRegistry, ToolComponentRegistry>();
 // Register StateManager for Shared State feature
 // This service manages bidirectional state sync with the server for Recipe data
 builder.Services.AddScoped<IStateManager, StateManager>();
+
+// MY CUSTOMIZATION POINT: Register ObservabilityService for tool call tracking
+// This scoped service tracks agent reasoning steps with timing, status, and results
+// for the Accordion of Thought, MemoryInspector, and ToolExecutionTracker components
+builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
+
+// MY CUSTOMIZATION POINT: Register governance services for HITL governance pattern
+// RiskAssessmentService maps function names to risk levels (Singleton — stateless)
+builder.Services.AddSingleton<IRiskAssessmentService, RiskAssessmentService>();
+// CheckpointService manages in-memory state snapshots for time-travel/undo (Scoped — per circuit)
+builder.Services.AddScoped<ICheckpointService, CheckpointService>();
+
+// MY CUSTOMIZATION POINT: Register ViewportService for responsive mobile layout
+// Detects viewport width via JS interop and provides IsMobile property (breakpoint: 768px)
+// Used by DualPaneLayout to switch between desktop ResizablePanelGroup and mobile MobileLayout
+builder.Services.AddScoped<ViewportService>();
 
 // Register MarkdownService for rendering LLM markdown responses as HTML
 builder.Services.AddSingleton<IMarkdownService, MarkdownService>();

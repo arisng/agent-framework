@@ -1,0 +1,61 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — RiskBadge: Maps RiskLevel enum to visual Badge variants *@
+
+@using AGUIDojoClient.Models
+@using BlazorBlueprint.Components.Badge
+
+<Badge Variant="@GetVariant()" Class="@GetCssClass()">
+    @if (ShowLabel)
+    {
+        <span>@GetLabel()</span>
+    }
+</Badge>
+
+@code {
+    /// <summary>
+    /// The risk level to display. Determines the Badge variant and label text.
+    /// </summary>
+    [Parameter]
+    public RiskLevel Level { get; set; }
+
+    /// <summary>
+    /// Whether to show the text label (e.g., "Low Risk", "High Risk").
+    /// Defaults to true.
+    /// </summary>
+    [Parameter]
+    public bool ShowLabel { get; set; } = true;
+
+    /// <summary>
+    /// Optional additional CSS class(es) to apply to the Badge.
+    /// </summary>
+    [Parameter]
+    public string? CssClass { get; set; }
+
+    private BadgeVariant GetVariant() => Level switch
+    {
+        RiskLevel.Low => BadgeVariant.Default,
+        RiskLevel.Medium => BadgeVariant.Secondary,
+        RiskLevel.High => BadgeVariant.Destructive,
+        RiskLevel.Critical => BadgeVariant.Destructive,
+        _ => BadgeVariant.Default
+    };
+
+    private string GetLabel() => Level switch
+    {
+        RiskLevel.Low => "Low Risk",
+        RiskLevel.Medium => "Medium Risk",
+        RiskLevel.High => "High Risk",
+        RiskLevel.Critical => "Critical Risk",
+        _ => "Unknown Risk"
+    };
+
+    private string GetCssClass()
+    {
+        var classes = CssClass ?? string.Empty;
+        if (Level == RiskLevel.Critical)
+        {
+            classes = $"risk-badge-critical {classes}".Trim();
+        }
+        return classes;
+    }
+}
