@@ -1,0 +1,74 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: Mobile bottom sheet for displaying artifact content *@
+
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Drawer
+@using BlazorBlueprint.Components.ScrollArea
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<Drawer @bind-Open="IsOpen" Direction="DrawerDirection.Bottom">
+    <DrawerTrigger>
+        @* MY CUSTOMIZATION POINT: Trigger button shown externally by parent — this is a fallback *@
+        <Button Variant="ButtonVariant.Outline" Class="w-full">
+            <LucideIcon Name="chevron-up" Size="16" />
+            <span class="ml-2">@(Title ?? "View Artifacts")</span>
+        </Button>
+    </DrawerTrigger>
+    <DrawerContent>
+        <DrawerHeader>
+            <DrawerTitle>@(Title ?? "Artifacts")</DrawerTitle>
+        </DrawerHeader>
+        @* MY CUSTOMIZATION POINT: Artifact content area with scroll support *@
+        <div class="artifact-sheet-body">
+            <ScrollArea Class="h-full">
+                @if (ChildContent is not null)
+                {
+                    @ChildContent
+                }
+                else
+                {
+                    <div class="artifact-sheet-empty">
+                        <LucideIcon Name="file-text" Size="32" />
+                        <p>No active artifacts</p>
+                    </div>
+                }
+            </ScrollArea>
+        </div>
+        <DrawerFooter>
+            <DrawerClose>
+                <Button Variant="ButtonVariant.Outline" Class="w-full">
+                    <LucideIcon Name="x" Size="16" />
+                    <span class="ml-2">Close</span>
+                </Button>
+            </DrawerClose>
+        </DrawerFooter>
+    </DrawerContent>
+</Drawer>
+
+@code {
+    // MY CUSTOMIZATION POINT: ArtifactSheet parameters
+
+    /// <summary>
+    /// The artifact content to display in the bottom sheet.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Optional title for the bottom sheet header.
+    /// </summary>
+    [Parameter]
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// Controls the open/close state of the drawer.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the drawer open state changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+}

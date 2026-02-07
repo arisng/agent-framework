@@ -1,0 +1,147 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: ToolExecutionTracker — compact real-time tool execution display for observability *@
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Components.Badge
+@using BlazorBlueprint.Components.Separator
+@using BlazorBlueprint.Components.Spinner
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<Card Class="tool-execution-tracker">
+    <CardHeader>
+        <CardTitle>
+            <LucideIcon Name="activity" Size="16" />
+            Tool Execution
+        </CardTitle>
+        <CardDescription>Real-time tool call tracking</CardDescription>
+    </CardHeader>
+    <CardContent>
+        @if (Steps is null || Steps.Count == 0)
+        {
+            @* Empty state *@
+            <div class="tracker-empty">
+                <LucideIcon Name="circle-dashed" Size="20" />
+                <span>No tool calls yet</span>
+            </div>
+        }
+        else
+        {
+            @* Active tool call (currently running) *@
+            var activeStep = Steps.LastOrDefault(s => s.Status == ReasoningStepStatus.Running);
+            @if (activeStep is not null)
+            {
+                <div class="tracker-active">
+                    <div class="tracker-active-header">
+                        <Spinner Size="SpinnerSize.Small" />
+                        <span class="tracker-tool-name">@activeStep.ToolName</span>
+                        <Badge Variant="BadgeVariant.Secondary">
+                            @FormatElapsed(activeStep.StartTime)
+                        </Badge>
+                    </div>
+                    @if (activeStep.Arguments is not null && activeStep.Arguments.Count > 0)
+                    {
+                        <div class="tracker-args">
+                            @foreach (var arg in activeStep.Arguments.Take(3))
+                            {
+                                <Badge Variant="BadgeVariant.Outline">@arg.Key</Badge>
+                            }
+                            @if (activeStep.Arguments.Count > 3)
+                            {
+                                <Badge Variant="BadgeVariant.Outline">+@(activeStep.Arguments.Count - 3)</Badge>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (completedSteps.Count > 0)
+                {
+                    <Separator />
+                }
+            }
+
+            @* Completed/failed tool calls *@
+            @if (completedSteps.Count > 0)
+            {
+                <div class="tracker-completed-list">
+                    @foreach (var step in completedSteps)
+                    {
+                        <div class="tracker-completed-item">
+                            <div class="tracker-completed-info">
+                                @if (step.Status == ReasoningStepStatus.Completed)
+                                {
+                                    @* MY CUSTOMIZATION POINT — Use "check" icon (check-circle not available in BlazorBlueprint.Icons.Lucide 2.0.0) *@
+                                    <LucideIcon Name="check" Size="14" />
+                                }
+                                else if (step.Status == ReasoningStepStatus.Failed)
+                                {
+                                    <LucideIcon Name="x-circle" Size="14" />
+                                }
+                                <span class="tracker-tool-name">@step.ToolName</span>
+                            </div>
+                            <div class="tracker-completed-meta">
+                                @if (step.Duration.HasValue)
+                                {
+                                    <Badge Variant="BadgeVariant.Outline">@FormatDuration(step.Duration.Value)</Badge>
+                                }
+                                @if (step.Status == ReasoningStepStatus.Completed)
+                                {
+                                    <Badge>Completed</Badge>
+                                }
+                                else if (step.Status == ReasoningStepStatus.Failed)
+                                {
+                                    <Badge Variant="BadgeVariant.Destructive">Failed</Badge>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </CardContent>
+</Card>
+
+@code {
+    private List<ReasoningStep> completedSteps = [];
+
+    /// <summary>
+    /// The list of reasoning steps to display. Received from the parent component
+    /// which gets data from <see cref="IObservabilityService"/>.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ReasoningStep>? Steps { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        completedSteps = Steps?
+            .Where(s => s.Status is ReasoningStepStatus.Completed or ReasoningStepStatus.Failed)
+            .OrderByDescending(s => s.EndTime)
+            .ToList() ?? [];
+    }
+
+    /// <summary>
+    /// Formats a duration as a human-readable string.
+    /// </summary>
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalMilliseconds < 1000)
+        {
+            return $"{duration.TotalMilliseconds:F0}ms";
+        }
+
+        if (duration.TotalSeconds < 60)
+        {
+            return $"{duration.TotalSeconds:F1}s";
+        }
+
+        return $"{duration.TotalMinutes:F1}m";
+    }
+
+    /// <summary>
+    /// Formats elapsed time since a start time as a human-readable string.
+    /// </summary>
+    private static string FormatElapsed(DateTime startTime)
+    {
+        var elapsed = DateTime.UtcNow - startTime;
+        return FormatDuration(elapsed);
+    }
+}

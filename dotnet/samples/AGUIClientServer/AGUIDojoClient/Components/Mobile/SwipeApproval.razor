@@ -1,0 +1,330 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — SwipeApproval: Swipe-based mobile approval card with JS gesture handling *@
+
+@using AGUIDojoClient.Models
+@using BlazorBlueprint.Components.Badge
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Icons.Lucide.Components
+@using Microsoft.JSInterop
+
+@implements IAsyncDisposable
+
+<div class="swipe-approval-container">
+    @* Direction indicators — arrows/text shown at edges *@
+    <div class="swipe-indicator swipe-indicator-reject">
+        <LucideIcon Name="x" Size="28" />
+        <span>Reject</span>
+    </div>
+    <div class="swipe-indicator swipe-indicator-approve">
+        <LucideIcon Name="check" Size="28" />
+        <span>Approve</span>
+    </div>
+
+    @* Swipeable card *@
+    <div @ref="_cardRef" class="swipe-card">
+        @* Colour overlays for visual feedback during swipe *@
+        <div class="swipe-overlay swipe-overlay-approve"></div>
+        <div class="swipe-overlay swipe-overlay-reject"></div>
+
+        <Card>
+            <CardHeader>
+                <CardTitle Class="swipe-card-title">
+                    <LucideIcon Name="shield-alert" Size="18" />
+                    <span>Approval Required</span>
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div class="swipe-card-body">
+                    <div class="swipe-card-function">
+                        <span class="swipe-card-label">Function</span>
+                        <span class="swipe-card-value">@FunctionName</span>
+                    </div>
+
+                    @if (Arguments is not null && Arguments.Count > 0)
+                    {
+                        <div class="swipe-card-args">
+                            <span class="swipe-card-label">Arguments</span>
+                            <div class="swipe-card-args-list">
+                                @foreach (var arg in Arguments)
+                                {
+                                    <div class="swipe-card-arg-item">
+                                        <Badge Variant="BadgeVariant.Outline">@arg.Key</Badge>
+                                        <span class="swipe-card-arg-value">@(arg.Value?.ToString() ?? "null")</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="swipe-card-risk">
+                        <span class="swipe-card-label">Risk Level</span>
+                        <RiskBadge Level="@RiskLevel" ShowLabel="true" />
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        @* Swipe instruction hint *@
+        <div class="swipe-hint">
+            <LucideIcon Name="arrow-left" Size="14" />
+            <span>Swipe to decide</span>
+            <LucideIcon Name="arrow-right" Size="14" />
+        </div>
+    </div>
+</div>
+
+@code {
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<SwipeApproval>? _dotNetRef;
+    private ElementReference _cardRef;
+    private bool _initialized;
+    private bool _decisionMade;
+
+    /// <summary>
+    /// Swipe distance threshold in pixels. Default is 100px.
+    /// </summary>
+    private const int SwipeThreshold = 100;
+
+    /// <summary>
+    /// Name of the function/tool the agent wants to execute.
+    /// </summary>
+    [Parameter]
+    public string FunctionName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Arguments the agent intends to pass to the function.
+    /// </summary>
+    [Parameter]
+    public IDictionary<string, object?>? Arguments { get; set; }
+
+    /// <summary>
+    /// Assessed risk level of this action.
+    /// </summary>
+    [Parameter]
+    public RiskLevel RiskLevel { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user swipes to make a decision.
+    /// True = approved (swipe right), False = rejected (swipe left).
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnDecision { get; set; }
+
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized)
+        {
+            _initialized = true;
+
+            _jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./Components/Mobile/SwipeApproval.razor.js");
+
+            _dotNetRef = DotNetObjectReference.Create(this);
+
+            await _jsModule.InvokeVoidAsync(
+                "initSwipe", _cardRef, _dotNetRef, nameof(OnSwipeComplete), SwipeThreshold);
+        }
+    }
+
+    /// <summary>
+    /// Called from JavaScript when the user completes a swipe gesture past the threshold.
+    /// Includes debounce guard to prevent duplicate actions during SignalR latency.
+    /// </summary>
+    /// <param name="direction">"right" for approve, "left" for reject.</param>
+    [JSInvokable]
+    public async Task OnSwipeComplete(string direction)
+    {
+        // Debounce: prevent double-action during SignalR round-trip
+        if (_decisionMade)
+        {
+            return;
+        }
+
+        _decisionMade = true;
+
+        bool approved = string.Equals(direction, "right", StringComparison.OrdinalIgnoreCase);
+        await OnDecision.InvokeAsync(approved);
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("dispose");
+                await _jsModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected — JS cleanup is no longer possible.
+            }
+        }
+
+        _dotNetRef?.Dispose();
+        _jsModule = null;
+        _dotNetRef = null;
+        _initialized = false;
+    }
+}
+
+<style>
+    .swipe-approval-container {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
+        padding: 16px;
+        /* Ensure touch targets meet 44x44pt minimum */
+        min-height: 180px;
+    }
+
+    .swipe-card {
+        position: relative;
+        touch-action: pan-y;
+        cursor: grab;
+        will-change: transform;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    .swipe-card:active {
+        cursor: grabbing;
+    }
+
+    /* Colour overlays for swipe visual feedback */
+    .swipe-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: var(--radius, 8px);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.05s ease;
+        z-index: 1;
+    }
+
+    .swipe-overlay-approve {
+        background-color: rgba(34, 197, 94, 0.3);
+        /* green */
+    }
+
+    .swipe-overlay-reject {
+        background-color: rgba(239, 68, 68, 0.3);
+        /* red */
+    }
+
+    /* Direction indicators at the edges */
+    .swipe-indicator {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        opacity: 0.4;
+        z-index: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .swipe-indicator-reject {
+        left: -8px;
+        color: #ef4444;
+    }
+
+    .swipe-indicator-approve {
+        right: -8px;
+        color: #22c55e;
+    }
+
+    /* Card content styling */
+    .swipe-card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 1rem;
+    }
+
+    .swipe-card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .swipe-card-function,
+    .swipe-card-args,
+    .swipe-card-risk {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .swipe-card-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.6;
+    }
+
+    .swipe-card-value {
+        font-family: var(--font-mono, monospace);
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .swipe-card-args-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .swipe-card-arg-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+    }
+
+    .swipe-card-arg-value {
+        font-family: var(--font-mono, monospace);
+        font-size: 0.8125rem;
+        opacity: 0.8;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 200px;
+    }
+
+    /* Swipe hint at the bottom */
+    .swipe-hint {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 8px;
+        font-size: 0.75rem;
+        opacity: 0.4;
+        animation: swipe-hint-pulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes swipe-hint-pulse {
+        0%, 100% {
+            opacity: 0.4;
+        }
+
+        50% {
+            opacity: 0.7;
+        }
+    }
+</style>

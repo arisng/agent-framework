@@ -1,0 +1,64 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — PanicButton: Emergency stop button with AlertDialog confirmation *@
+
+@using BlazorBlueprint.Components.AlertDialog
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Dialog
+@using BlazorBlueprint.Icons.Lucide.Components
+
+@if (IsAgentRunning)
+{
+    <AlertDialog @bind-Open="_isDialogOpen">
+        <AlertDialogTrigger AsChild>
+            <Button Variant="ButtonVariant.Destructive"
+                    Size="ButtonSize.Large"
+                    Class="panic-button"
+                    AriaLabel="Emergency stop agent">
+                <LucideIcon Name="octagon" Size="20" />
+                <span>Stop Agent</span>
+            </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Emergency Stop</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Are you sure? This will stop the agent and revert to the last checkpoint.
+                    Any in-progress work will be lost.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                @* MY CUSTOMIZATION POINT — Use Button with @onclick instead of AlertDialogAction
+                   (AlertDialogAction doesn't support OnClick or @onclick parameters in BlazorBlueprint) *@
+                <Button Variant="ButtonVariant.Destructive" @onclick="HandleConfirm">
+                    Stop &amp; Revert
+                </Button>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
+}
+
+@code {
+    private bool _isDialogOpen;
+
+    /// <summary>
+    /// Callback invoked when the user confirms the emergency stop action.
+    /// The parent component should cancel the current agent response and revert
+    /// to the last checkpoint.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnPanic { get; set; }
+
+    /// <summary>
+    /// Controls visibility — the panic button is only shown when the agent is
+    /// actively running (streaming a response).
+    /// </summary>
+    [Parameter]
+    public bool IsAgentRunning { get; set; }
+
+    private async Task HandleConfirm()
+    {
+        _isDialogOpen = false;
+        await OnPanic.InvokeAsync();
+    }
+}

@@ -1,3 +1,4 @@
+/* MY CUSTOMIZATION POINT: Chat input container — sticky at bottom of Context Pane */
 .chat-container {
     position: sticky;
     bottom: 0;
@@ -10,34 +11,6 @@
     border-color: #E5E7EB;
 }
 
-/* Plan Progress container for Agentic Generative UI feature */
-.plan-progress-container {
-    position: fixed;
-    right: 2rem;
-    top: 5rem;
-    z-index: 100;
-    max-width: 400px;
-}
-
-/* Shared State container for Recipe Editor feature */
-.shared-state-container {
-    position: fixed;
-    left: 2rem;
-    top: 5rem;
-    z-index: 100;
-    max-width: 600px;
-    max-height: calc(100vh - 8rem);
-    overflow-y: auto;
-}
-
-/* Predictive State container for Document Preview feature */
-.predictive-state-container {
-    position: fixed;
-    right: 2rem;
-    top: 5rem;
-    z-index: 100;
-    width: 450px;
-    max-width: calc(100vw - 4rem);
-}
+/* MY CUSTOMIZATION POINT: Artifact container styles removed — artifacts now render inside CanvasPane */
 
 /* Endpoint selector styling handled in ChatHeader.razor.css */

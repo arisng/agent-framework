@@ -1,6 +1,14 @@
 @inherits LayoutComponentBase
+@* MY CUSTOMIZATION POINT: BlazorBlueprint Primitives namespace for PortalHost *@
+@using BlazorBlueprint.Primitives.Services
 
-@Body
+@* MY CUSTOMIZATION POINT: Full-height layout container for DualPaneLayout support *@
+<div class="layout-root">
+    @Body
+</div>
+
+@* MY CUSTOMIZATION POINT: BlazorBlueprint PortalHost — required for overlay components (Dialog, Sheet, Drawer, Tooltip, Popover, Select, Combobox) *@
+<PortalHost />
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

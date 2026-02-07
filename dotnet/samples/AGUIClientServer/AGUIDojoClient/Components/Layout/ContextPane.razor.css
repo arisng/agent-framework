@@ -1,0 +1,14 @@
+/* MY CUSTOMIZATION POINT: ContextPane scoped styles for chat/negotiation sidebar */
+
+.context-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: linear-gradient(to bottom, rgb(225 227 233), #f4f4f4 25rem);
+    overflow: hidden;
+}
+
+/* ScrollArea fills full height of the pane */
+.context-pane ::deep .context-pane__scroll {
+    height: 100%;
+}

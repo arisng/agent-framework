@@ -1,0 +1,135 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — DiffPreview: Two-column before/after state comparison view *@
+
+@using System.Text.Json
+@using BlazorBlueprint.Components.Badge
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Components.ScrollArea
+@using BlazorBlueprint.Components.Separator
+
+<Card Class="diff-preview-card">
+    <CardHeader>
+        <CardTitle>@Title</CardTitle>
+        <CardDescription>Side-by-side state comparison</CardDescription>
+    </CardHeader>
+    <CardContent>
+        <div class="diff-preview-columns">
+            <div class="diff-preview-column">
+                <div class="diff-preview-column-header">
+                    <Badge Variant="BadgeVariant.Secondary">Before</Badge>
+                </div>
+                <ScrollArea Class="diff-preview-scroll">
+                    <pre class="diff-preview-content">@foreach (var line in _beforeLines)
+{<span class="@line.CssClass">@line.Text</span>
+}</pre>
+                </ScrollArea>
+            </div>
+            <Separator Orientation="SeparatorOrientation.Vertical" />
+            <div class="diff-preview-column">
+                <div class="diff-preview-column-header">
+                    <Badge Variant="BadgeVariant.Default">After</Badge>
+                </div>
+                <ScrollArea Class="diff-preview-scroll">
+                    <pre class="diff-preview-content">@foreach (var line in _afterLines)
+{<span class="@line.CssClass">@line.Text</span>
+}</pre>
+                </ScrollArea>
+            </div>
+        </div>
+    </CardContent>
+</Card>
+
+@code {
+    /// <summary>
+    /// The object representing the state before the change.
+    /// Serialized to pretty-printed JSON for display.
+    /// When null, displays "Initial State" placeholder.
+    /// </summary>
+    [Parameter]
+    public object? Before { get; set; }
+
+    /// <summary>
+    /// The object representing the state after the change.
+    /// Serialized to pretty-printed JSON for display.
+    /// When null, displays "Deleted" placeholder.
+    /// </summary>
+    [Parameter]
+    public object? After { get; set; }
+
+    /// <summary>
+    /// Title displayed in the card header.
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "State Diff";
+
+    private List<DiffLine> _beforeLines = [];
+    private List<DiffLine> _afterLines = [];
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    protected override void OnParametersSet()
+    {
+        ComputeDiff();
+    }
+
+    private void ComputeDiff()
+    {
+        var beforeJson = Before is null
+            ? "(Initial State)"
+            : SerializeToJson(Before);
+
+        var afterJson = After is null
+            ? "(Deleted)"
+            : SerializeToJson(After);
+
+        var beforeRaw = beforeJson.Split('\n');
+        var afterRaw = afterJson.Split('\n');
+
+        // Build a set of lines in each side for simple diff highlighting
+        var beforeSet = new HashSet<string>(beforeRaw);
+        var afterSet = new HashSet<string>(afterRaw);
+
+        _beforeLines = beforeRaw
+            .Select(line => new DiffLine
+            {
+                Text = line,
+                CssClass = afterSet.Contains(line) ? "diff-line-unchanged" : "diff-line-removed"
+            })
+            .ToList();
+
+        _afterLines = afterRaw
+            .Select(line => new DiffLine
+            {
+                Text = line,
+                CssClass = beforeSet.Contains(line) ? "diff-line-unchanged" : "diff-line-added"
+            })
+            .ToList();
+    }
+
+    private static string SerializeToJson(object value)
+    {
+        if (value is string s)
+        {
+            return s;
+        }
+
+        try
+        {
+            return JsonSerializer.Serialize(value, _jsonOptions);
+        }
+        catch
+        {
+            return value.ToString() ?? string.Empty;
+        }
+    }
+
+    private sealed class DiffLine
+    {
+        public string Text { get; set; } = string.Empty;
+        public string CssClass { get; set; } = "diff-line-unchanged";
+    }
+}

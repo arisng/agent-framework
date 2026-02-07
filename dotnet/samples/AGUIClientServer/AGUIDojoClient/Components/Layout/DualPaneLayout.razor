@@ -1,0 +1,99 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: Dual-pane layout container for 2026 Agentic UX *@
+@* Uses BlazorBlueprint ResizablePanelGroup for desktop (≥768px) and
+   MobileLayout with bottom drawer for mobile (<768px). ViewportService
+   detects viewport width and triggers layout switch at the breakpoint.
+   Accepts RenderFragment parameters for each pane's content. *@
+@using BlazorBlueprint.Components.Resizable
+@* MY CUSTOMIZATION POINT: Inject ViewportService for responsive layout switching *@
+@inject ViewportService ViewportService
+@implements IAsyncDisposable
+
+@* MY CUSTOMIZATION POINT: Responsive layout switch — mobile (<768px) vs desktop (≥768px) *@
+@* MY CUSTOMIZATION POINT: Wait for ViewportService initialization before rendering
+   to avoid mounting MobileLayout's Drawer JS interop on desktop and immediately disposing it,
+   which causes a Blazor circuit error. ViewportWidth defaults to 0 (IsMobile=true) before init. *@
+@if (!_viewportInitialized)
+{
+    @* Show nothing (or a brief loading flash) until viewport is detected *@
+}
+else if (ViewportService.IsMobile)
+{
+    @* MY CUSTOMIZATION POINT: Mobile layout — single-column with bottom drawer for artifacts *@
+    <MobileLayout ContextPaneContent="@ContextPaneContent"
+                  CanvasPaneContent="@CanvasPaneContent"
+                  @bind-IsDrawerOpen="_mobileDrawerOpen" />
+}
+else
+{
+    <div class="dual-pane-root">
+        <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
+            @* MY CUSTOMIZATION POINT: Context Pane — chat, suggestions, approval UI *@
+            <ResizablePanel DefaultSize="40" MinSize="25" Class="context-panel">
+                @if (ContextPaneContent is not null)
+                {
+                    @ContextPaneContent
+                }
+            </ResizablePanel>
+
+            <ResizableHandle Class="dual-pane-handle" />
+
+            @* MY CUSTOMIZATION POINT: Canvas Pane — artifacts, plan progress, editors, previews *@
+            <ResizablePanel DefaultSize="60" MinSize="35" Class="canvas-panel">
+                @if (CanvasPaneContent is not null)
+                {
+                    @CanvasPaneContent
+                }
+            </ResizablePanel>
+        </ResizablePanelGroup>
+    </div>
+}
+
+@code {
+    // MY CUSTOMIZATION POINT: Mobile drawer open state
+    private bool _mobileDrawerOpen;
+
+    // MY CUSTOMIZATION POINT: Track ViewportService initialization to prevent
+    // rendering MobileLayout's Drawer JS interop on desktop before switching.
+    private bool _viewportInitialized;
+
+    /// <summary>
+    /// Content rendered in the Context Pane (left side on desktop, main view on mobile) —
+    /// typically chat, input, suggestions, and approval UI.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ContextPaneContent { get; set; }
+
+    /// <summary>
+    /// Content rendered in the Canvas Pane (right side on desktop, bottom drawer on mobile) —
+    /// typically artifacts, plan progress, editors, and previews.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? CanvasPaneContent { get; set; }
+
+    // MY CUSTOMIZATION POINT: Initialize ViewportService and subscribe to viewport changes
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ViewportService.InitializeAsync();
+            ViewportService.OnViewportChanged += OnViewportChanged;
+            // MY CUSTOMIZATION POINT: Mark initialized and re-render with correct layout.
+            _viewportInitialized = true;
+            StateHasChanged();
+        }
+    }
+
+    // MY CUSTOMIZATION POINT: Re-render when viewport crosses mobile breakpoint
+    private void OnViewportChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    // MY CUSTOMIZATION POINT: Cleanup ViewportService event subscription
+    public async ValueTask DisposeAsync()
+    {
+        ViewportService.OnViewportChanged -= OnViewportChanged;
+        await ValueTask.CompletedTask;
+    }
+}

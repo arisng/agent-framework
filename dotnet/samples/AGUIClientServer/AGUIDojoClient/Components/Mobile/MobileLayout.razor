@@ -1,0 +1,133 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: Mobile-specific single-column layout with bottom drawer for artifacts *@
+@* Replaces DualPaneLayout on viewports below 768px. Chat is the primary view;
+   artifacts are accessible via a bottom Drawer component from BlazorBlueprint. *@
+
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Drawer
+@using BlazorBlueprint.Components.ScrollArea
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<div class="mobile-layout-root">
+    @* MY CUSTOMIZATION POINT: Primary content area — full-height chat/context pane *@
+    <div class="mobile-context-pane">
+        <ScrollArea Class="h-full">
+            @if (ContextPaneContent is not null)
+            {
+                @ContextPaneContent
+            }
+        </ScrollArea>
+    </div>
+
+    @* MY CUSTOMIZATION POINT: Floating drawer trigger button — visible when artifacts are available *@
+    @if (CanvasPaneContent is not null)
+    {
+        <Drawer @bind-Open="IsDrawerOpen" Direction="DrawerDirection.Bottom">
+            <DrawerTrigger>
+                <Button Variant="ButtonVariant.Default"
+                        Class="mobile-drawer-trigger">
+                    <LucideIcon Name="panel-bottom-open" Size="20" />
+                    <span class="ml-2">View Artifacts</span>
+                </Button>
+            </DrawerTrigger>
+            <DrawerContent>
+                <DrawerHeader>
+                    <DrawerTitle>Artifacts</DrawerTitle>
+                </DrawerHeader>
+                @* MY CUSTOMIZATION POINT: Scrollable artifact content area *@
+                <div class="mobile-drawer-body">
+                    <ScrollArea Class="h-full">
+                        @CanvasPaneContent
+                    </ScrollArea>
+                </div>
+                <DrawerFooter>
+                    <DrawerClose>
+                        <Button Variant="ButtonVariant.Outline"
+                                Class="mobile-drawer-close">
+                            <LucideIcon Name="x" Size="16" />
+                            <span class="ml-2">Close</span>
+                        </Button>
+                    </DrawerClose>
+                </DrawerFooter>
+            </DrawerContent>
+        </Drawer>
+    }
+</div>
+
+<style>
+    /* MY CUSTOMIZATION POINT: Mobile layout styles */
+
+    .mobile-layout-root {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .mobile-context-pane {
+        flex: 1;
+        overflow: hidden;
+        min-height: 0;
+    }
+
+    /* Floating trigger button — anchored at bottom-center, above the chat input */
+    .mobile-drawer-trigger {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 40;
+        min-width: 160px;
+        min-height: 44px; /* 44px minimum touch target */
+        padding: 12px 20px;
+        border-radius: 9999px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    /* Drawer body fills available height with scroll */
+    .mobile-drawer-body {
+        height: 60vh;
+        overflow: hidden;
+    }
+
+    /* Close button with adequate touch target */
+    .mobile-drawer-close {
+        width: 100%;
+        min-height: 44px; /* 44px minimum touch target */
+    }
+</style>
+
+@code {
+    // MY CUSTOMIZATION POINT: MobileLayout parameters
+
+    /// <summary>
+    /// Content rendered as the primary single-column view — typically chat messages,
+    /// input field, suggestions, and approval UI.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ContextPaneContent { get; set; }
+
+    /// <summary>
+    /// Content rendered inside the bottom drawer — typically artifacts such as
+    /// plan progress, recipe editor, and document preview. When null, the drawer
+    /// trigger button is hidden.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? CanvasPaneContent { get; set; }
+
+    /// <summary>
+    /// Controls the open/close state of the bottom artifact drawer.
+    /// </summary>
+    [Parameter]
+    public bool IsDrawerOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the drawer open state changes (two-way binding support).
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsDrawerOpenChanged { get; set; }
+}

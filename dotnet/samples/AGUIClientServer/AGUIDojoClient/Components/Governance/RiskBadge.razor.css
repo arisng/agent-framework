@@ -1,0 +1,15 @@
+/* Copyright (c) Microsoft. All rights reserved. */
+/* MY CUSTOMIZATION POINT: RiskBadge scoped styles — pulsing animation for Critical risk level */
+
+::deep .risk-badge-critical {
+    animation: pulse-risk 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-risk {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}

@@ -3,6 +3,8 @@
 @using AGUIDojoClient.Services
 
 @inject IMarkdownService MarkdownService
+@* MY CUSTOMIZATION POINT: Inject ObservabilityService to pass ReasoningSteps to AssistantThought *@
+@inject IObservabilityService ObservabilityService
 
 @if (Message.Role == ChatRole.User)
 {
@@ -20,7 +22,9 @@ else if (Message.Role == ChatRole.Assistant)
     @* Render collapsible thought block if there are any thought contents *@
     @if (thoughtContents.Count > 0)
     {
-        <AssistantThought ThoughtContents="@thoughtContents" AllContents="@Message.Contents" InProgress="@InProgress" />
+        @* MY CUSTOMIZATION POINT: Pass ReasoningSteps for tool call timing display *@
+        <AssistantThought ThoughtContents="@thoughtContents" AllContents="@Message.Contents" InProgress="@InProgress"
+                          ReasoningSteps="@ObservabilityService.GetSteps()" />
     }
 
     @* Render final assistant message(s) after thoughts *@

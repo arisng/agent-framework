@@ -1,0 +1,40 @@
+/* MY CUSTOMIZATION POINT: Dual-pane layout styles for 2026 Agentic UX */
+
+/* Root container fills the available viewport height below the header */
+.dual-pane-root {
+    height: calc(100vh - var(--header-height, 56px));
+    width: 100%;
+    overflow: hidden;
+}
+
+/* ResizablePanelGroup container */
+.dual-pane-root ::deep .dual-pane-group {
+    height: 100%;
+    width: 100%;
+}
+
+/* Context Pane (left) — chat and negotiation area */
+.dual-pane-root ::deep .context-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Canvas Pane (right) — artifact and work product area */
+.dual-pane-root ::deep .canvas-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Resizable handle styling */
+.dual-pane-root ::deep .dual-pane-handle {
+    background-color: var(--border, #e5e7eb);
+    transition: background-color 0.15s ease;
+}
+
+.dual-pane-root ::deep .dual-pane-handle:hover {
+    background-color: var(--primary, #3b82f6);
+}
