@@ -331,4 +331,117 @@ public sealed class ChatClientAgentFactory
             .UseOpenTelemetry(SourceName)
             .Build();
     }
+
+    /// <summary>
+    /// Creates an agent for chart generative UI demonstrations.
+    /// </summary>
+    /// <remarks>
+    /// The agent uses the <c>show_chart</c> tool to return chart data that the
+    /// client's <c>ChartDisplay</c> component renders as a chart visualization.
+    /// This demonstrates the tool-based generative UI pattern where tool results
+    /// are rendered as custom Blazor components via <c>ToolComponentRegistry</c>.
+    /// </remarks>
+    /// <returns>An <see cref="AIAgent"/> configured with the chart tool, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateChart()
+    {
+        return this._chatClient.AsIChatClient().AsAIAgent(
+            instructions: """
+                You are a helpful data visualization assistant that can display data as charts.
+                When the user asks for trends, comparisons, distributions, or any visual data representation,
+                use the show_chart tool to visualize it.
+                
+                IMPORTANT:
+                - Always use the show_chart tool when the user asks for data visualization
+                - Choose the appropriate topic based on what the user is asking about
+                - Select the best chart type: 'bar' for comparisons, 'line' for trends, 'pie' for distributions, 'area' for cumulative data
+                - After showing the chart, provide a brief summary of the key insights
+                
+                Format your user-facing text response as in markdown.
+                """,
+            name: "ChartAgent",
+            description: "An agent that demonstrates chart generative UI by visualizing data.",
+            tools: [AIFunctionFactory.Create(
+                ChartTool.ShowChartAsync,
+                name: "show_chart",
+                description: "Show data as a chart visualization. Use this when the user asks for trends, comparisons, distributions, or visual data representations.",
+                AGUIDojoServerSerializerContext.Default.Options)])
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
+    }
+
+    /// <summary>
+    /// Creates an agent for dynamic form generative UI demonstrations.
+    /// </summary>
+    /// <remarks>
+    /// The agent uses the <c>show_form</c> tool to return form definitions that the
+    /// client's <c>DynamicFormDisplay</c> component renders as interactive form UI.
+    /// This demonstrates the tool-based generative UI pattern where tool results
+    /// are rendered as custom Blazor components via <c>ToolComponentRegistry</c>.
+    /// </remarks>
+    /// <returns>An <see cref="AIAgent"/> configured with the dynamic form tool, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateDynamicForm()
+    {
+        return this._chatClient.AsIChatClient().AsAIAgent(
+            instructions: """
+                You are a helpful assistant that can generate dynamic forms for user input.
+                When the user asks you to create a form, collect information, or gather user input,
+                use the show_form tool to display an interactive form.
+                
+                IMPORTANT:
+                - Always use the show_form tool when the user asks for a form or data collection
+                - Choose the appropriate form type based on what the user is asking about
+                - After showing the form, provide a brief explanation of the form fields
+                
+                Format your user-facing text response as in markdown.
+                """,
+            name: "DynamicFormAgent",
+            description: "An agent that demonstrates dynamic form generative UI by displaying interactive forms.",
+            tools: [AIFunctionFactory.Create(
+                DynamicFormTool.ShowFormAsync,
+                name: "show_form",
+                description: "Show a dynamic form for user input. Use this when the user needs to fill out structured information like contact details, feedback, registrations, or orders.",
+                AGUIDojoServerSerializerContext.Default.Options)])
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
+    }
+
+    /// <summary>
+    /// Creates an agent for data grid generative UI demonstrations.
+    /// </summary>
+    /// <remarks>
+    /// The agent uses the <c>show_data_grid</c> tool to return tabular data that the
+    /// client's <c>DataGridDisplay</c> component renders as a rich table UI.
+    /// This demonstrates the tool-based generative UI pattern where tool results
+    /// are rendered as custom Blazor components via <c>ToolComponentRegistry</c>.
+    /// </remarks>
+    /// <returns>An <see cref="AIAgent"/> configured with the data grid tool, wrapped with OpenTelemetry instrumentation.</returns>
+    public AIAgent CreateDataGrid()
+    {
+        return this._chatClient.AsIChatClient().AsAIAgent(
+            instructions: """
+                You are a helpful data assistant that can display structured data in rich table views.
+                When the user asks to see data, comparisons, lists, inventories, or any tabular information,
+                use the show_data_grid tool to display it visually.
+                
+                IMPORTANT:
+                - Always use the show_data_grid tool when the user asks for structured data
+                - Choose the appropriate topic based on what the user is asking about
+                - You can specify maxRows to control how much data to show
+                - After showing the data grid, provide a brief summary of what was displayed
+                
+                Format your user-facing text response as in markdown.
+                """,
+            name: "DataGridAgent",
+            description: "An agent that demonstrates data grid generative UI by displaying tabular data.",
+            tools: [AIFunctionFactory.Create(
+                DataGridTool.ShowDataGridAsync,
+                name: "show_data_grid",
+                description: "Show tabular data in a rich data grid. Use this when the user asks for structured data, comparisons, lists, or tables.",
+                AGUIDojoServerSerializerContext.Default.Options)])
+            .AsBuilder()
+            .UseOpenTelemetry(SourceName)
+            .Build();
+    }
 }

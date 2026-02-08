@@ -13,6 +13,10 @@
     <!-- MY CUSTOMIZATION POINT: BlazorBlueprint UI component library (shadcn/ui-based) -->
     <PackageReference Include="BlazorBlueprint.Components" />
     <PackageReference Include="BlazorBlueprint.Icons.Lucide" />
+    <!-- Monaco Editor for diff preview -->
+    <PackageReference Include="BlazorMonaco" />
+    <!-- Fluxor state management -->
+    <PackageReference Include="Fluxor.Blazor.Web" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Yarp.ReverseProxy" />

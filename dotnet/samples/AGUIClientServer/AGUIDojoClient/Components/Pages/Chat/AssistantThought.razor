@@ -4,6 +4,7 @@
 @using System.Text.Json
 @using AGUIDojoClient.Services
 @using AGUIDojoClient.Models
+@using AGUIDojoClient.Shared
 @using BlazorBlueprint.Components.Accordion
 @using BlazorBlueprint.Components.Badge
 @using BlazorBlueprint.Components.Collapsible
@@ -202,7 +203,7 @@
                                     <LucideIcon Name="file-text" Size="14" />
                                 </div>
                                 <div class="data-content-content">
-                                    <div class="data-content-header">Data (@(dc.MediaType ?? "unknown"))</div>
+                                    <div class="data-content-header">Data (@dc.MediaType)</div>
                                     <div class="data-content-data">
                                         <pre>@FormatDataContent(dc)</pre>
                                     </div>
@@ -413,7 +414,7 @@
         {
             string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
 
-            if (dc.MediaType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+            if (dc.MediaType.Contains("json", StringComparison.OrdinalIgnoreCase))
             {
                 var jsonDoc = JsonDocument.Parse(text);
                 return JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
@@ -542,11 +543,14 @@
                 return null;
             }
 
-            JsonSerializerOptions options = new() { PropertyNameCaseInsensitive = true };
+            JsonSerializerOptions options = JsonDefaults.Options;
 
             return toolName.ToLowerInvariant() switch
             {
                 "get_weather" => TryDeserializeWeatherInfo(jsonElement.Value, options),
+                "show_data_grid" => TryDeserializeDataGridResult(jsonElement.Value, options),
+                "show_chart" => TryDeserializeChartResult(jsonElement.Value, options),
+                "show_form" => TryDeserializeDynamicFormResult(jsonElement.Value, options),
                 _ => null
             };
         }
@@ -594,6 +598,45 @@
             json.TryGetProperty("conditions", out _))
         {
             return json.Deserialize<WeatherInfo>(options);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to deserialize a JsonElement as DataGridResult.
+    /// </summary>
+    private static DataGridResult? TryDeserializeDataGridResult(JsonElement json, JsonSerializerOptions options)
+    {
+        if (json.TryGetProperty("columns", out _) &&
+            json.TryGetProperty("rows", out _))
+        {
+            return json.Deserialize<DataGridResult>(options);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to deserialize a JsonElement as DynamicFormResult.
+    /// </summary>
+    private static DynamicFormResult? TryDeserializeDynamicFormResult(JsonElement json, JsonSerializerOptions options)
+    {
+        if (json.TryGetProperty("fields", out _) &&
+            json.TryGetProperty("title", out _))
+        {
+            return json.Deserialize<DynamicFormResult>(options);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to deserialize a JsonElement as ChartResult.
+    /// </summary>
+    private static ChartResult? TryDeserializeChartResult(JsonElement json, JsonSerializerOptions options)
+    {
+        if (json.TryGetProperty("labels", out _) &&
+            json.TryGetProperty("datasets", out _))
+        {
+            return json.Deserialize<ChartResult>(options);
         }
         return null;
     }

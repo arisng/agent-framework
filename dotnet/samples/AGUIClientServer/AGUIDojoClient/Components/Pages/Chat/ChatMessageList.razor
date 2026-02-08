@@ -1,14 +1,76 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@*
+    ChatMessageList — Renders the conversation message stream with optional virtualization.
+
+    When the message count exceeds VirtualizationThreshold (default 50), Blazor's built-in
+    <Virtualize> component is used to reduce DOM element count for better scroll performance.
+    ItemSize="150" provides an estimated average message height in pixels.
+
+    Auto-scroll behavior is preserved via the <chat-messages> custom element defined in
+    ChatMessageList.razor.js, which uses a MutationObserver to detect new messages
+    and scroll to the bottom when the user is near the scroll boundary.
+
+    NOTE: Virtualize uses a fixed ItemSize estimate. .NET 11 is expected to provide
+    automatic variable-height item support for Virtualize, which will remove the need
+    for the ItemSize estimate and improve rendering accuracy for variable-height chat
+    messages (per Q&A T10). When .NET 11 ships, remove ItemSize and OverscanCount
+    parameters and let the framework handle variable heights automatically.
+
+    TODO (.NET 11): Replace fixed ItemSize="150" with automatic variable-height support.
+*@
 @inject IJSRuntime JS
 
 <div class="message-list-container">
     <chat-messages class="page-width message-list" in-progress="@(InProgressMessage is not null)">
-        @foreach (var message in Messages)
+        @if (_shouldVirtualize)
         {
-            <ChatMessageItem @key="@message" Message="@message" />
+            @* Virtualize reduces DOM element count for conversations exceeding the threshold.
+               OverscanCount="5" pre-renders 5 items above/below the viewport for smooth scrolling. *@
+            <Virtualize Items="@_displayItems" ItemSize="150" OverscanCount="5" Context="item">
+                @if (item.ShowHandoff)
+                {
+                    <AgentHandoff AgentName="@item.HandoffAgentName" />
+                }
+                <ChatMessageItem @key="@item.Message" Message="@item.Message" />
+            </Virtualize>
+        }
+        else
+        {
+            @* Standard rendering for small conversations — no virtualization overhead. *@
+            string? previousAuthorName = null;
+            @foreach (var message in Messages)
+            {
+                var currentAuthorName = message.Role == ChatRole.Assistant ? message.AuthorName : null;
+
+                if (!string.IsNullOrEmpty(currentAuthorName) &&
+                    previousAuthorName is not null &&
+                    currentAuthorName != previousAuthorName)
+                {
+                    <AgentHandoff AgentName="@currentAuthorName" />
+                }
+
+                <ChatMessageItem @key="@message" Message="@message" />
+
+                if (!string.IsNullOrEmpty(currentAuthorName))
+                {
+                    previousAuthorName = currentAuthorName;
+                }
+            }
         }
 
+        @* In-progress message always renders outside Virtualize — it is always visible
+           at the bottom of the conversation and should not be subject to virtualization. *@
         @if (InProgressMessage is not null)
         {
+            var inProgressAuthor = InProgressMessage.Role == ChatRole.Assistant ? InProgressMessage.AuthorName : null;
+
+            if (!string.IsNullOrEmpty(inProgressAuthor) &&
+                _lastAuthorName is not null &&
+                inProgressAuthor != _lastAuthorName)
+            {
+                <AgentHandoff AgentName="@inProgressAuthor" />
+            }
+
             <ChatMessageItem Message="@InProgressMessage" InProgress="true" />
             <LoadingSpinner />
         }
@@ -20,23 +82,140 @@
 </div>
 
 @code {
+    /// <summary>
+    /// The threshold of message count above which <see cref="Virtualize{TItem}"/>
+    /// is used to reduce DOM element count. Default is 50 messages.
+    /// </summary>
+    private const int VirtualizationThreshold = 50;
+
+    /// <summary>
+    /// The collection of completed chat messages to display.
+    /// </summary>
     [Parameter]
     public required IEnumerable<ChatMessage> Messages { get; set; }
 
+    /// <summary>
+    /// The in-progress streaming message, if any. Rendered outside Virtualize
+    /// so it is always visible at the bottom of the conversation.
+    /// </summary>
     [Parameter]
     public ChatMessage? InProgressMessage { get; set; }
 
+    /// <summary>
+    /// Content to display when there are no messages.
+    /// </summary>
     [Parameter]
     public RenderFragment? NoMessagesContent { get; set; }
 
+    /// <summary>
+    /// Pre-computed display items with agent handoff metadata for virtualized rendering.
+    /// Populated in <see cref="OnParametersSet"/> when virtualization is active.
+    /// </summary>
+    private List<ChatDisplayItem>? _displayItems;
+
+    /// <summary>
+    /// Tracks the last known assistant author name for handoff detection on
+    /// the in-progress message (works for both virtualized and non-virtualized paths).
+    /// </summary>
+    private string? _lastAuthorName;
+
+    /// <summary>
+    /// Whether the current message count exceeds <see cref="VirtualizationThreshold"/>
+    /// and virtualization should be used.
+    /// </summary>
+    private bool _shouldVirtualize;
+
     private bool IsEmpty => !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
 
+    /// <inheritdoc/>
+    protected override void OnParametersSet()
+    {
+        // Materialize the message collection to avoid multiple enumeration.
+        var messageList = Messages as IList<ChatMessage> ?? Messages.ToList();
+        _shouldVirtualize = messageList.Count > VirtualizationThreshold;
+
+        // Pre-compute display items and track the last author for handoff detection.
+        if (_shouldVirtualize)
+        {
+            _displayItems = ComputeDisplayItems(messageList);
+            _lastAuthorName = _displayItems.Count > 0
+                ? _displayItems[^1].LastAuthorName
+                : null;
+        }
+        else
+        {
+            _displayItems = null;
+            // Track last author from the non-virtualized path for in-progress handoff detection.
+            _lastAuthorName = null;
+            foreach (var message in messageList)
+            {
+                var author = message.Role == ChatRole.Assistant ? message.AuthorName : null;
+                if (!string.IsNullOrEmpty(author))
+                {
+                    _lastAuthorName = author;
+                }
+            }
+        }
+    }
+
+    /// <inheritdoc/>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            // Activates the auto-scrolling behavior
+            // Activates the auto-scrolling behavior via MutationObserver on <chat-messages>.
+            // NOTE: When Virtualize is active, the MutationObserver may fire for items
+            // entering/leaving the viewport during scroll. The boundary check in the JS
+            // (_elemIsNearScrollBoundary) prevents unwanted auto-scrolls when scrolled up.
+            // TODO (.NET 11): Evaluate if Virtualize's variable-height support reduces
+            // MutationObserver noise from virtualized item swaps.
             await JS.InvokeVoidAsync("import", "./Components/Pages/Chat/ChatMessageList.razor.js");
         }
     }
+
+    /// <summary>
+    /// Pre-computes display items from the message collection, attaching agent handoff
+    /// metadata to each item so the Virtualize template can render handoff separators
+    /// without needing to track state across items.
+    /// </summary>
+    private static List<ChatDisplayItem> ComputeDisplayItems(IList<ChatMessage> messages)
+    {
+        var items = new List<ChatDisplayItem>(messages.Count);
+        string? previousAuthor = null;
+
+        foreach (var message in messages)
+        {
+            var author = message.Role == ChatRole.Assistant ? message.AuthorName : null;
+            var showHandoff = !string.IsNullOrEmpty(author)
+                && previousAuthor is not null
+                && author != previousAuthor;
+
+            items.Add(new ChatDisplayItem(
+                Message: message,
+                ShowHandoff: showHandoff,
+                HandoffAgentName: showHandoff ? author : null,
+                LastAuthorName: !string.IsNullOrEmpty(author) ? author : previousAuthor));
+
+            if (!string.IsNullOrEmpty(author))
+            {
+                previousAuthor = author;
+            }
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Represents a chat message with pre-computed agent handoff metadata
+    /// for use with the <see cref="Virtualize{TItem}"/> component.
+    /// </summary>
+    /// <param name="Message">The chat message to render.</param>
+    /// <param name="ShowHandoff">Whether to render an <see cref="AgentHandoff"/> separator before this message.</param>
+    /// <param name="HandoffAgentName">The agent name for the handoff separator, if <paramref name="ShowHandoff"/> is true.</param>
+    /// <param name="LastAuthorName">The last known assistant author name up to and including this item.</param>
+    private sealed record ChatDisplayItem(
+        ChatMessage Message,
+        bool ShowHandoff,
+        string? HandoffAgentName,
+        string? LastAuthorName);
 }

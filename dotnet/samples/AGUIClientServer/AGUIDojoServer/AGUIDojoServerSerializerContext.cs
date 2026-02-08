@@ -7,6 +7,7 @@ using AGUIDojoServer.BackendToolRendering;
 using AGUIDojoServer.HumanInTheLoop;
 using AGUIDojoServer.PredictiveStateUpdates;
 using AGUIDojoServer.SharedState;
+using AGUIDojoServer.Tools;
 
 namespace AGUIDojoServer;
 
@@ -28,6 +29,8 @@ namespace AGUIDojoServer;
 [JsonSerializable(typeof(ApprovalRequest))]
 [JsonSerializable(typeof(ApprovalResponse))]
 [JsonSerializable(typeof(Dictionary<string, object?>))]
+[JsonSerializable(typeof(ChartResult))]
+[JsonSerializable(typeof(ChartDataset))]
 [JsonSerializable(typeof(EmailRequest))]
 [JsonSerializable(typeof(EmailResponse))]
 [JsonSerializable(typeof(TokenRequest))]

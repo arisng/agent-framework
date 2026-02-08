@@ -3,16 +3,19 @@
 @* Uses BlazorBlueprint ResizablePanelGroup for desktop (≥768px) and
    MobileLayout with bottom drawer for mobile (<768px). ViewportService
    detects viewport width and triggers layout switch at the breakpoint.
-   Accepts RenderFragment parameters for each pane's content. *@
+   Accepts RenderFragment parameters for each pane's content.
+   Persists splitter position to localStorage via JS interop (desktop only). *@
 @using BlazorBlueprint.Components.Resizable
 @* MY CUSTOMIZATION POINT: Inject ViewportService for responsive layout switching *@
 @inject ViewportService ViewportService
+@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
 @* MY CUSTOMIZATION POINT: Responsive layout switch — mobile (<768px) vs desktop (≥768px) *@
-@* MY CUSTOMIZATION POINT: Wait for ViewportService initialization before rendering
-   to avoid mounting MobileLayout's Drawer JS interop on desktop and immediately disposing it,
-   which causes a Blazor circuit error. ViewportWidth defaults to 0 (IsMobile=true) before init. *@
+@* MY CUSTOMIZATION POINT: Wait for ViewportService initialization and layout persistence
+   read before rendering to avoid mounting MobileLayout's Drawer JS interop on desktop
+   and immediately disposing it, which causes a Blazor circuit error.
+   ViewportWidth defaults to 0 (IsMobile=true) before init. *@
 @if (!_viewportInitialized)
 {
     @* Show nothing (or a brief loading flash) until viewport is detected *@
@@ -26,10 +29,10 @@ else if (ViewportService.IsMobile)
 }
 else
 {
-    <div class="dual-pane-root">
+    <div class="dual-pane-root" @ref="_panelGroupRef">
         <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
             @* MY CUSTOMIZATION POINT: Context Pane — chat, suggestions, approval UI *@
-            <ResizablePanel DefaultSize="40" MinSize="25" Class="context-panel">
+            <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="25" Class="context-panel">
                 @if (ContextPaneContent is not null)
                 {
                     @ContextPaneContent
@@ -39,7 +42,7 @@ else
             <ResizableHandle Class="dual-pane-handle" />
 
             @* MY CUSTOMIZATION POINT: Canvas Pane — artifacts, plan progress, editors, previews *@
-            <ResizablePanel DefaultSize="60" MinSize="35" Class="canvas-panel">
+            <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="35" Class="canvas-panel">
                 @if (CanvasPaneContent is not null)
                 {
                     @CanvasPaneContent
@@ -57,6 +60,15 @@ else
     // rendering MobileLayout's Drawer JS interop on desktop before switching.
     private bool _viewportInitialized;
 
+    // MY CUSTOMIZATION POINT: Layout persistence state.
+    // Splitter position is saved/restored via layoutPersistence.js interop.
+    // Falls back to DefaultSize="40"/"60" if no persisted value exists.
+    private IJSObjectReference? _layoutModule;
+    private int _contextPanelSize = 40;
+    private int _canvasPanelSize = 60;
+    private bool _persistenceInitialized;
+    private ElementReference _panelGroupRef;
+
     /// <summary>
     /// Content rendered in the Context Pane (left side on desktop, main view on mobile) —
     /// typically chat, input, suggestions, and approval UI.
@@ -71,16 +83,82 @@ else
     [Parameter]
     public RenderFragment? CanvasPaneContent { get; set; }
 
-    // MY CUSTOMIZATION POINT: Initialize ViewportService and subscribe to viewport changes
+    // MY CUSTOMIZATION POINT: Initialize ViewportService, read persisted layout,
+    // subscribe to viewport changes, and set up layout persistence observer.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await ViewportService.InitializeAsync();
             ViewportService.OnViewportChanged += OnViewportChanged;
+
+            // MY CUSTOMIZATION POINT: Read persisted splitter position on desktop only.
+            // Mobile viewport ignores persisted values.
+            if (!ViewportService.IsMobile)
+            {
+                await ReadPersistedLayoutAsync();
+            }
+
             // MY CUSTOMIZATION POINT: Mark initialized and re-render with correct layout.
             _viewportInitialized = true;
             StateHasChanged();
+            return;
+        }
+
+        // MY CUSTOMIZATION POINT: Initialize persistence observer after panels render.
+        // This runs on the second render (after _viewportInitialized triggers re-render)
+        // so that the ResizablePanelGroup DOM elements exist for the MutationObserver.
+        if (_viewportInitialized && !_persistenceInitialized && !ViewportService.IsMobile)
+        {
+            _persistenceInitialized = true;
+            await InitLayoutPersistenceAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reads the persisted splitter position from localStorage via JS interop.
+    /// Falls back to <c>DefaultSize="40"/"60"</c> if no persisted value exists.
+    /// </summary>
+    private async Task ReadPersistedLayoutAsync()
+    {
+        try
+        {
+            _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./js/layoutPersistence.js");
+
+            var persisted = await _layoutModule.InvokeAsync<LayoutData?>("getPersistedLayout");
+
+            if (persisted is not null)
+            {
+                _contextPanelSize = (int)Math.Round(persisted.ContextSize);
+                _canvasPanelSize = (int)Math.Round(persisted.CanvasSize);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — use default sizes.
+        }
+    }
+
+    /// <summary>
+    /// Starts the MutationObserver on the panel group to detect and persist
+    /// splitter position changes with a 500ms debounce.
+    /// </summary>
+    private async Task InitLayoutPersistenceAsync()
+    {
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./js/layoutPersistence.js");
+            }
+
+            await _layoutModule.InvokeVoidAsync("initLayoutPersistence", _panelGroupRef);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — persistence is not critical.
         }
     }
 
@@ -90,10 +168,34 @@ else
         InvokeAsync(StateHasChanged);
     }
 
-    // MY CUSTOMIZATION POINT: Cleanup ViewportService event subscription
+    // MY CUSTOMIZATION POINT: Cleanup ViewportService event subscription and layout persistence
     public async ValueTask DisposeAsync()
     {
         ViewportService.OnViewportChanged -= OnViewportChanged;
-        await ValueTask.CompletedTask;
+
+        if (_layoutModule is not null)
+        {
+            try
+            {
+                await _layoutModule.InvokeVoidAsync("dispose");
+                await _layoutModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected — JS cleanup is no longer possible.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deserialization target for persisted layout data from localStorage.
+    /// </summary>
+    private sealed record LayoutData
+    {
+        /// <summary>Gets the persisted context pane size as a percentage (0–100).</summary>
+        public double ContextSize { get; init; }
+
+        /// <summary>Gets the persisted canvas pane size as a percentage (0–100).</summary>
+        public double CanvasSize { get; init; }
     }
 }

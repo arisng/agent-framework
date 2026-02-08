@@ -275,7 +275,7 @@ export ASPNETCORE_ENVIRONMENT=Production
 
 # Configure production secrets (example for Azure OpenAI)
 export AZURE_OPENAI_ENDPOINT="https://prod-resource.openai.azure.com"
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-mini"
 export Jwt__SigningKey="your-production-256-bit-key"
 
 # Configure YARP to point to production backend
@@ -323,7 +323,7 @@ Configure the required Azure OpenAI environment variables:
 
 ```powershell
 $env:AZURE_OPENAI_ENDPOINT="<<your-model-endpoint>>"
-$env:AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4.1-mini"
+$env:AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-mini"
 ```
 
 > **Note:** This sample uses `DefaultAzureCredential` for authentication. Make sure you're authenticated with Azure (e.g., via `az login`, Visual Studio, or environment variables).

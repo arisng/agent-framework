@@ -1,41 +1,41 @@
 @page "/"
-@using System.ComponentModel
-@using System.Net.Http.Headers
-@using System.Text
-@using System.Text.Json
-@using AGUIDojoClient.Models
+@using AGUIDojoClient.Helpers
+@using AGUIDojoClient.Store.AgentState
+@using AGUIDojoClient.Store.ArtifactState
+@using AGUIDojoClient.Store.ChatState
+@using AGUIDojoClient.Store.PlanState
 @inject IAGUIChatClientFactory ClientFactory
-@inject IApprovalHandler ApprovalHandler
-@inject IJsonPatchApplier JsonPatchApplier
-@inject IStateManager StateManager
-@inject NavigationManager Nav
-@* MY CUSTOMIZATION POINT: Inject ObservabilityService for tool call tracking *@
+@inject IAgentStreamingService StreamingService
 @inject IObservabilityService ObservabilityService
-@* MY CUSTOMIZATION POINT: Inject governance services for HITL governance pattern *@
 @inject IRiskAssessmentService RiskAssessmentService
 @inject ICheckpointService CheckpointService
-@* MY CUSTOMIZATION POINT: Inject ViewportService for responsive mobile layout *@
+@inject IStateManager StateManager
 @inject ViewportService ViewportService
+@inject IDispatcher Dispatcher
+@inject IState<PlanState> PlanStore
+@inject IState<AgentState> AgentStore
+@inject IState<ArtifactState> ArtifactStore
+@inject IState<ChatState> ChatStore
 @implements IDisposable
 
 <PageTitle>AG-UI Dojo Chat</PageTitle>
 
 <ChatHeader OnNewChat="@ResetConversationAsync"
             AvailableEndpoints="@ClientFactory.AvailableEndpoints"
-            SelectedEndpointPath="@selectedEndpointPath"
+            SelectedEndpointPath="@AgentStore.Value.SelectedEndpointPath"
             OnEndpointChanged="@OnEndpointChangedAsync" />
 
 @* MY CUSTOMIZATION POINT: PanicButton — emergency stop visible during agent execution *@
 <div class="panic-button-container">
-    <PanicButton IsAgentRunning="@(currentResponseCancellation is not null && !currentResponseCancellation.IsCancellationRequested)"
-                 OnPanic="@HandlePanic" />
+    <PanicButton IsAgentRunning="@AgentStore.Value.IsRunning"
+                 OnPanic="@HandlePanicAsync" />
 </div>
 
 @* MY CUSTOMIZATION POINT: Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
 <DualPaneLayout>
     <ContextPaneContent>
         <ContextPane>
-            <ChatMessageList Messages="@messages" InProgressMessage="@currentResponseMessage">
+            <ChatMessageList Messages="@ChatStore.Value.Messages" InProgressMessage="@ChatStore.Value.CurrentResponseMessage">
                 <NoMessagesContent>
                     <div>Ask the assistant a question to start a conversation.</div>
                 </NoMessagesContent>
@@ -46,20 +46,20 @@
             </div>
 
             @* MY CUSTOMIZATION POINT: Conditional approval UI — SwipeApproval on mobile, ApprovalQueue on desktop *@
-            @if (currentPendingApproval is not null)
+            @if (ChatStore.Value.PendingApproval is not null)
             {
                 @if (ViewportService.IsMobile)
                 {
-                    <SwipeApproval FunctionName="@currentPendingApproval.FunctionName"
-                                   Arguments="@ConvertApprovalArguments(currentPendingApproval.FunctionArguments)"
-                                   RiskLevel="@RiskAssessmentService.AssessRisk(currentPendingApproval.FunctionName)"
+                    <SwipeApproval FunctionName="@ChatStore.Value.PendingApproval.FunctionName"
+                                   Arguments="@ChatHelpers.ConvertApprovalArguments(ChatStore.Value.PendingApproval.FunctionArguments)"
+                                   RiskLevel="@RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName)"
                                    OnDecision="@OnApprovalDecision" />
                 }
                 else
                 {
-                    <ApprovalQueue FunctionName="@currentPendingApproval.FunctionName"
-                                   Arguments="@ConvertApprovalArguments(currentPendingApproval.FunctionArguments)"
-                                   RiskLevel="@RiskAssessmentService.AssessRisk(currentPendingApproval.FunctionName)"
+                    <ApprovalQueue FunctionName="@ChatStore.Value.PendingApproval.FunctionName"
+                                   Arguments="@ChatHelpers.ConvertApprovalArguments(ChatStore.Value.PendingApproval.FunctionArguments)"
+                                   RiskLevel="@RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName)"
                                    OnDecision="@OnApprovalDecision" />
                 }
             }
@@ -68,45 +68,28 @@
     <CanvasPaneContent>
         <CanvasPane>
             @* MY CUSTOMIZATION POINT: Observability components displayed in Canvas Pane *@
-            <MemoryInspector ConversationId="@chatOptions.ConversationId"
-                             SelectedEndpoint="@selectedEndpointPath"
-                             MessageCount="@messages.Count"
-                             PlanStepCount="@(currentPlan?.Steps?.Count)"
-                             PlanCompletedCount="@(currentPlan?.Steps?.Count(s => s.Status == StepStatus.Completed))"
-                             RecipeName="@(IsSharedStateEndpoint ? StateManager.CurrentRecipe?.Title : null)"
-                             DocumentLength="@(IsPredictiveStateEndpoint ? currentDocumentState?.Document?.Length : null)"
-                             ToolInvocations="@GetToolInvocationSummary()" />
+            <MemoryInspector ConversationId="@ChatStore.Value.ConversationId"
+                             SelectedEndpoint="@AgentStore.Value.SelectedEndpointPath"
+                             MessageCount="@ChatStore.Value.Messages.Count"
+                             PlanStepCount="@(PlanStore.Value.Plan?.Steps?.Count)"
+                             PlanCompletedCount="@(PlanStore.Value.Plan?.Steps?.Count(s => s.Status == StepStatus.Completed))"
+                             RecipeName="@(IsSharedStateEndpoint ? ArtifactStore.Value.CurrentRecipe?.Title : null)"
+                             DocumentLength="@(IsPredictiveStateEndpoint ? ArtifactStore.Value.CurrentDocumentState?.Document?.Length : null)"
+                             ToolInvocations="@StreamingService.GetToolInvocationSummary()" />
 
             <ToolExecutionTracker Steps="@ObservabilityService.GetSteps()" />
 
             @* MY CUSTOMIZATION POINT: Governance components displayed in Canvas Pane *@
             <CheckpointManager Checkpoints="@CheckpointService.GetAllCheckpoints()"
-                               OnRevert="@HandleCheckpointRevert" />
+                               OnRevert="@HandleCheckpointRevertAsync" />
 
-            @if (_lastDiffBefore is not null || _lastDiffAfter is not null)
+            @if (StreamingService.LastDiffBefore is not null || StreamingService.LastDiffAfter is not null)
             {
-                <DiffPreview Before="@_lastDiffBefore" After="@_lastDiffAfter" Title="@_lastDiffTitle" />
+                <DiffPreview Before="@StreamingService.LastDiffBefore" After="@StreamingService.LastDiffAfter" Title="@StreamingService.LastDiffTitle" />
             }
 
-            @* MY CUSTOMIZATION POINT: Artifact components displayed in Canvas Pane *@
-
-            @* Show Plan Progress component when we have an active plan (Agentic Generative UI) *@
-            @if (currentPlan is not null)
-            {
-                <PlanProgress Plan="@currentPlan" />
-            }
-
-            @* Show Recipe Editor when using the Shared State endpoint *@
-            @if (IsSharedStateEndpoint)
-            {
-                <RecipeEditor Recipe="@StateManager.CurrentRecipe" RecipeChanged="@OnRecipeChanged" />
-            }
-
-            @* Show Document Preview when using the Predictive State Updates endpoint *@
-            @if (IsPredictiveStateEndpoint && currentDocumentState is not null)
-            {
-                <DocumentPreview DocumentState="@currentDocumentState" IsPreview="@isDocumentPreview" Title="Document Preview" />
-            }
+            @* MY CUSTOMIZATION POINT: Artifact components (RecipeEditor, DocumentPreview) are now
+               rendered by CanvasPane directly from IState<ArtifactState> — see CanvasPane.razor *@
         </CanvasPane>
     </CanvasPaneContent>
 </DualPaneLayout>
@@ -116,69 +99,56 @@
         You are a helpful assistant.
         ";
 
-    private const string DefaultEndpointPath = "agentic_chat";
     private const int ThrottleDelayMs = 100; // Throttle StateHasChanged to prevent render thrashing
 
-    private int statefulMessageCount;
-    private readonly ChatOptions chatOptions = new();
-    private readonly List<ChatMessage> messages = new();
-    private CancellationTokenSource? currentResponseCancellation;
-    private ChatMessage? currentResponseMessage;
     private ChatInput? chatInput;
     private ChatSuggestions? chatSuggestions;
-    private string selectedEndpointPath = DefaultEndpointPath;
     private IChatClient? activeChatClient;
-    private PendingApproval? currentPendingApproval;
-    private TaskCompletionSource<bool>? approvalTaskSource;
-    private Plan? currentPlan;
-    private DocumentState? currentDocumentState;
-    private bool isDocumentPreview = true;
     private DateTime lastStateChangeTime = DateTime.MinValue;
-    private readonly HashSet<string> seenFunctionCallIds = new();
-    private readonly HashSet<string> seenFunctionResultCallIds = new();
     private bool pendingStateChange = false;
     private System.Timers.Timer? throttleTimer;
-
-    // MY CUSTOMIZATION POINT: Governance state — diff preview tracking
-    private object? _lastDiffBefore;
-    private object? _lastDiffAfter;
-    private string _lastDiffTitle = "State Diff";
 
     /// <summary>
     /// Gets whether the currently selected endpoint is the Shared State endpoint.
     /// </summary>
-    private bool IsSharedStateEndpoint => selectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
+    private bool IsSharedStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets whether the currently selected endpoint is the Predictive State Updates endpoint.
     /// </summary>
-    private bool IsPredictiveStateEndpoint => selectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Gets whether the currently selected endpoint is the Agentic Generative UI endpoint.
-    /// This endpoint requires special handling for STATE_DELTA events.
-    /// </summary>
-    private bool IsAgenticGenerativeUiEndpoint => selectedEndpointPath.Equals("agentic_generative_ui", StringComparison.OrdinalIgnoreCase);
+    private bool IsPredictiveStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
-        statefulMessageCount = 0;
-        messages.Add(new(ChatRole.System, SystemPrompt));
-        activeChatClient = ClientFactory.CreateClient(selectedEndpointPath);
-        
+        Dispatcher.Dispatch(new ChatActions.AddMessageAction(new(ChatRole.System, SystemPrompt)));
+        activeChatClient = ClientFactory.CreateClient(AgentStore.Value.SelectedEndpointPath);
+
+        // Register UI callbacks for the streaming service
+        StreamingService.SetUiCallbacks(ThrottledStateHasChanged, () => InvokeAsync(StateHasChanged));
+
         // Initialize state manager for Shared State feature
-        if (IsSharedStateEndpoint)
-        {
-            StateManager.Initialize();
-        }
+        StreamingService.InitializeEndpointState(AgentStore.Value.SelectedEndpointPath);
 
         // Initialize throttle timer for debounced UI updates
         throttleTimer = new System.Timers.Timer(ThrottleDelayMs);
         throttleTimer.AutoReset = false;
         throttleTimer.Elapsed += OnThrottleElapsed;
+
+        // Subscribe to Fluxor state changes with throttled rendering
+        // (NOT FluxorComponent — preserves ThrottledStateHasChanged for SSE streaming)
+        PlanStore.StateChanged += OnFluxorStateChanged;
+        AgentStore.StateChanged += OnFluxorStateChanged;
+        ArtifactStore.StateChanged += OnFluxorStateChanged;
+        ChatStore.StateChanged += OnFluxorStateChanged;
     }
 
-    // MY CUSTOMIZATION POINT: Initialize ViewportService for responsive mobile layout
+    /// <summary>
+    /// Handles Fluxor state changes by triggering throttled UI updates.
+    /// Uses a single handler for all stores instead of FluxorComponent
+    /// to preserve ThrottledStateHasChanged debounce for SSE streaming.
+    /// </summary>
+    private void OnFluxorStateChanged(object? sender, EventArgs e) => ThrottledStateHasChanged();
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -188,11 +158,7 @@
         }
     }
 
-    // MY CUSTOMIZATION POINT: Re-render when viewport crosses mobile breakpoint
-    private void OnViewportChanged(object? sender, EventArgs e)
-    {
-        InvokeAsync(StateHasChanged);
-    }
+    private void OnViewportChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
     /// <summary>
     /// Throttled StateHasChanged to prevent render thrashing during rapid streaming updates.
@@ -207,7 +173,6 @@
         }
         else
         {
-            // Schedule a deferred update
             pendingStateChange = true;
             throttleTimer?.Stop();
             throttleTimer?.Start();
@@ -229,731 +194,76 @@
     /// </summary>
     private async Task OnEndpointChangedAsync(string newEndpointPath)
     {
-        if (string.Equals(selectedEndpointPath, newEndpointPath, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(AgentStore.Value.SelectedEndpointPath, newEndpointPath, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        selectedEndpointPath = newEndpointPath;
-        activeChatClient = ClientFactory.CreateClient(selectedEndpointPath);
+        Dispatcher.Dispatch(new AgentActions.SetEndpointAction(newEndpointPath));
+        activeChatClient = ClientFactory.CreateClient(newEndpointPath);
         await ResetConversationAsync();
-        
-        // Initialize or clear state manager based on new endpoint
-        if (IsSharedStateEndpoint)
-        {
-            StateManager.Initialize();
-        }
-        else
-        {
-            StateManager.Clear();
-        }
+        StreamingService.InitializeEndpointState(newEndpointPath);
     }
 
     private async Task AddUserMessageAsync(ChatMessage userMessage)
     {
-        CancelAnyCurrentResponse();
+        StreamingService.CancelAnyCurrentResponse();
 
         // For shared state endpoint, add state DataContent to the user message
-        // AGUIChatClient extracts DataContent from the last message and sends it as state
         if (IsSharedStateEndpoint && StateManager.HasActiveState)
         {
             DataContent stateContent = StateManager.CreateStateContent();
             userMessage.Contents.Add(stateContent);
         }
 
-        // Add the user message to the conversation
-        messages.Add(userMessage);
+        Dispatcher.Dispatch(new ChatActions.AddMessageAction(userMessage));
         chatSuggestions?.Clear();
         await chatInput!.FocusAsync();
 
-        await ProcessAgentResponseAsync();
+        await StreamingService.ProcessAgentResponseAsync(activeChatClient!);
+        chatSuggestions?.Update(ChatStore.Value.Messages);
     }
 
     /// <summary>
-    /// Processes the agent response, handling approval requests if they occur.
-    /// For the Agentic Generative UI endpoint, also starts a parallel stream to capture STATE_DELTA events.
+    /// Handles the user's approval/rejection decision from the approval UI.
+    /// Delegates to <see cref="IAgentStreamingService.ResolveApproval"/> to unblock the streaming loop.
     /// </summary>
-    private async Task ProcessAgentResponseAsync()
-    {
-        bool hasApprovalResponses;
+    private void OnApprovalDecision(bool approved) => StreamingService.ResolveApproval(approved);
 
-        do
-        {
-            hasApprovalResponses = false;
-            List<FunctionResultContent> approvalResponses = [];
-
-            // Stream and display a new response from the IChatClient
-            var responseText = new TextContent("");
-            currentResponseMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
-            StateHasChanged();
-            currentResponseCancellation = new();
-
-            try
-            {
-                await foreach (var update in activeChatClient!.GetStreamingResponseAsync(messages.Skip(statefulMessageCount), chatOptions, currentResponseCancellation.Token))
-                {
-                    // Check for approval requests and Plan state updates in the update
-                    foreach (var content in update.Contents)
-                    {
-                        if (content is FunctionCallContent fcc && ApprovalHandler.TryExtractApprovalRequest(fcc, out var approval) && approval is not null)
-                        {
-                            // Show approval dialog and wait for user decision
-                            currentPendingApproval = approval;
-                            approvalTaskSource = new TaskCompletionSource<bool>();
-                            StateHasChanged();
-
-                            bool approved = await approvalTaskSource.Task;
-
-                            // Create approval response
-                            var response = ApprovalHandler.CreateApprovalResponse(approval.ApprovalId, approved);
-                            approvalResponses.Add(response);
-
-                            // Also add rejection response to currentResponseMessage for immediate display
-                            // This ensures the rejection message is rendered with appropriate styling
-                            if (!approved && currentResponseMessage is not null)
-                            {
-                                currentResponseMessage.Contents.Add(response);
-                            }
-
-                            currentPendingApproval = null;
-                            approvalTaskSource = null;
-                            StateHasChanged();
-                        }
-                        // Handle Plan state snapshots (Agentic Generative UI)
-                        else if (content is DataContent dc && IsPlanStateSnapshot(dc))
-                        {
-                            Plan? plan = TryParsePlanSnapshot(dc);
-                            if (plan is not null)
-                            {
-                                // MY CUSTOMIZATION POINT: Checkpoint before plan snapshot update
-                                CheckpointService.CreateCheckpoint("Before plan update", currentPlan, IsSharedStateEndpoint ? StateManager.CurrentRecipe : null, currentDocumentState, messages.Count);
-                                _lastDiffBefore = currentPlan;
-                                currentPlan = plan;
-                                _lastDiffAfter = currentPlan;
-                                _lastDiffTitle = "Plan State Change";
-                                StateHasChanged();
-                            }
-                        }
-                        // Handle Plan state deltas (JSON Patch for step updates)
-                        else if (content is DataContent patchDc && IsPlanStateDelta(patchDc))
-                        {
-                            if (currentPlan is not null)
-                            {
-                                List<JsonPatchOperation>? operations = TryParsePatchOperations(patchDc);
-                                if (operations is not null)
-                                {
-                                    // MY CUSTOMIZATION POINT: Checkpoint before plan delta
-                                    CheckpointService.CreateCheckpoint("Before plan step update", currentPlan, IsSharedStateEndpoint ? StateManager.CurrentRecipe : null, currentDocumentState, messages.Count);
-                                    JsonPatchApplier.ApplyPatch(currentPlan, operations);
-                                    StateHasChanged();
-                                }
-                            }
-                        }
-                        // Handle Recipe state snapshots (Shared State feature)
-                        else if (content is DataContent recipeDc && IsSharedStateEndpoint && StateManager.TryExtractRecipeSnapshot(recipeDc, out Recipe? recipe) && recipe is not null)
-                        {
-                            // MY CUSTOMIZATION POINT: Checkpoint before recipe update
-                            CheckpointService.CreateCheckpoint("Before recipe update", currentPlan, StateManager.CurrentRecipe, currentDocumentState, messages.Count);
-                            _lastDiffBefore = StateManager.CurrentRecipe;
-                            StateManager.UpdateFromServerSnapshot(recipe);
-                            _lastDiffAfter = StateManager.CurrentRecipe;
-                            _lastDiffTitle = "Recipe State Change";
-                            StateHasChanged();
-                        }
-                        // Handle Document state snapshots (Predictive State Updates feature)
-                        else if (content is DataContent docDc && IsPredictiveStateEndpoint && TryExtractDocumentSnapshot(docDc, out DocumentState? docState) && docState is not null)
-                        {
-                            // MY CUSTOMIZATION POINT: Checkpoint before document update (only first snapshot per response)
-                            if (currentDocumentState is null)
-                            {
-                                CheckpointService.CreateCheckpoint("Before document update", currentPlan, null, currentDocumentState, messages.Count);
-                            }
-                            currentDocumentState = docState;
-                            isDocumentPreview = true; // Still streaming
-                            ThrottledStateHasChanged();
-                        }
-                    }
-
-                    // Consolidate content: only add non-duplicate FunctionCallContent and skip redundant DataContent
-                    // This prevents excessive DOM elements from streaming updates
-                    foreach (AIContent content in update.Contents)
-                    {
-                        if (content is TextContent)
-                        {
-                            continue; // Text is handled separately via responseText accumulation
-                        }
-                        
-                        if (content is FunctionCallContent fcc)
-                        {
-                            // Only add FunctionCallContent once per CallId to avoid duplicates
-                            if (fcc.CallId is not null && !seenFunctionCallIds.Contains(fcc.CallId))
-                            {
-                                seenFunctionCallIds.Add(fcc.CallId);
-                                currentResponseMessage?.Contents.Add(content);
-
-                                // MY CUSTOMIZATION POINT: Track tool call start for observability
-                                ObservabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
-                            }
-                        }
-                        else if (content is DataContent dc)
-                        {
-                            // For DataContent, consolidate by replacing previous instance of same category
-                            // This prevents accumulating ~200 state snapshots in the message
-                            ConsolidateDataContent(currentResponseMessage!, dc);
-                        }
-                        else if (content is FunctionResultContent frc)
-                        {
-                            // Only add FunctionResultContent once per CallId to avoid duplicates
-                            // Duplicates occur because SSE streaming may emit the same result multiple times
-                            // as the response progresses, and conversation history reconstruction may re-send results
-                            if (frc.CallId is not null && !seenFunctionResultCallIds.Contains(frc.CallId))
-                            {
-                                seenFunctionResultCallIds.Add(frc.CallId);
-                                currentResponseMessage?.Contents.Add(content);
-
-                                // MY CUSTOMIZATION POINT: Track tool call completion for observability
-                                ObservabilityService.CompleteToolCall(frc.CallId, frc.Result);
-                            }
-                            else if (frc.CallId is null)
-                            {
-                                // No CallId means we can't dedupe - add it directly
-                                currentResponseMessage?.Contents.Add(content);
-                            }
-                        }
-                        else
-                        {
-                            // Other content types (ErrorContent) - add directly
-                            currentResponseMessage?.Contents.Add(content);
-                        }
-                    }
-                    
-                    responseText.Text += update.Text;
-                    chatOptions.ConversationId = update.ConversationId;
-                    ThrottledStateHasChanged();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // User cancelled the operation
-            }
-            catch (HttpRequestException ex)
-            {
-                // Handle HTTP errors (e.g., from rejected approvals that cause server errors)
-                responseText.Text = $"Error: {ex.Message}";
-                ChatMessageItem.NotifyChanged(currentResponseMessage);
-            }
-
-            catch (Exception ex)
-            {
-                // Handle unexpected errors gracefully
-                responseText.Text = $"An unexpected error occurred: {ex.Message}";
-                ChatMessageItem.NotifyChanged(currentResponseMessage);
-            }
-            // Store the final response in the conversation
-            messages.Add(currentResponseMessage!);
-            currentResponseMessage = null;
-
-            // If there were approval responses, add them as a tool message and continue
-            // IMPORTANT: Do NOT update statefulMessageCount here - we need to send the full 
-            // message history including the request_approval FunctionCallContent so the server's
-            // ProcessIncomingFunctionApprovals can match it with the approval response.
-            if (approvalResponses.Count > 0)
-            {
-                // Check if any responses were rejections
-                bool hasAnyRejection = approvalResponses.Any(r => IsRejectionResponse(r));
-
-                foreach (var response in approvalResponses)
-                {
-                    messages.Add(new ChatMessage(ChatRole.Tool, [response]));
-                }
-
-                // If rejection occurred, don't continue the approval loop.
-                // Continuing after rejection can cause HTTP 400 errors because the
-                // conversation history becomes malformed when sent to the LLM provider.
-                // (Error: "An assistant message with 'tool_calls' must be followed by 
-                // tool messages responding to each 'tool_call_id'")
-                // The user can send a new message to try again with a fresh conversation.
-                if (hasAnyRejection)
-                {
-                    hasApprovalResponses = false;
-                    // Reset conversation state so the next user message starts fresh
-                    chatOptions.ConversationId = null;
-                    statefulMessageCount = messages.Count;
-                }
-                else
-                {
-                    hasApprovalResponses = true;
-                }
-            }
-            else
-            {
-                // Only update statefulMessageCount when there are no pending approval workflows
-                statefulMessageCount = chatOptions.ConversationId is not null ? messages.Count : 0;
-            }
-
-            // Mark document as finalized when streaming completes (for Predictive State Updates)
-            if (IsPredictiveStateEndpoint && currentDocumentState is not null)
-            {
-                isDocumentPreview = false;
-                StateHasChanged();
-            }
-
-        } while (hasApprovalResponses);
-
-        chatSuggestions?.Update(messages);
-    }
-
-    // MY CUSTOMIZATION POINT: Unified approval decision handler for ApprovalQueue
     /// <summary>
-    /// Handles the user's approval/rejection decision from the non-modal ApprovalQueue.
-    /// Preserves the TaskCompletionSource blocking semantic (per A6/K5 research).
+    /// Handles the emergency stop action. Delegates to the streaming service
+    /// and refocuses the chat input.
     /// </summary>
-    private void OnApprovalDecision(bool approved)
+    private async Task HandlePanicAsync()
     {
-        approvalTaskSource?.TrySetResult(approved);
-    }
-
-    // MY CUSTOMIZATION POINT: PanicButton handler — emergency stop + revert to last checkpoint
-    /// <summary>
-    /// Handles the emergency stop action. Cancels the current agent response,
-    /// reverts to the last checkpoint state, and resets conversation context.
-    /// </summary>
-    private async Task HandlePanic()
-    {
-        CancelAnyCurrentResponse();
-
-        var checkpoint = CheckpointService.GetLatestCheckpoint();
-        if (checkpoint is not null)
-        {
-            // Restore plan state from checkpoint
-            if (checkpoint.PlanSnapshot is not null)
-            {
-                currentPlan = JsonSerializer.Deserialize<Plan>(checkpoint.PlanSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-            else
-            {
-                currentPlan = null;
-            }
-
-            // Restore recipe state from checkpoint
-            if (checkpoint.RecipeSnapshot is not null && IsSharedStateEndpoint)
-            {
-                var recipe = JsonSerializer.Deserialize<Recipe>(checkpoint.RecipeSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (recipe is not null)
-                {
-                    StateManager.UpdateFromServerSnapshot(recipe);
-                }
-            }
-
-            // Restore document state from checkpoint
-            if (checkpoint.DocumentSnapshot is not null && IsPredictiveStateEndpoint)
-            {
-                currentDocumentState = JsonSerializer.Deserialize<DocumentState>(checkpoint.DocumentSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                isDocumentPreview = false;
-            }
-            else if (IsPredictiveStateEndpoint)
-            {
-                currentDocumentState = null;
-            }
-
-            // Trim messages to checkpoint state
-            if (checkpoint.MessageCount < messages.Count)
-            {
-                messages.RemoveRange(checkpoint.MessageCount, messages.Count - checkpoint.MessageCount);
-            }
-        }
-
-        // Reset conversation context to start fresh
-        chatOptions.ConversationId = null;
-        statefulMessageCount = messages.Count;
-        _lastDiffBefore = null;
-        _lastDiffAfter = null;
-
-        StateHasChanged();
+        StreamingService.HandlePanic(AgentStore.Value.SelectedEndpointPath);
         await chatInput!.FocusAsync();
     }
 
-    // MY CUSTOMIZATION POINT: CheckpointManager revert handler
     /// <summary>
     /// Handles reverting to a specific checkpoint from the CheckpointManager timeline.
+    /// Delegates to the streaming service and refocuses the chat input.
     /// </summary>
-    private async Task HandleCheckpointRevert(string checkpointId)
+    private async Task HandleCheckpointRevertAsync(string checkpointId)
     {
-        CancelAnyCurrentResponse();
-
-        var checkpoint = CheckpointService.RevertToCheckpoint(checkpointId);
-        if (checkpoint is null)
-        {
-            return;
-        }
-
-        // Restore plan state
-        if (checkpoint.PlanSnapshot is not null)
-        {
-            currentPlan = JsonSerializer.Deserialize<Plan>(checkpoint.PlanSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
-        else
-        {
-            currentPlan = null;
-        }
-
-        // Restore recipe state
-        if (checkpoint.RecipeSnapshot is not null && IsSharedStateEndpoint)
-        {
-            var recipe = JsonSerializer.Deserialize<Recipe>(checkpoint.RecipeSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (recipe is not null)
-            {
-                StateManager.UpdateFromServerSnapshot(recipe);
-            }
-        }
-
-        // Restore document state
-        if (checkpoint.DocumentSnapshot is not null && IsPredictiveStateEndpoint)
-        {
-            currentDocumentState = JsonSerializer.Deserialize<DocumentState>(checkpoint.DocumentSnapshot, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            isDocumentPreview = false;
-        }
-        else if (IsPredictiveStateEndpoint)
-        {
-            currentDocumentState = null;
-        }
-
-        // Trim messages to checkpoint state
-        if (checkpoint.MessageCount < messages.Count)
-        {
-            messages.RemoveRange(checkpoint.MessageCount, messages.Count - checkpoint.MessageCount);
-        }
-
-        // Reset conversation context
-        chatOptions.ConversationId = null;
-        statefulMessageCount = messages.Count;
-        _lastDiffBefore = null;
-        _lastDiffAfter = null;
-
-        StateHasChanged();
+        StreamingService.HandleCheckpointRevert(checkpointId, AgentStore.Value.SelectedEndpointPath);
         await chatInput!.FocusAsync();
-    }
-
-    // MY CUSTOMIZATION POINT: Convert PendingApproval's JsonElement arguments to IDictionary for ApprovalQueue
-    /// <summary>
-    /// Converts a nullable JsonElement (from PendingApproval) to an IDictionary for the ApprovalQueue component.
-    /// </summary>
-    private static IDictionary<string, object?>? ConvertApprovalArguments(JsonElement? arguments)
-    {
-        if (arguments is null || arguments.Value.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        var dict = new Dictionary<string, object?>();
-        foreach (var property in arguments.Value.EnumerateObject())
-        {
-            dict[property.Name] = property.Value;
-        }
-
-        return dict;
-    }
-
-    /// <summary>
-    /// Handles recipe changes from the RecipeEditor component.
-    /// Updates the state manager with the new recipe data.
-    /// </summary>
-    private void OnRecipeChanged(Recipe recipe)
-    {
-        StateManager.UpdateRecipe(recipe);
-    }
-
-    private void CancelAnyCurrentResponse()
-    {
-        // If a response was cancelled while streaming, include it in the conversation so it's not lost
-        if (currentResponseMessage is not null)
-        {
-            messages.Add(currentResponseMessage);
-        }
-
-        currentResponseCancellation?.Cancel();
-        currentResponseMessage = null;
-        currentPendingApproval = null;
-        approvalTaskSource?.TrySetCanceled();
-        approvalTaskSource = null;
-        ApprovalHandler.ClearPendingApprovals();
     }
 
     private async Task ResetConversationAsync()
     {
-        CancelAnyCurrentResponse();
-        messages.Clear();
-        messages.Add(new(ChatRole.System, SystemPrompt));
-        chatOptions.ConversationId = null;
-        statefulMessageCount = 0;
-        currentPlan = null;
-        currentDocumentState = null;
-        isDocumentPreview = true;
-        seenFunctionCallIds.Clear();
-        seenFunctionResultCallIds.Clear();
-        ApprovalHandler.ClearPendingApprovals();
+        StreamingService.ResetConversation(SystemPrompt, AgentStore.Value.SelectedEndpointPath);
         chatSuggestions?.Clear();
-        // MY CUSTOMIZATION POINT: Clear checkpoints and diff state on conversation reset
-        CheckpointService.Clear();
-        _lastDiffBefore = null;
-        _lastDiffAfter = null;
-        
-        // Reinitialize state manager for Shared State endpoint
-        if (IsSharedStateEndpoint)
-        {
-            StateManager.Initialize();
-        }
-        else
-        {
-            StateManager.Clear();
-        }
-        
         await chatInput!.FocusAsync();
-    }
-
-    /// <summary>
-    /// Determines if DataContent represents a Plan state snapshot (Agentic Generative UI).
-    /// Plan snapshots have media type application/json and contain a "steps" array.
-    /// </summary>
-    private static bool IsPlanStateSnapshot(DataContent dc)
-    {
-        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
-            using JsonDocument doc = JsonDocument.Parse(text);
-            return doc.RootElement.TryGetProperty("steps", out _);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Determines if DataContent represents a Plan state delta (JSON Patch).
-    /// </summary>
-    private static bool IsPlanStateDelta(DataContent dc)
-    {
-        return dc.MediaType == "application/json-patch+json" && dc.Data.Length > 0;
-    }
-
-    /// <summary>
-    /// Attempts to parse a DataContent as a Plan snapshot.
-    /// </summary>
-    private static Plan? TryParsePlanSnapshot(DataContent dc)
-    {
-        try
-        {
-            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
-            return JsonSerializer.Deserialize<Plan>(text, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Attempts to parse a DataContent as a list of JSON Patch operations.
-    /// </summary>
-    private static List<JsonPatchOperation>? TryParsePatchOperations(DataContent dc)
-    {
-        try
-        {
-            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
-            return JsonSerializer.Deserialize<List<JsonPatchOperation>>(text, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Attempts to extract a DocumentState snapshot from DataContent (Predictive State Updates).
-    /// Returns true if the DataContent is a valid DocumentState snapshot (contains "document" property).
-    /// </summary>
-    private static bool TryExtractDocumentSnapshot(DataContent dc, out DocumentState? documentState)
-    {
-        documentState = null;
-
-        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
-            using JsonDocument doc = JsonDocument.Parse(text);
-
-            // Verify this is a DocumentState (has "document" property but not "steps" or "ingredients")
-            if (!doc.RootElement.TryGetProperty("document", out _))
-            {
-                return false;
-            }
-
-            // Exclude Plan snapshots (have "steps")
-            if (doc.RootElement.TryGetProperty("steps", out _))
-            {
-                return false;
-            }
-
-            // Exclude Recipe snapshots (have "ingredients")
-            if (doc.RootElement.TryGetProperty("ingredients", out _))
-            {
-                return false;
-            }
-
-            documentState = JsonSerializer.Deserialize<DocumentState>(text, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            return documentState is not null;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Consolidates DataContent in a message by replacing previous instance of same category.
-    /// Categories are determined by media type and content structure (is_state_snapshot, json-patch, etc.)
-    /// This prevents accumulating many redundant state updates in the DOM.
-    /// </summary>
-    private static void ConsolidateDataContent(ChatMessage message, DataContent newContent)
-    {
-        string category = GetDataContentCategory(newContent);
-        
-        // Find and replace existing DataContent of same category
-        for (int i = 0; i < message.Contents.Count; i++)
-        {
-            if (message.Contents[i] is DataContent existing && GetDataContentCategory(existing) == category)
-            {
-                // Replace with newer content
-                message.Contents[i] = newContent;
-                return;
-            }
-        }
-        
-        // No existing content of this category, add new
-        message.Contents.Add(newContent);
-    }
-
-    /// <summary>
-    /// Determines the category of DataContent for consolidation purposes.
-    /// Same category content will replace previous instances rather than accumulating.
-    /// </summary>
-    private static string GetDataContentCategory(DataContent dc)
-    {
-        // State deltas (JSON Patch) - consolidate per message
-        if (dc.MediaType == "application/json-patch+json")
-        {
-            return "state-delta";
-        }
-        
-        // State snapshots - consolidate per message
-        if (dc.MediaType == "application/json" && dc.AdditionalProperties?.ContainsKey("is_state_snapshot") == true)
-        {
-            return "state-snapshot";
-        }
-        
-        // Try to detect content type from JSON structure
-        if (dc.MediaType == "application/json" && dc.Data.Length > 0)
-        {
-            try
-            {
-                string text = System.Text.Encoding.UTF8.GetString(dc.Data.ToArray());
-                using JsonDocument doc = JsonDocument.Parse(text);
-                
-                // Plan snapshots
-                if (doc.RootElement.TryGetProperty("steps", out _))
-                {
-                    return "plan-snapshot";
-                }
-                
-                // Recipe snapshots
-                if (doc.RootElement.TryGetProperty("ingredients", out _))
-                {
-                    return "recipe-snapshot";
-                }
-                
-                // Document state snapshots
-                if (doc.RootElement.TryGetProperty("document", out _))
-                {
-                    return "document-snapshot";
-                }
-            }
-            catch
-            {
-                // Parsing failed, treat as generic
-            }
-        }
-        
-        // Generic DataContent - use media type as category
-        return dc.MediaType ?? "unknown";
-    }
-
-    /// <summary>
-    /// Determines if a FunctionResultContent represents a rejection response from HITL approval.
-    /// Rejection responses have {"approved": false} in their Result.
-    /// </summary>
-    private static bool IsRejectionResponse(FunctionResultContent functionResult)
-    {
-        try
-        {
-            if (functionResult.Result is JsonElement jsonElement)
-            {
-                if (jsonElement.TryGetProperty("approved", out JsonElement approvedProp))
-                {
-                    return !approvedProp.GetBoolean();
-                }
-            }
-        }
-        catch
-        {
-            // Failed to parse result - treat as not a rejection
-        }
-
-        return false;
-    }
-
-    // MY CUSTOMIZATION POINT: Tool invocation summary for MemoryInspector
-    /// <summary>
-    /// Builds a dictionary of tool name → invocation count from the ObservabilityService steps.
-    /// </summary>
-    private IReadOnlyDictionary<string, int>? GetToolInvocationSummary()
-    {
-        var steps = ObservabilityService.GetSteps();
-        if (steps.Count == 0)
-        {
-            return null;
-        }
-
-        return steps
-            .GroupBy(s => s.ToolName)
-            .ToDictionary(g => g.Key, g => g.Count());
     }
 
     public void Dispose()
     {
-        // MY CUSTOMIZATION POINT: Unsubscribe from viewport changes
         ViewportService.OnViewportChanged -= OnViewportChanged;
-        currentResponseCancellation?.Cancel();
-        approvalTaskSource?.TrySetCanceled();
+        PlanStore.StateChanged -= OnFluxorStateChanged;
+        AgentStore.StateChanged -= OnFluxorStateChanged;
+        ArtifactStore.StateChanged -= OnFluxorStateChanged;
+        ChatStore.StateChanged -= OnFluxorStateChanged;
         throttleTimer?.Stop();
         throttleTimer?.Dispose();
     }
