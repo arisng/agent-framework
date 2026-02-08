@@ -230,3 +230,6 @@ python/dotnet-ref
 .playwright-cli/**
 .ralph-sessions/**
 **/appsettings.Localhost.json
+
+# Microsoft package files
+packages-microsoft-prod.deb
