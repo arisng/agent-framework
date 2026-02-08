@@ -1,15 +1,16 @@
-# AG-UI Client and Server Samples
+# AG-UI Dojo Client and Server Samples
 
 This directory contains samples demonstrating how to use the AG-UI (Agentic Generative UI) protocol to enable communication between client applications and remote agent servers. The AG-UI protocol provides a standardized way for clients to interact with AI agents through Server-Sent Events (SSE) streaming.
 
 ## Samples Overview
 
-| Sample                                 | Type              | Description                                                                                                    |
-| -------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| **[AGUIServer](./AGUIServer)**         | Minimal API       | ASP.NET Core server exposing an AI agent via the AG-UI protocol                                                |
-| **[AGUIClient](./AGUIClient)**         | Console App       | Console client that connects to the AG-UI server and displays streaming updates                                |
-| **[AGUIDojoServer](./AGUIDojoServer)** | Unified Backend   | Full-featured server with 7 AG-UI endpoints, business APIs, JWT auth, OpenTelemetry, and shared services       |
-| **[AGUIDojoClient](./AGUIDojoClient)** | Blazor Server BFF | Production-ready Blazor web chat UI with YARP proxy, all 7 AG-UI features, Polly resilience, and health checks |
+| Sample                                     | Type              | Description                                                                                                    |
+| ------------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| **[AGUIServer](./AGUIServer)**             | Minimal API       | ASP.NET Core server exposing an AI agent via the AG-UI protocol                                                |
+| **[AGUIClient](./AGUIClient)**             | Console App       | Console client that connects to the AG-UI server and displays streaming updates                                |
+| **[AGUIDojoServer](./AGUIDojoServer)**     | Unified Backend   | Full-featured server with 7 AG-UI endpoints, business APIs, JWT auth, OpenTelemetry, and shared services       |
+| **[AGUIDojoClient](./AGUIDojoClient)**     | Blazor Server BFF | Production-ready Blazor web chat UI with YARP proxy, all 7 AG-UI features, Polly resilience, and health checks |
+| **[AGUIDojo.AppHost](./AGUIDojo.AppHost)** | Aspire App Host   | Aspire App Host project to run AGUIDojoServer and AGUIDojoClient with health monitoring                        |
 
 ## Architecture Overview
 
