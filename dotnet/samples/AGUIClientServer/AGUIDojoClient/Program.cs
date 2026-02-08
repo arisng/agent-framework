@@ -48,6 +48,7 @@ using System.Net.Http.Headers;
 using AGUIDojoClient.Components;
 using AGUIDojoClient.Services;
 using BlazorBlueprint.Primitives.Extensions;
+using Fluxor;
 using Microsoft.Agents.AI.AGUI;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -73,6 +74,15 @@ builder.Services.AddRazorComponents()
 // MY CUSTOMIZATION POINT: Register BlazorBlueprint Primitives services (IPortalService, etc.)
 // Required for PortalHost overlay rendering used by Dialog, Sheet, Drawer, Tooltip, etc.
 builder.Services.AddBlazorBlueprintPrimitives();
+
+// MY CUSTOMIZATION POINT: Register Fluxor state management
+// Scans this assembly for Feature<T>, [ReducerMethod], and [EffectMethod] classes
+// to auto-register stores (PlanState, ArtifactState, AgentState, ChatState).
+builder.Services.AddFluxor(options => options.ScanAssemblies(typeof(Program).Assembly));
+
+// MY CUSTOMIZATION POINT: Register ThemeService for dark/light theme switching
+// Uses IJSRuntime to toggle .dark CSS class on <html> and persist to localStorage
+builder.Services.AddScoped<IThemeService, ThemeService>();
 
 // -----------------------------------------------------------------------------
 // BACKEND CONNECTION CONFIGURATION
@@ -194,6 +204,10 @@ builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
 builder.Services.AddSingleton<IRiskAssessmentService, RiskAssessmentService>();
 // CheckpointService manages in-memory state snapshots for time-travel/undo (Scoped — per circuit)
 builder.Services.AddScoped<ICheckpointService, CheckpointService>();
+
+// AgentStreamingService coordinates SSE streaming loop, governance actions, and conversation lifecycle
+// Extracted from Chat.razor to reduce component complexity (Scoped — per circuit)
+builder.Services.AddScoped<IAgentStreamingService, AgentStreamingService>();
 
 // MY CUSTOMIZATION POINT: Register ViewportService for responsive mobile layout
 // Detects viewport width via JS interop and provides IsMobile property (breakpoint: 768px)

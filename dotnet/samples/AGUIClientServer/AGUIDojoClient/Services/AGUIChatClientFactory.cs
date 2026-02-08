@@ -24,6 +24,9 @@ public sealed class AGUIChatClientFactory : IAGUIChatClientFactory
         new EndpointInfo("tool_based_generative_ui", "Tool-Based UI Rendering", "Dynamic Blazor components based on tool definitions"),
         new EndpointInfo("shared_state", "Shared State", "Bidirectional state sync (Recipe/Ingredient)"),
         new EndpointInfo("predictive_state_updates", "Predictive State Updates", "Streaming tool arguments as optimistic document updates"),
+        new EndpointInfo("data_grid", "Data Grid", "Tabular data display via show_data_grid tool"),
+        new EndpointInfo("chart", "Chart", "Data visualization via show_chart tool"),
+        new EndpointInfo("dynamic_form", "Dynamic Form", "Interactive form display via show_form tool"),
     ];
 
     /// <summary>

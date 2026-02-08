@@ -4,6 +4,32 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
+}
+
+/* MY CUSTOMIZATION POINT: Theme toggle button — floating top-right control */
+.theme-toggle-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius, 0.5rem);
+    border: 1px solid var(--border, hsl(240 5.9% 90%));
+    background-color: var(--background, hsl(0 0% 100%));
+    color: var(--foreground, hsl(240 10% 3.9%));
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    padding: 0;
+}
+
+.theme-toggle-btn:hover {
+    background-color: var(--accent, hsl(240 4.8% 95.9%));
+    border-color: var(--primary, hsl(221.2 83.2% 53.3%));
 }
 
 #blazor-error-ui {

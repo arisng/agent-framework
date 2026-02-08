@@ -477,6 +477,12 @@ app.MapAGUI("/shared_state", agentFactory.CreateSharedState(jsonOptions.Value.Se
 
 app.MapAGUI("/predictive_state_updates", agentFactory.CreatePredictiveStateUpdates(jsonOptions.Value.SerializerOptions));
 
+app.MapAGUI("/data_grid", agentFactory.CreateDataGrid());
+
+app.MapAGUI("/chart", agentFactory.CreateChart());
+
+app.MapAGUI("/dynamic_form", agentFactory.CreateDynamicForm());
+
 await app.RunAsync();
 
 public partial class Program;

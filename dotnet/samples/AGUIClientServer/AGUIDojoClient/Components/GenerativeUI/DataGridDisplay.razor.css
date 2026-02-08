@@ -1,0 +1,91 @@
+/* Copyright (c) Microsoft. All rights reserved. */
+/* Scoped styles for DataGridDisplay component */
+
+.data-grid-display {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: hsl(var(--card));
+}
+
+.data-grid-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / 0.3);
+}
+
+.data-grid-icon {
+    color: hsl(var(--muted-foreground));
+    flex-shrink: 0;
+}
+
+.data-grid-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: hsl(var(--foreground));
+}
+
+.data-grid-count {
+    margin-left: auto;
+    font-size: 0.75rem;
+}
+
+.data-grid-table-container {
+    overflow-x: auto;
+}
+
+.data-grid-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.data-grid-table thead tr {
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+.data-grid-table th {
+    padding: 0.625rem 1rem;
+    text-align: left;
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    background: hsl(var(--muted) / 0.1);
+}
+
+.data-grid-table tbody tr {
+    border-bottom: 1px solid hsl(var(--border));
+    transition: background-color 0.15s ease;
+}
+
+.data-grid-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.data-grid-table tbody tr:hover {
+    background: hsl(var(--muted) / 0.3);
+}
+
+.data-grid-table td {
+    padding: 0.625rem 1rem;
+    color: hsl(var(--foreground));
+    white-space: nowrap;
+}
+
+.data-grid-empty {
+    text-align: center;
+    padding: 2rem 1rem !important;
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+}
+
+.data-grid-null {
+    color: hsl(var(--muted-foreground));
+    opacity: 0.5;
+}

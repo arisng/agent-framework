@@ -75,7 +75,12 @@ public sealed class StateManager : IStateManager
     {
         recipe = null;
 
-        if (dataContent.MediaType != "application/json" || dataContent.Data.Length == 0)
+        // Primary gate: MediaType-based switching. DataContent.MediaType is non-nullable
+        // (always set in constructors), so no null-coalescing is needed.
+        // Only application/json payloads can carry recipe snapshots.
+        if (!dataContent.HasTopLevelMediaType("application") ||
+            dataContent.MediaType != "application/json" ||
+            dataContent.Data.Length == 0)
         {
             return false;
         }
@@ -85,11 +90,19 @@ public sealed class StateManager : IStateManager
             string json = Encoding.UTF8.GetString(dataContent.Data.ToArray());
             using JsonDocument doc = JsonDocument.Parse(json);
 
-            // Check if this is a Recipe snapshot (has "ingredients" or "title") and not a Plan (has "steps")
-            // We exclude Plan snapshots which have a "steps" property
+            // Secondary gate: JSON structure heuristics to disambiguate recipe from
+            // plan/document snapshots (all three share "application/json" MediaType).
+            // Exclude Plan snapshots which have a "steps" property.
             if (doc.RootElement.TryGetProperty("steps", out _))
             {
                 return false;
+            }
+
+            // Check if it's a RecipeResponse wrapper (from server)
+            if (doc.RootElement.TryGetProperty("recipe", out JsonElement recipeElement))
+            {
+                recipe = JsonSerializer.Deserialize<Recipe>(recipeElement.GetRawText(), s_jsonOptions);
+                return recipe is not null;
             }
 
             // Check if it looks like a Recipe (has recipe-specific fields)
@@ -98,13 +111,6 @@ public sealed class StateManager : IStateManager
                                    doc.RootElement.TryGetProperty("instructions", out _) ||
                                    doc.RootElement.TryGetProperty("skill_level", out _) ||
                                    doc.RootElement.TryGetProperty("cooking_time", out _);
-
-            // Also check if it's a RecipeResponse wrapper (from server)
-            if (doc.RootElement.TryGetProperty("recipe", out JsonElement recipeElement))
-            {
-                recipe = JsonSerializer.Deserialize<Recipe>(recipeElement.GetRawText(), s_jsonOptions);
-                return recipe is not null;
-            }
 
             if (hasRecipeFields)
             {

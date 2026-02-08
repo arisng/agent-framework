@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Collections.Concurrent;
+using AGUIDojoClient.Components.GenerativeUI;
 using AGUIDojoClient.Components.ToolResults;
 
 namespace AGUIDojoClient.Services;
@@ -113,6 +114,15 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
     {
         // Register WeatherDisplay for the get_weather tool
         this.Register<WeatherDisplay>("get_weather", "Weather");
+
+        // Register DataGridDisplay for the show_data_grid tool
+        this.Register<DataGridDisplay>("show_data_grid", "DataGrid");
+
+        // Register ChartDisplay for the show_chart tool
+        this.Register<ChartDisplay>("show_chart", "Chart");
+
+        // Register DynamicFormDisplay for the show_form tool
+        this.Register<DynamicFormDisplay>("show_form", "Form");
     }
 
     /// <summary>

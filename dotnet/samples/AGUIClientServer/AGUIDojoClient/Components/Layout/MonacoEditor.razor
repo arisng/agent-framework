@@ -1,0 +1,167 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MonacoEditor wrapper: IAsyncDisposable wrapper around BlazorMonaco StandaloneDiffEditor *@
+
+@using BlazorMonaco
+@using BlazorMonaco.Editor
+
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<div class="monaco-editor-wrapper" @key="_editorKey">
+    <StandaloneDiffEditor @ref="_diffEditor"
+                          Id="@EditorId"
+                          CssClass="monaco-diff-editor"
+                          ConstructionOptions="GetConstructionOptions" />
+</div>
+
+@code {
+    private StandaloneDiffEditor? _diffEditor;
+    private string _editorKey = Guid.NewGuid().ToString();
+    private bool _isDisposed;
+
+    /// <summary>
+    /// Unique identifier for this editor instance. Defaults to a generated GUID if not provided.
+    /// </summary>
+    [Parameter]
+    public string EditorId { get; set; } = $"monaco-diff-{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// The original (left-side, read-only) text content to display in the diff editor.
+    /// </summary>
+    [Parameter]
+    public string OriginalText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The modified (right-side) text content to display in the diff editor.
+    /// </summary>
+    [Parameter]
+    public string ModifiedText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The language mode for syntax highlighting (e.g., "markdown", "json", "csharp").
+    /// Defaults to "markdown".
+    /// </summary>
+    [Parameter]
+    public string Language { get; set; } = "markdown";
+
+    /// <summary>
+    /// Whether the original (left-side) editor is read-only. Defaults to true.
+    /// </summary>
+    [Parameter]
+    public bool OriginalReadOnly { get; set; } = true;
+
+    /// <summary>
+    /// Whether the modified (right-side) editor is read-only. Defaults to false.
+    /// </summary>
+    [Parameter]
+    public bool ModifiedReadOnly { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the modified editor content changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnModifiedContentChanged { get; set; }
+
+    /// <summary>
+    /// Provides the construction options for the StandaloneDiffEditor.
+    /// Sets AutomaticLayout = true to handle container resizes, and
+    /// configures the default language to <see cref="Language"/>.
+    /// </summary>
+    private StandaloneDiffEditorConstructionOptions GetConstructionOptions(StandaloneDiffEditor editor)
+    {
+        return new StandaloneDiffEditorConstructionOptions
+        {
+            AutomaticLayout = true,
+            OriginalEditable = !OriginalReadOnly,
+            RenderSideBySide = true,
+            EnableSplitViewResizing = true,
+        };
+    }
+
+    /// <inheritdoc/>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await SetDiffModelAsync();
+        }
+    }
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        // Update editor models when Original/Modified text or Language changes
+        if (_diffEditor is not null)
+        {
+            await SetDiffModelAsync();
+        }
+    }
+
+    /// <summary>
+    /// Sets the diff editor model with the current Original/Modified text and language.
+    /// </summary>
+    private async Task SetDiffModelAsync()
+    {
+        if (_diffEditor is null || _isDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            var model = new DiffEditorModel
+            {
+                Original = await Global.CreateModel(
+                    JSRuntime,
+                    OriginalText,
+                    Language),
+                Modified = await Global.CreateModel(
+                    JSRuntime,
+                    ModifiedText,
+                    Language),
+            };
+
+            await _diffEditor.SetModel(model);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Blazor Server circuit disconnected — safe to ignore during teardown
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed before JS interop completed — safe to ignore
+        }
+    }
+
+    /// <summary>
+    /// Disposes the Monaco diff editor JS-side resources gracefully.
+    /// Handles <see cref="JSDisconnectedException"/> for Blazor Server circuit disconnects.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+
+        if (_diffEditor is not null)
+        {
+            try
+            {
+                await _diffEditor.DisposeEditor();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Blazor Server circuit already disconnected — JS cleanup not possible
+            }
+            catch (ObjectDisposedException)
+            {
+                // DotNetObjectReference already disposed — safe to ignore
+            }
+
+            _diffEditor.Dispose();
+        }
+    }
+}

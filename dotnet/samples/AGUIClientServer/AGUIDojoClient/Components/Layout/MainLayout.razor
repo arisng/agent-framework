@@ -1,11 +1,33 @@
 @inherits LayoutComponentBase
 @* MY CUSTOMIZATION POINT: BlazorBlueprint Primitives namespace for PortalHost *@
 @using BlazorBlueprint.Primitives.Services
+@* MY CUSTOMIZATION POINT: Lucide icon components for theme toggle Sun/Moon icons *@
+@using BlazorBlueprint.Icons.Lucide.Components
+@* MY CUSTOMIZATION POINT: Inject ThemeService for dark/light toggle *@
+@inject IThemeService ThemeService
+
+@* MY CUSTOMIZATION POINT: Fluxor StoreInitializer — required for Fluxor state management.
+   Must be rendered once in the layout so stores are initialized before any component reads state. *@
+<Fluxor.Blazor.Web.StoreInitializer />
 
 @* MY CUSTOMIZATION POINT: Full-height layout container for DualPaneLayout support *@
 <div class="layout-root">
+    @* MY CUSTOMIZATION POINT: Theme toggle button — top-right floating control *@
+    <button class="theme-toggle-btn" @onclick="ToggleThemeAsync" title="@(_isDark ? "Switch to light theme" : "Switch to dark theme")">
+        @if (_isDark)
+        {
+            <LucideIcon Name="sun" Size="18" />
+        }
+        else
+        {
+            <LucideIcon Name="moon" Size="18" />
+        }
+    </button>
     @Body
 </div>
+
+@* MY CUSTOMIZATION POINT: Command Palette — global Ctrl+K / Cmd+K quick-action dialog *@
+<CommandPalette />
 
 @* MY CUSTOMIZATION POINT: BlazorBlueprint PortalHost — required for overlay components (Dialog, Sheet, Drawer, Tooltip, Popover, Select, Combobox) *@
 <PortalHost />
@@ -15,3 +37,34 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    /// <summary>
+    /// Tracks whether the current theme is dark. Updated on initialization
+    /// and after each toggle.
+    /// </summary>
+    private bool _isDark;
+
+    /// <summary>
+    /// Reads the persisted theme from localStorage on first render and sets
+    /// the initial <c>_isDark</c> state so the correct icon is displayed.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            string theme = await ThemeService.GetThemeAsync();
+            _isDark = string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase);
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Toggles between light and dark themes and updates the button icon.
+    /// </summary>
+    private async Task ToggleThemeAsync()
+    {
+        string newTheme = await ThemeService.ToggleThemeAsync();
+        _isDark = string.Equals(newTheme, "dark", StringComparison.OrdinalIgnoreCase);
+    }
+}
