@@ -18,6 +18,10 @@
     private StandaloneDiffEditor? _diffEditor;
     private string _editorKey = Guid.NewGuid().ToString();
     private bool _isDisposed;
+    private TextModel? _originalModel;
+    private TextModel? _modifiedModel;
+    private string? _lastSetOriginalText;
+    private string? _lastSetModifiedText;
 
     /// <summary>
     /// Unique identifier for this editor instance. Defaults to a generated GUID if not provided.
@@ -99,6 +103,7 @@
 
     /// <summary>
     /// Sets the diff editor model with the current Original/Modified text and language.
+    /// Reuse existing models to avoid memory leaks during frequent streaming updates.
     /// </summary>
     private async Task SetDiffModelAsync()
     {
@@ -109,19 +114,37 @@
 
         try
         {
-            var model = new DiffEditorModel
+            // Initialize models if they don't exist
+            if (_originalModel is null || _modifiedModel is null)
             {
-                Original = await Global.CreateModel(
-                    JSRuntime,
-                    OriginalText,
-                    Language),
-                Modified = await Global.CreateModel(
-                    JSRuntime,
-                    ModifiedText,
-                    Language),
-            };
+                _originalModel = await Global.CreateModel(JSRuntime, OriginalText, Language);
+                _modifiedModel = await Global.CreateModel(JSRuntime, ModifiedText, Language);
+                _lastSetOriginalText = OriginalText;
+                _lastSetModifiedText = ModifiedText;
 
-            await _diffEditor.SetModel(model);
+                var model = new DiffEditorModel
+                {
+                    Original = _originalModel,
+                    Modified = _modifiedModel
+                };
+
+                await _diffEditor.SetModel(model);
+            }
+            else
+            {
+                // Update existing models only if content changed (avoids unnecessary JS calls)
+                if (!string.Equals(OriginalText, _lastSetOriginalText, StringComparison.Ordinal))
+                {
+                    await _originalModel.SetValue(OriginalText);
+                    _lastSetOriginalText = OriginalText;
+                }
+
+                if (!string.Equals(ModifiedText, _lastSetModifiedText, StringComparison.Ordinal))
+                {
+                    await _modifiedModel.SetValue(ModifiedText);
+                    _lastSetModifiedText = ModifiedText;
+                }
+            }
         }
         catch (JSDisconnectedException)
         {

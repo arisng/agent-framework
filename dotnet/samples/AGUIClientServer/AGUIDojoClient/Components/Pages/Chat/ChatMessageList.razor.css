@@ -1,6 +1,9 @@
 .message-list-container {
     margin: 2rem 1.5rem;
     flex-grow: 1;
+    /* Enable scrolling for the message list, allowing ChatInput to stay sticky at bottom */
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .message-list {

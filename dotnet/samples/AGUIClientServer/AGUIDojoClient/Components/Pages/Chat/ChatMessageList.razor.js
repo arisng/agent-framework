@@ -19,16 +19,27 @@ window.customElements.define('chat-messages', class ChatMessages extends HTMLEle
         this._nextAutoScroll = requestAnimationFrame(() => {
             const addedUserMessage = mutations.some(m => Array.from(m.addedNodes).some(n => n.parentElement === this && n.classList?.contains('user-message')));
             const elem = this.lastElementChild;
-            if (ChatMessages._isFirstAutoScroll || addedUserMessage || this._elemIsNearScrollBoundary(elem, 300)) {
-                elem.scrollIntoView({ behavior: ChatMessages._isFirstAutoScroll ? 'instant' : 'smooth' });
+            if (elem && (ChatMessages._isFirstAutoScroll || addedUserMessage || this._elemIsNearScrollBoundary(elem, 300))) {
+                elem.scrollIntoView({ behavior: ChatMessages._isFirstAutoScroll ? 'instant' : 'smooth', block: 'end' });
                 ChatMessages._isFirstAutoScroll = false;
             }
         });
     }
 
     _elemIsNearScrollBoundary(elem, threshold) {
-        const maxScrollPos = document.body.scrollHeight - window.innerHeight;
-        const remainingScrollDistance = maxScrollPos - window.scrollY;
+        const scrollParent = this._getScrollParent(this);
+        if (!scrollParent) return true; // Default to scrolling if no parent found
+
+        const maxScrollPos = scrollParent.scrollHeight - scrollParent.clientHeight;
+        const remainingScrollDistance = maxScrollPos - scrollParent.scrollTop;
         return remainingScrollDistance < elem.offsetHeight + threshold;
+    }
+
+    _getScrollParent(node) {
+        if (!node || node === document.body) return window;
+        const style = getComputedStyle(node);
+        const overflowY = style.overflowY;
+        if (overflowY === 'scroll' || overflowY === 'auto') return node;
+        return this._getScrollParent(node.parentElement);
     }
 });

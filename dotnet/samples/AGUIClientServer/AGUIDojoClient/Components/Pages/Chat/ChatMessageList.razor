@@ -40,6 +40,8 @@
             string? previousAuthorName = null;
             @foreach (var message in Messages)
             {
+                if (message is null) continue;
+
                 var currentAuthorName = message.Role == ChatRole.Assistant ? message.AuthorName : null;
 
                 if (!string.IsNullOrEmpty(currentAuthorName) &&
@@ -125,7 +127,7 @@
     /// </summary>
     private bool _shouldVirtualize;
 
-    private bool IsEmpty => !Messages.Any(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
+    private bool IsEmpty => !Messages.Any(m => m != null && (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
 
     /// <inheritdoc/>
     protected override void OnParametersSet()
@@ -149,6 +151,7 @@
             _lastAuthorName = null;
             foreach (var message in messageList)
             {
+                if (message is null) continue;
                 var author = message.Role == ChatRole.Assistant ? message.AuthorName : null;
                 if (!string.IsNullOrEmpty(author))
                 {
@@ -185,6 +188,8 @@
 
         foreach (var message in messages)
         {
+            if (message is null) continue;
+
             var author = message.Role == ChatRole.Assistant ? message.AuthorName : null;
             var showHandoff = !string.IsNullOrEmpty(author)
                 && previousAuthor is not null
