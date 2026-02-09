@@ -630,7 +630,9 @@ This repo is a forked repo from Microsoft. I want to keep this repo's main branc
 This convention will help me streamline the management of my custom code changes to make merge decisions and avoid future conflicts.
 The rule is that for all codebase not written by me in this forked repo, if there are any custom changes on top of Microsoft's codebase, then this comment must be added.
 
-This is the conventional comment:
+This is the conventional comment flag:
 ```txt
-// MY CUSTOMIZATION POINT: This is to flag my custom changes on top of Microsoft codebase.
+// MY CUSTOMIZATION POINT: <description of customization>
 ```
+Only use this flag to indicate my custom changes made directly on top of Microsoft codebase (not my own codebase).
+Currently, I'm actively working AGUIDojo projects so any code written in AGUIDojoServer and AGUIDojoClient projects are my own codebase, so no need to add this flag there.

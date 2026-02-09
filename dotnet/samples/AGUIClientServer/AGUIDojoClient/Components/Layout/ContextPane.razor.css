@@ -9,6 +9,6 @@
 }
 
 /* ScrollArea fills full height of the pane */
-.context-pane ::deep .context-pane__scroll {
+.context-pane .context-pane__scroll {
     height: 100%;
 }

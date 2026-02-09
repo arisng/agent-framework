@@ -41,6 +41,11 @@
 
     private async Task UpdateSuggestionsAsync(IReadOnlyList<ChatMessage> messages)
     {
+        if (messages is null || ChatClient is null)
+        {
+            return;
+        }
+
         cancellation?.Cancel();
         cancellation = new CancellationTokenSource();
 
@@ -58,7 +63,7 @@
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await DispatchExceptionAsync(ex);
+            Console.WriteLine($"Error getting suggestions: {ex}");
         }
     }
 
@@ -71,8 +76,8 @@
     {
         // Get any leading system messages, plus up to 5 user/assistant messages
         // This should be enough context to generate suggestions without unnecessarily resending entire conversations when long
-        var systemMessages = messages.TakeWhile(m => m.Role == ChatRole.System);
-        var otherMessages = messages.Where((m, index) => m.Role == ChatRole.User || m.Role == ChatRole.Assistant).Where(m => !string.IsNullOrEmpty(m.Text)).TakeLast(5);
+        var systemMessages = messages.Where(m => m != null).TakeWhile(m => m.Role == ChatRole.System);
+        var otherMessages = messages.Where((m, index) => m != null && (m.Role == ChatRole.User || m.Role == ChatRole.Assistant)).Where(m => !string.IsNullOrEmpty(m.Text)).TakeLast(5);
         return systemMessages.Concat(otherMessages);
     }
 }
