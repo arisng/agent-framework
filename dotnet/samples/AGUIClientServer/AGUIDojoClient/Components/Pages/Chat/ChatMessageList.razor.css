@@ -1,31 +1,30 @@
 .message-list-container {
-    margin: 2rem 1.5rem;
-    flex-grow: 1;
+    padding: 1rem 1.5rem;
+    flex: 1;
     /* Enable scrolling for the message list, allowing ChatInput to stay sticky at bottom */
     overflow-y: auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .message-list {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
+    flex: 1;
 }
 
-/* Constrain chat message container width on larger screens for optimal readability */
-@media (min-width: 768px) {
-    .message-list-container {
-        max-width: 52rem;
-        margin-left: auto;
-        margin-right: auto;
-    }
-}
+/* Removed: @media max-width: 52rem — context-pane is already width-constrained by ResizablePanel in dual-pane mode */
 
 .no-messages {
     text-align: center;
     font-size: 1.25rem;
     color: hsl(var(--muted-foreground));
-    margin-top: calc(40vh - 18rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
 }
 
 chat-messages > ::deep div:last-of-type {

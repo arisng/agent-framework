@@ -131,3 +131,33 @@ export function dispose() {
         _debounceTimerId = null;
     }
 }
+
+// =============================================================================
+// Canvas-pane hidden state persistence
+// =============================================================================
+
+/** @type {string} localStorage key for the canvas-pane hidden state */
+const CANVAS_HIDDEN_KEY = 'layout-canvas-hidden';
+
+/**
+ * Persists the canvas-pane hidden state to localStorage.
+ *
+ * @param {boolean} hidden — Whether the canvas-pane is hidden.
+ */
+export function saveCanvasPaneHidden(hidden) {
+    localStorage.setItem(CANVAS_HIDDEN_KEY, JSON.stringify(!!hidden));
+}
+
+/**
+ * Reads the persisted canvas-pane hidden state from localStorage.
+ *
+ * @returns {boolean} `true` if the canvas-pane was hidden, `false` otherwise.
+ */
+export function loadCanvasPaneHidden() {
+    try {
+        var stored = localStorage.getItem(CANVAS_HIDDEN_KEY);
+        return stored ? JSON.parse(stored) === true : false;
+    } catch (_) {
+        return false;
+    }
+}

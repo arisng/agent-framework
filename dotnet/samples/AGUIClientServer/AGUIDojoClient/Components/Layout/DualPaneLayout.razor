@@ -6,6 +6,7 @@
    Accepts RenderFragment parameters for each pane's content.
    Persists splitter position to localStorage via JS interop (desktop only). *@
 @using BlazorBlueprint.Components.Resizable
+@using BlazorBlueprint.Components.Button
 @using AGUIDojoClient.Store.ArtifactState
 @* MY CUSTOMIZATION POINT: Inject ViewportService for responsive layout switching *@
 @inject ViewportService ViewportService
@@ -35,8 +36,20 @@ else if (ViewportService.IsMobile)
 else
 {
     <div class="dual-pane-root" @ref="_panelGroupRef">
-        @* MY CUSTOMIZATION POINT: Conditional dual-pane vs single-pane layout based on artifact presence *@
+        @* MY CUSTOMIZATION POINT: Canvas pane toggle button — visible when there's an artifact *@
         @if (HasInteractiveArtifact)
+        {
+            <Button Variant="ButtonVariant.Ghost"
+                    Size="ButtonSize.IconSmall"
+                    Class="canvas-toggle-btn"
+                    OnClick="ToggleCanvasPane"
+                    AriaLabel="@(_canvasPaneHidden ? "Show canvas pane" : "Hide canvas pane")">
+                <LucideIcon Name="@(_canvasPaneHidden ? "panel-right-open" : "panel-right-close")" Size="16" />
+            </Button>
+        }
+
+        @* MY CUSTOMIZATION POINT: Conditional dual-pane vs single-pane layout based on artifact + user toggle *@
+        @if (ShowCanvasPane)
         {
             @* Dual-pane layout: context-pane + canvas-pane *@
             <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
@@ -61,7 +74,7 @@ else
         }
         else
         {
-            @* Single-pane layout: context-pane only (canvas-pane hidden) *@
+            @* Single-pane layout: context-pane only (canvas-pane hidden or no artifact) *@
             <div class="single-pane-layout">
                 @if (ContextPaneContent is not null)
                 {
@@ -79,6 +92,11 @@ else
     // MY CUSTOMIZATION POINT: Track ViewportService initialization to prevent
     // rendering MobileLayout's Drawer JS interop on desktop before switching.
     private bool _viewportInitialized;
+
+    // MY CUSTOMIZATION POINT: User-controlled canvas pane hidden state.
+    // When true, the canvas pane is hidden and context pane takes full width.
+    // Persisted to localStorage via layoutPersistence.js interop.
+    private bool _canvasPaneHidden;
 
     // MY CUSTOMIZATION POINT: Layout persistence state.
     // Splitter position is saved/restored via layoutPersistence.js interop.
@@ -110,6 +128,12 @@ else
     /// </summary>
     private bool HasInteractiveArtifact => ArtifactStore.Value.HasInteractiveArtifact;
 
+    /// <summary>
+    /// Gets whether the canvas pane should be visible.
+    /// Requires both an interactive artifact AND the user has not manually hidden the pane.
+    /// </summary>
+    private bool ShowCanvasPane => HasInteractiveArtifact && !_canvasPaneHidden;
+
     // MY CUSTOMIZATION POINT: Initialize ViewportService, read persisted layout,
     // subscribe to viewport changes, and set up layout persistence observer.
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -119,11 +143,12 @@ else
             await ViewportService.InitializeAsync();
             ViewportService.OnViewportChanged += OnViewportChanged;
 
-            // MY CUSTOMIZATION POINT: Read persisted splitter position on desktop only.
+            // MY CUSTOMIZATION POINT: Read persisted splitter position and canvas hidden state on desktop only.
             // Mobile viewport ignores persisted values.
             if (!ViewportService.IsMobile)
             {
                 await ReadPersistedLayoutAsync();
+                await ReadPersistedCanvasHiddenAsync();
             }
 
             // MY CUSTOMIZATION POINT: Mark initialized and re-render with correct layout.
@@ -139,6 +164,58 @@ else
         {
             _persistenceInitialized = true;
             await InitLayoutPersistenceAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reads the persisted canvas-pane hidden state from localStorage via JS interop.
+    /// Defaults to <c>false</c> (visible) if no persisted value exists.
+    /// </summary>
+    private async Task ReadPersistedCanvasHiddenAsync()
+    {
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./js/layoutPersistence.js");
+            }
+
+            _canvasPaneHidden = await _layoutModule.InvokeAsync<bool>("loadCanvasPaneHidden");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — keep default (visible).
+        }
+    }
+
+    /// <summary>
+    /// Toggles the canvas pane hidden state and persists to localStorage.
+    /// </summary>
+    private async Task ToggleCanvasPane()
+    {
+        _canvasPaneHidden = !_canvasPaneHidden;
+
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./js/layoutPersistence.js");
+            }
+
+            await _layoutModule.InvokeVoidAsync("saveCanvasPaneHidden", _canvasPaneHidden);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — state is still toggled in memory.
+        }
+
+        // MY CUSTOMIZATION POINT: Re-initialize persistence observer when restoring dual-pane
+        // because the ResizablePanelGroup DOM was destroyed and recreated.
+        if (!_canvasPaneHidden)
+        {
+            _persistenceInitialized = false;
         }
     }
 

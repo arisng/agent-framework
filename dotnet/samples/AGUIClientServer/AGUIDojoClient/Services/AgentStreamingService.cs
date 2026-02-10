@@ -154,8 +154,9 @@ public sealed class AgentStreamingService : IAgentStreamingService
                             var response = _approvalHandler.CreateApprovalResponse(approval.ApprovalId, approved);
                             approvalResponses.Add(response);
 
-                            // Also add rejection response to streaming message for immediate display
-                            if (!approved && _streamingMessage is not null)
+                            // Add approval/rejection response to streaming message for immediate display
+                            // This ensures the tool call cycle shows "Completed"/"Rejected" instead of "Running"
+                            if (_streamingMessage is not null)
                             {
                                 _streamingMessage.Contents.Add(response);
                             }

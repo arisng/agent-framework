@@ -4,6 +4,7 @@
 @using AGUIDojoClient.Store.ArtifactState
 @using AGUIDojoClient.Store.ChatState
 @using AGUIDojoClient.Store.PlanState
+@using BlazorBlueprint.Components.Collapsible
 @using BlazorBlueprint.Components.Separator
 @inject IAGUIChatClientFactory ClientFactory
 @inject IAgentStreamingService StreamingService
@@ -85,7 +86,17 @@
 
             @if (StreamingService.LastDiffBefore is not null || StreamingService.LastDiffAfter is not null)
             {
-                <DiffPreview Before="@StreamingService.LastDiffBefore" After="@StreamingService.LastDiffAfter" Title="@StreamingService.LastDiffTitle" />
+                <Collapsible DefaultOpen="false">
+                    <CollapsibleTrigger>
+                        <div class="diff-preview-trigger">
+                            <LucideIcon Name="git-compare-arrows" Size="16" />
+                            <span>Recipe State Changes</span>
+                        </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                        <DiffPreview Before="@StreamingService.LastDiffBefore" After="@StreamingService.LastDiffAfter" Title="@StreamingService.LastDiffTitle" />
+                    </CollapsibleContent>
+                </Collapsible>
             }
 
             @* MY CUSTOMIZATION POINT: Artifact components (RecipeEditor, DocumentPreview) are now

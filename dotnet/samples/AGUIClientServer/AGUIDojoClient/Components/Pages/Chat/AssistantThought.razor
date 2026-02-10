@@ -16,8 +16,8 @@
 <div class="assistant-thought @(IsExpanded ? "expanded" : "collapsed")">
     @* MY CUSTOMIZATION POINT: BlazorBlueprint Collapsible replaces hand-rolled expand/collapse *@
     <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
-        <CollapsibleTrigger AsChild>
-            <button class="thought-toggle" type="button" aria-expanded="@IsExpanded">
+        <CollapsibleTrigger>
+            <div class="thought-toggle" aria-expanded="@IsExpanded">
                 <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
                 <span class="thought-summary">
                     @if (InProgress)
@@ -30,7 +30,7 @@
                     }
                 </span>
                 <LucideIcon Name="@(IsExpanded ? "chevron-up" : "chevron-down")" Size="16" Class="thought-chevron-icon" />
-            </button>
+            </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
             <div class="thought-content">
