@@ -25,7 +25,7 @@ else if (Message.Role == ChatRole.Assistant)
     var textContents = sortedContents.OfType<TextContent>().Where(tc => tc.Text?.Length > 0).ToList();
 
     @* Render collapsible thought block if there are any non-visual thought contents *@
-    @if (thoughtContents.Count > 0)
+    @if (thoughtContents.Count > 0 && thoughtContents.Any(c => c is FunctionCallContent or ErrorContent))
     {
         @* MY CUSTOMIZATION POINT: Pass ReasoningSteps for tool call timing display *@
         <AssistantThought ThoughtContents="@thoughtContents" AllContents="@Message.Contents" InProgress="@InProgress"
@@ -150,13 +150,8 @@ else if (Message.Role == ChatRole.Assistant)
             return false;
         }
 
-        // Extract tool name from CallId (format: "toolName_callId" or just "toolName")
-        var toolName = resultContent.CallId;
-        if (toolName?.Contains('_') == true)
-        {
-            toolName = toolName.Split('_')[0];
-        }
-
+        // Find the matching FunctionCallContent by CallId to get the actual tool name
+        var toolName = GetToolNameFromCallId(resultContent.CallId);
         if (string.IsNullOrWhiteSpace(toolName))
         {
             return false;
@@ -178,12 +173,8 @@ else if (Message.Role == ChatRole.Assistant)
     /// <returns>Rendering information including component type, parameter name, and parsed data; or null if not available.</returns>
     private (Type ComponentType, string ParameterName, object? ParsedData)? GetVisualComponentRenderInfo(FunctionResultContent resultContent)
     {
-        // Extract tool name from CallId
-        var toolName = resultContent.CallId;
-        if (toolName?.Contains('_') == true)
-        {
-            toolName = toolName.Split('_')[0];
-        }
+        // Find the matching FunctionCallContent by CallId to get the actual tool name
+        var toolName = GetToolNameFromCallId(resultContent.CallId);
 
         if (string.IsNullOrWhiteSpace(toolName))
         {
@@ -222,5 +213,26 @@ else if (Message.Role == ChatRole.Assistant)
         }
 
         return (componentType, parameterName, parsedData);
+    }
+
+    /// <summary>
+    /// Finds the tool name for a FunctionResultContent by looking up the matching FunctionCallContent in the message.
+    /// </summary>
+    private string? GetToolNameFromCallId(string? callId)
+    {
+        if (callId is null)
+        {
+            return null;
+        }
+
+        foreach (AIContent content in Message.Contents)
+        {
+            if (content is FunctionCallContent fcc && fcc.CallId == callId)
+            {
+                return fcc.Name;
+            }
+        }
+
+        return null;
     }
 }

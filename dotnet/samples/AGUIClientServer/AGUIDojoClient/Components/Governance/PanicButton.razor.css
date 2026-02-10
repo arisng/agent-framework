@@ -13,7 +13,7 @@
  * Sized to match the send button height, positioned inline to its left.
  * Uses var(--destructive) for danger signaling.
  * -------------------------------------------------------------------------- */
-.panic-button {
+::deep .panic-button {
     border-radius: 9999px;
     width: 2rem;
     height: 2rem;
@@ -38,7 +38,7 @@
 /* --------------------------------------------------------------------------
  * Icon sizing — compact for inline placement
  * -------------------------------------------------------------------------- */
-.panic-button :global(svg) {
+::deep .panic-button :global(svg) {
     width: 18px;
     height: 18px;
 }
@@ -46,7 +46,7 @@
 /* --------------------------------------------------------------------------
  * Hover State — Slight scale and enhanced shadow
  * -------------------------------------------------------------------------- */
-.panic-button:hover {
+::deep .panic-button:hover {
     transform: scale(1.1);
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 25%, transparent);
     animation-play-state: paused;
@@ -55,14 +55,14 @@
 /* --------------------------------------------------------------------------
  * Active State — Scale down for tactile feedback
  * -------------------------------------------------------------------------- */
-.panic-button:active {
+::deep .panic-button:active {
     transform: scale(0.95);
 }
 
 /* --------------------------------------------------------------------------
  * Focus State — Accessible keyboard navigation
  * -------------------------------------------------------------------------- */
-.panic-button:focus-visible {
+::deep .panic-button:focus-visible {
     outline: 2px solid var(--destructive);
     outline-offset: 2px;
 }
@@ -83,7 +83,7 @@
  * Accessibility — High Contrast Mode Support
  * -------------------------------------------------------------------------- */
 @media (prefers-contrast: high) {
-    .panic-button {
+    ::deep .panic-button {
         outline: 2px solid currentColor;
         outline-offset: 2px;
     }
@@ -93,7 +93,7 @@
  * Reduced Motion — Disable animations for users who prefer reduced motion
  * -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-    .panic-button {
+    ::deep .panic-button {
         animation: none;
         transition: none;
     }

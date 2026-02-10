@@ -29,17 +29,11 @@
     padding-right: 1.5rem;
     border-top: 1px solid var(--border);
     background-color: hsl(var(--background));
+    margin-top: auto; /* Push to bottom of flex column */
 }
 
-/* Constrain chat input content width on larger screens, matching message list max-width */
-@media (min-width: 768px) {
-    .chat-container {
-        /* Use padding to maintain full-width background/border, constrain inner content via max-width */
-        max-width: 52rem;
-        margin-left: auto;
-        margin-right: auto;
-    }
-}
+/* Removed: @media max-width: 52rem — context-pane is already width-constrained by ResizablePanel */
+
 
 /* MY CUSTOMIZATION POINT: Observability section — developer tools in Context Pane */
 .observability-section {
@@ -67,3 +61,20 @@
 /* MY CUSTOMIZATION POINT: Artifact container styles removed — artifacts now render inside CanvasPane */
 
 /* Endpoint selector styling handled in ChatHeader.razor.css */
+
+/* DiffPreview trigger button styling */
+::deep .diff-preview-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+::deep .diff-preview-trigger:hover {
+    color: var(--foreground);
+}
