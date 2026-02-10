@@ -1,13 +1,13 @@
 /* Weather Display Component Styles */
 
 .weather-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: hsl(var(--accent-violet));
     border-radius: 1rem;
     padding: 1.25rem;
-    color: white;
+    color: hsl(var(--background));
     min-width: 200px;
     max-width: 280px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -1px hsl(var(--foreground) / 0.06);
 }
 
 .weather-header {
@@ -20,7 +20,7 @@
 .weather-icon {
     width: 3rem;
     height: 3rem;
-    color: #FCD34D;
+    color: hsl(var(--accent-amber));
 }
 
     .weather-icon svg {
@@ -57,7 +57,7 @@
     display: flex;
     gap: 1rem;
     padding-top: 0.75rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-top: 1px solid hsl(var(--background) / 0.2);
 }
 
 .weather-detail {

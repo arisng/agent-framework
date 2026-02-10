@@ -1,8 +1,8 @@
 /* PlanProgress Component Styles */
 
 .plan-progress {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    border: 1px solid #2a3f5f;
+    background: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
     border-radius: 12px;
     padding: 1rem;
     margin: 0.5rem 0;
@@ -15,7 +15,7 @@
     gap: 0.75rem;
     margin-bottom: 1rem;
     padding-bottom: 0.75rem;
-    border-bottom: 1px solid #2a3f5f;
+    border-bottom: 1px solid hsl(var(--border));
 }
 
 .plan-icon {
@@ -24,7 +24,7 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: hsl(var(--accent-violet));
     border-radius: 8px;
     flex-shrink: 0;
 }
@@ -32,20 +32,20 @@
 .plan-icon svg {
     width: 18px;
     height: 18px;
-    color: white;
+    color: hsl(var(--background));
 }
 
 .plan-title {
     font-weight: 600;
-    color: #e2e8f0;
+    color: hsl(var(--text-primary));
     font-size: 1rem;
     flex-grow: 1;
 }
 
 .plan-progress-indicator {
     font-size: 0.75rem;
-    color: #94a3b8;
-    background: rgba(100, 116, 139, 0.2);
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted) / 0.3);
     padding: 0.25rem 0.75rem;
     border-radius: 9999px;
 }
@@ -66,7 +66,7 @@
 }
 
 .plan-step:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: hsl(var(--muted) / 0.1);
 }
 
 .step-pending {
@@ -91,15 +91,15 @@
 }
 
 .step-pending .step-indicator {
-    background: rgba(100, 116, 139, 0.3);
-    border: 2px solid #64748b;
-    color: #94a3b8;
+    background: hsl(var(--muted));
+    border: 2px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
 }
 
 .step-completed .step-indicator {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    border: 2px solid #059669;
-    color: white;
+    background: hsl(var(--alert-success));
+    border: 2px solid hsl(var(--alert-success));
+    color: hsl(var(--background));
 }
 
 .step-number {
@@ -120,14 +120,14 @@
 }
 
 .step-description {
-    color: #e2e8f0;
+    color: hsl(var(--text-primary));
     font-size: 0.9rem;
     line-height: 1.4;
     word-wrap: break-word;
 }
 
 .step-completed .step-description {
-    color: #a1a1aa;
+    color: hsl(var(--text-tertiary));
 }
 
 .step-status {
@@ -138,11 +138,11 @@
 }
 
 .step-pending .step-status {
-    color: #f59e0b;
+    color: hsl(var(--accent-amber));
 }
 
 .step-completed .step-status {
-    color: #10b981;
+    color: hsl(var(--alert-success));
 }
 
 /* Animation for status changes */

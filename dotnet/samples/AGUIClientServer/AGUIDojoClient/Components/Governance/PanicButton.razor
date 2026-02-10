@@ -11,11 +11,10 @@
     <AlertDialog @bind-Open="_isDialogOpen">
         <AlertDialogTrigger AsChild>
             <Button Variant="ButtonVariant.Destructive"
-                    Size="ButtonSize.Large"
+                    Size="ButtonSize.Icon"
                     Class="panic-button"
                     AriaLabel="Emergency stop agent">
-                <LucideIcon Name="octagon" Size="20" />
-                <span>Stop Agent</span>
+                <LucideIcon Name="circle-stop" Size="18" />
             </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>

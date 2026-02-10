@@ -4,6 +4,7 @@
 @using AGUIDojoClient.Store.ArtifactState
 @using AGUIDojoClient.Store.ChatState
 @using AGUIDojoClient.Store.PlanState
+@using BlazorBlueprint.Components.Separator
 @inject IAGUIChatClientFactory ClientFactory
 @inject IAgentStreamingService StreamingService
 @inject IObservabilityService ObservabilityService
@@ -20,68 +21,67 @@
 
 <PageTitle>AG-UI Dojo Chat</PageTitle>
 
+@* MY CUSTOMIZATION POINT: Sidebar — vertical navigation with endpoints, new chat, theme toggle *@
 <ChatHeader OnNewChat="@ResetConversationAsync"
             AvailableEndpoints="@ClientFactory.AvailableEndpoints"
             SelectedEndpointPath="@AgentStore.Value.SelectedEndpointPath"
             OnEndpointChanged="@OnEndpointChangedAsync" />
 
-@* MY CUSTOMIZATION POINT: PanicButton — emergency stop visible during agent execution *@
-<div class="panic-button-container">
-    <PanicButton IsAgentRunning="@AgentStore.Value.IsRunning"
-                 OnPanic="@HandlePanicAsync" />
-</div>
+@* MY CUSTOMIZATION POINT: SidebarInset — main content area pushed by the sidebar *@
+<SidebarInset>
+    @* Compact header bar with sidebar toggle trigger *@
+    <header class="sidebar-inset-header">
+        <SidebarTrigger />
+        <Separator Orientation="SeparatorOrientation.Vertical" Class="h-6" />
+        <span class="inset-header-title">@GetCurrentEndpointDisplayName()</span>
+    </header>
 
-@* MY CUSTOMIZATION POINT: Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
-<DualPaneLayout>
+    @* MY CUSTOMIZATION POINT: Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
+    <DualPaneLayout>
     <ContextPaneContent>
         <ContextPane>
-            <ChatMessageList Messages="@ChatStore.Value.Messages" InProgressMessage="@ChatStore.Value.CurrentResponseMessage">
+            <ChatMessageList Messages="@ChatStore.Value.Messages"
+                             InProgressMessage="@ChatStore.Value.CurrentResponseMessage"
+                             PendingApproval="@ChatStore.Value.PendingApproval"
+                             OnApprovalDecision="@OnApprovalDecision"
+                             RiskLevel="@(ChatStore.Value.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName) : RiskLevel.Low)"
+                             IsMobile="@ViewportService.IsMobile">
                 <NoMessagesContent>
                     <div>Ask the assistant a question to start a conversation.</div>
                 </NoMessagesContent>
             </ChatMessageList>
             <div class="chat-container">
                 <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
-                <ChatInput OnSend="@AddUserMessageAsync" @ref="@chatInput" />
+                <ChatInput OnSend="@AddUserMessageAsync"
+                           IsAgentRunning="@AgentStore.Value.IsRunning"
+                           OnPanic="@HandlePanicAsync"
+                           @ref="@chatInput" />
             </div>
 
-            @* MY CUSTOMIZATION POINT: Conditional approval UI — SwipeApproval on mobile, ApprovalQueue on desktop *@
-            @if (ChatStore.Value.PendingApproval is not null)
-            {
-                @if (ViewportService.IsMobile)
-                {
-                    <SwipeApproval FunctionName="@ChatStore.Value.PendingApproval.FunctionName"
-                                   Arguments="@ChatHelpers.ConvertApprovalArguments(ChatStore.Value.PendingApproval.FunctionArguments)"
-                                   RiskLevel="@RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName)"
-                                   OnDecision="@OnApprovalDecision" />
-                }
-                else
-                {
-                    <ApprovalQueue FunctionName="@ChatStore.Value.PendingApproval.FunctionName"
-                                   Arguments="@ChatHelpers.ConvertApprovalArguments(ChatStore.Value.PendingApproval.FunctionArguments)"
-                                   RiskLevel="@RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName)"
-                                   OnDecision="@OnApprovalDecision" />
-                }
-            }
+            @* MY CUSTOMIZATION POINT: Approval UI moved to ChatMessageList — renders inline with messages *@
+
+            @* MY CUSTOMIZATION POINT: Observability components — removed from rendering (will be redesigned)
+            <div class="observability-section">
+                <MemoryInspector ConversationId="@ChatStore.Value.ConversationId"
+                                 SelectedEndpoint="@AgentStore.Value.SelectedEndpointPath"
+                                 MessageCount="@ChatStore.Value.Messages.Count"
+                                 PlanStepCount="@(PlanStore.Value.Plan?.Steps?.Count)"
+                                 PlanCompletedCount="@(PlanStore.Value.Plan?.Steps?.Count(s => s.Status == StepStatus.Completed))"
+                                 RecipeName="@(IsSharedStateEndpoint ? ArtifactStore.Value.CurrentRecipe?.Title : null)"
+                                 DocumentLength="@(IsPredictiveStateEndpoint ? ArtifactStore.Value.CurrentDocumentState?.Document?.Length : null)"
+                                 ToolInvocations="@StreamingService.GetToolInvocationSummary()" />
+
+                <ToolExecutionTracker Steps="@ObservabilityService.GetSteps()" />
+            </div>
+            *@
         </ContextPane>
     </ContextPaneContent>
     <CanvasPaneContent>
         <CanvasPane>
-            @* MY CUSTOMIZATION POINT: Observability components displayed in Canvas Pane *@
-            <MemoryInspector ConversationId="@ChatStore.Value.ConversationId"
-                             SelectedEndpoint="@AgentStore.Value.SelectedEndpointPath"
-                             MessageCount="@ChatStore.Value.Messages.Count"
-                             PlanStepCount="@(PlanStore.Value.Plan?.Steps?.Count)"
-                             PlanCompletedCount="@(PlanStore.Value.Plan?.Steps?.Count(s => s.Status == StepStatus.Completed))"
-                             RecipeName="@(IsSharedStateEndpoint ? ArtifactStore.Value.CurrentRecipe?.Title : null)"
-                             DocumentLength="@(IsPredictiveStateEndpoint ? ArtifactStore.Value.CurrentDocumentState?.Document?.Length : null)"
-                             ToolInvocations="@StreamingService.GetToolInvocationSummary()" />
-
-            <ToolExecutionTracker Steps="@ObservabilityService.GetSteps()" />
-
-            @* MY CUSTOMIZATION POINT: Governance components displayed in Canvas Pane *@
+            @* MY CUSTOMIZATION POINT: Governance components — removed from rendering (will be redesigned)
             <CheckpointManager Checkpoints="@CheckpointService.GetAllCheckpoints()"
                                OnRevert="@HandleCheckpointRevertAsync" />
+            *@
 
             @if (StreamingService.LastDiffBefore is not null || StreamingService.LastDiffAfter is not null)
             {
@@ -93,6 +93,7 @@
         </CanvasPane>
     </CanvasPaneContent>
 </DualPaneLayout>
+</SidebarInset>
 
 @code {
     private const string SystemPrompt = @"
@@ -117,6 +118,16 @@
     /// Gets whether the currently selected endpoint is the Predictive State Updates endpoint.
     /// </summary>
     private bool IsPredictiveStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets the display name for the currently selected endpoint, shown in the inset header bar.
+    /// </summary>
+    private string GetCurrentEndpointDisplayName()
+    {
+        return ClientFactory.AvailableEndpoints
+            .FirstOrDefault(e => string.Equals(e.Path, AgentStore.Value.SelectedEndpointPath, StringComparison.OrdinalIgnoreCase))
+            ?.DisplayName ?? "AG-UI Dojo";
+    }
 
     protected override void OnInitialized()
     {

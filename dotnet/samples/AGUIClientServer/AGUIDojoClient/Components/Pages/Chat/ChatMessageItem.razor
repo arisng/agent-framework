@@ -1,8 +1,10 @@
 @using System.Runtime.CompilerServices
 @using System.Linq
 @using AGUIDojoClient.Services
+@using System.Text.Json
 
 @inject IMarkdownService MarkdownService
+@inject IToolComponentRegistry ToolRegistry
 @* MY CUSTOMIZATION POINT: Inject ObservabilityService to pass ReasoningSteps to AssistantThought *@
 @inject IObservabilityService ObservabilityService
 
@@ -14,12 +16,15 @@
 }
 else if (Message.Role == ChatRole.Assistant)
 {
-    @* Separate content into "thoughts" (non-text) and "messages" (text) *@
+    @* Separate content into thoughts, visual components, and text messages *@
     var sortedContents = SortContentsForDisplay(Message.Contents).ToList();
-    var thoughtContents = sortedContents.Where(c => c is not TextContent).ToList();
+    
+    @* Separate visual components (should render in message-list) from non-visual thoughts (should go to AssistantThought) *@
+    var visualContents = sortedContents.Where(IsVisualComponent).ToList();
+    var thoughtContents = sortedContents.Where(c => c is not TextContent && !IsVisualComponent(c)).ToList();
     var textContents = sortedContents.OfType<TextContent>().Where(tc => tc.Text?.Length > 0).ToList();
 
-    @* Render collapsible thought block if there are any thought contents *@
+    @* Render collapsible thought block if there are any non-visual thought contents *@
     @if (thoughtContents.Count > 0)
     {
         @* MY CUSTOMIZATION POINT: Pass ReasoningSteps for tool call timing display *@
@@ -27,7 +32,23 @@ else if (Message.Role == ChatRole.Assistant)
                           ReasoningSteps="@ObservabilityService.GetSteps()" />
     }
 
-    @* Render final assistant message(s) after thoughts *@
+    @* Render visual components in message-list (not in AssistantThought) *@
+    @foreach (var visualContent in visualContents)
+    {
+        if (visualContent is FunctionResultContent resultContent)
+        {
+            var renderInfo = GetVisualComponentRenderInfo(resultContent);
+            if (renderInfo is not null)
+            {
+                <div class="visual-tool-result">
+                    <DynamicComponent Type="renderInfo.Value.ComponentType" 
+                                      Parameters="@(new Dictionary<string, object?> { { renderInfo.Value.ParameterName, renderInfo.Value.ParsedData } })" />
+                </div>
+            }
+        }
+    }
+
+    @* Render final assistant message(s) after visual components *@
     @foreach (var tc in textContents)
     {
         <div class="assistant-message">
@@ -115,5 +136,91 @@ else if (Message.Role == ChatRole.Assistant)
             ErrorContent => 5,             // Errors last
             _ => 99                         // Unknown types at the end
         };
+    }
+
+    /// <summary>
+    /// Checks if an AIContent item should be rendered as a visual component in the message-list.
+    /// </summary>
+    /// <param name="content">The content to check.</param>
+    /// <returns>True if the content should render as a visual component; otherwise, false.</returns>
+    private bool IsVisualComponent(AIContent content)
+    {
+        if (content is not FunctionResultContent resultContent)
+        {
+            return false;
+        }
+
+        // Extract tool name from CallId (format: "toolName_callId" or just "toolName")
+        var toolName = resultContent.CallId;
+        if (toolName?.Contains('_') == true)
+        {
+            toolName = toolName.Split('_')[0];
+        }
+
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return false;
+        }
+
+        // Check if tool has a visual component registered with MessageList location
+        if (ToolRegistry.TryGetMetadata(toolName, out ToolMetadata? metadata))
+        {
+            return metadata?.RenderLocation == RenderLocation.MessageList && metadata.IsVisual;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gets rendering information for a visual component.
+    /// </summary>
+    /// <param name="resultContent">The function result content.</param>
+    /// <returns>Rendering information including component type, parameter name, and parsed data; or null if not available.</returns>
+    private (Type ComponentType, string ParameterName, object? ParsedData)? GetVisualComponentRenderInfo(FunctionResultContent resultContent)
+    {
+        // Extract tool name from CallId
+        var toolName = resultContent.CallId;
+        if (toolName?.Contains('_') == true)
+        {
+            toolName = toolName.Split('_')[0];
+        }
+
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return null;
+        }
+
+        // Get component type and parameter name from registry
+        if (!ToolRegistry.TryGetComponent(toolName, out Type? componentType) || componentType is null)
+        {
+            return null;
+        }
+
+        if (!ToolRegistry.TryGetParameterName(toolName, out string? parameterName) || string.IsNullOrWhiteSpace(parameterName))
+        {
+            return null;
+        }
+
+        // Parse result data
+        object? parsedData = null;
+        if (resultContent.Result is JsonElement jsonElement)
+        {
+            try
+            {
+                // Try to deserialize JSON to the expected type
+                parsedData = JsonSerializer.Deserialize(jsonElement.GetRawText(), componentType);
+            }
+            catch
+            {
+                // If deserialization fails, use the raw JsonElement
+                parsedData = jsonElement;
+            }
+        }
+        else
+        {
+            parsedData = resultContent.Result;
+        }
+
+        return (componentType, parameterName, parsedData);
     }
 }

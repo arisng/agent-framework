@@ -1,9 +1,9 @@
 /* Recipe Editor Styles */
 
 .recipe-editor {
-    background: #ffffff;
+    background: hsl(var(--card));
     border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -1px hsl(var(--foreground) / 0.06);
     padding: 1.5rem;
     max-width: 600px;
     display: flex;
@@ -13,13 +13,13 @@
 .recipe-header h3 {
     margin: 0 0 0.25rem 0;
     font-size: 1.25rem;
-    color: #1f2937;
+    color: hsl(var(--foreground));
 }
 
 .recipe-header .help-text {
     margin: 0 0 1rem 0;
     font-size: 0.875rem;
-    color: #6b7280;
+    color: hsl(var(--muted-foreground));
 }
 
 .recipe-form {
@@ -37,7 +37,7 @@
 .form-group label {
     font-weight: 500;
     font-size: 0.875rem;
-    color: #374151;
+    color: hsl(var(--foreground));
 }
 
 .form-row {
@@ -49,7 +49,7 @@
 .form-input,
 .form-select {
     padding: 0.5rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid hsl(var(--border));
     border-radius: 6px;
     font-size: 0.875rem;
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -58,8 +58,8 @@
 .form-input:focus,
 .form-select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1);
 }
 
 /* Preference Chips */
@@ -71,24 +71,24 @@
 
 .preference-chip {
     padding: 0.375rem 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid hsl(var(--border));
     border-radius: 9999px;
-    background: #f9fafb;
-    color: #4b5563;
+    background: hsl(var(--muted) / 0.3);
+    color: hsl(var(--muted-foreground));
     font-size: 0.8125rem;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .preference-chip:hover {
-    background: #f3f4f6;
-    border-color: #9ca3af;
+    background: hsl(var(--muted));
+    border-color: hsl(var(--border-strong));
 }
 
 .preference-chip.selected {
-    background: #dbeafe;
-    border-color: #3b82f6;
-    color: #1d4ed8;
+    background: hsl(var(--accent-cyan) / 0.2);
+    border-color: hsl(var(--accent-cyan));
+    color: hsl(var(--accent-cyan));
 }
 
 /* Ingredients List */
@@ -116,7 +116,7 @@
 .ingredient-name {
     flex: 2;
     padding: 0.375rem 0.5rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid hsl(var(--border));
     border-radius: 4px;
     font-size: 0.875rem;
 }
@@ -124,7 +124,7 @@
 .ingredient-amount {
     flex: 1;
     padding: 0.375rem 0.5rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid hsl(var(--border));
     border-radius: 4px;
     font-size: 0.875rem;
 }
@@ -132,39 +132,39 @@
 .ingredient-name:focus,
 .ingredient-amount:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: hsl(var(--ring));
 }
 
 .remove-btn {
     padding: 0.25rem 0.5rem;
     background: transparent;
     border: none;
-    color: #9ca3af;
+    color: hsl(var(--muted-foreground));
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s;
 }
 
 .remove-btn:hover {
-    background: #fee2e2;
-    color: #ef4444;
+    background: hsl(var(--alert-danger-bg));
+    color: hsl(var(--alert-danger));
 }
 
 .add-ingredient-btn {
     margin-top: 0.5rem;
     padding: 0.5rem 1rem;
-    background: #f3f4f6;
-    border: 1px dashed #d1d5db;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px dashed hsl(var(--border));
     border-radius: 6px;
-    color: #4b5563;
+    color: hsl(var(--muted-foreground));
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .add-ingredient-btn:hover {
-    background: #e5e7eb;
-    border-color: #9ca3af;
+    background: hsl(var(--muted));
+    border-color: hsl(var(--border-strong));
 }
 
 /* Instructions List */
@@ -173,9 +173,9 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem;
-    background: #f9fafb;
+    background: hsl(var(--muted) / 0.3);
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid hsl(var(--border));
     max-height: 180px;
     overflow-y: auto;
 }
@@ -189,12 +189,12 @@
 
 .step-number {
     font-weight: 600;
-    color: #3b82f6;
+    color: hsl(var(--accent-cyan));
     min-width: 1.5rem;
 }
 
 .step-text {
-    color: #374151;
+    color: hsl(var(--foreground));
 }
 
 /* Scrollbar styling for ingredients and instructions lists */
@@ -205,17 +205,17 @@
 
 .ingredients-list::-webkit-scrollbar-track,
 .instructions-list::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: hsl(var(--muted));
     border-radius: 3px;
 }
 
 .ingredients-list::-webkit-scrollbar-thumb,
 .instructions-list::-webkit-scrollbar-thumb {
-    background: #c1c5cb;
+    background: hsl(var(--border-strong));
     border-radius: 3px;
 }
 
 .ingredients-list::-webkit-scrollbar-thumb:hover,
 .instructions-list::-webkit-scrollbar-thumb:hover {
-    background: #a0a4ad;
+    background: hsl(var(--muted-foreground));
 }

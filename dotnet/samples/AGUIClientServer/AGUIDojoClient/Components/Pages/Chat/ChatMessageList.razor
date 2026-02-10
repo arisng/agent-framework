@@ -18,7 +18,12 @@
 
     TODO (.NET 11): Replace fixed ItemSize="150" with automatic variable-height support.
 *@
+@using AGUIDojoClient.Store.PlanState
+@using AGUIDojoClient.Components.GenerativeUI
+@using AGUIDojoClient.Helpers
+@inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @inject IJSRuntime JS
+@inject IState<PlanState> PlanStore
 
 <div class="message-list-container">
     <chat-messages class="page-width message-list" in-progress="@(InProgressMessage is not null)">
@@ -73,12 +78,41 @@
                 <AgentHandoff AgentName="@inProgressAuthor" />
             }
 
-            <ChatMessageItem Message="@InProgressMessage" InProgress="true" />
+            <ChatMessageItem @key="@InProgressMessage" Message="@InProgressMessage" InProgress="true" />
             <LoadingSpinner />
         }
         else if (IsEmpty)
         {
             <div class="no-messages">@NoMessagesContent</div>
+        }
+
+        @* Render PlanProgress inline in message-list when a plan exists (state-based component) *@
+        @if (PlanStore.Value.Plan is not null)
+        {
+            <div class="plan-progress-message">
+                <PlanProgress />
+            </div>
+        }
+
+        @* MY CUSTOMIZATION POINT: Approval card — renders inline at bottom of message list *@
+        @if (PendingApproval is not null)
+        {
+            <div class="approval-message">
+                @if (IsMobile)
+                {
+                    <SwipeApproval FunctionName="@PendingApproval.FunctionName"
+                                   Arguments="@ChatHelpers.ConvertApprovalArguments(PendingApproval.FunctionArguments)"
+                                   RiskLevel="@RiskLevel"
+                                   OnDecision="@OnApprovalDecision" />
+                }
+                else
+                {
+                    <ApprovalQueue FunctionName="@PendingApproval.FunctionName"
+                                   Arguments="@ChatHelpers.ConvertApprovalArguments(PendingApproval.FunctionArguments)"
+                                   RiskLevel="@RiskLevel"
+                                   OnDecision="@OnApprovalDecision" />
+                }
+            </div>
         }
     </chat-messages>
 </div>
@@ -108,6 +142,33 @@
     /// </summary>
     [Parameter]
     public RenderFragment? NoMessagesContent { get; set; }
+
+    /// <summary>
+    /// The pending approval request, if any. When non-null, an approval card
+    /// is rendered inline at the bottom of the message list.
+    /// </summary>
+    [Parameter]
+    public PendingApproval? PendingApproval { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user approves or rejects the pending action.
+    /// True = approved, False = rejected.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnApprovalDecision { get; set; }
+
+    /// <summary>
+    /// The assessed risk level for the pending approval action.
+    /// </summary>
+    [Parameter]
+    public RiskLevel RiskLevel { get; set; }
+
+    /// <summary>
+    /// Whether the current viewport is mobile. Determines whether to render
+    /// SwipeApproval (mobile) or ApprovalQueue (desktop).
+    /// </summary>
+    [Parameter]
+    public bool IsMobile { get; set; }
 
     /// <summary>
     /// Pre-computed display items with agent handoff metadata for virtualized rendering.

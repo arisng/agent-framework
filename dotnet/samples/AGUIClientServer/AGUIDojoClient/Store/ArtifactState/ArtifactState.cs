@@ -21,7 +21,13 @@ namespace AGUIDojoClient.Store.ArtifactState;
 /// Whether the document is currently in preview mode. Defaults to <see langword="true"/>
 /// when a new document is first received, and can be toggled by the user.
 /// </param>
+/// <param name="HasInteractiveArtifact">
+/// Whether an interactive shared artifact (requiring canvas-pane display) is currently active.
+/// <see langword="true"/> when <see cref="CurrentRecipe"/> or <see cref="CurrentDocumentState"/> is not <see langword="null"/>.
+/// Used by <c>DualPaneLayout</c> to conditionally render the canvas-pane.
+/// </param>
 public record ArtifactState(
     Recipe? CurrentRecipe,
     DocumentState? CurrentDocumentState,
-    bool IsDocumentPreview);
+    bool IsDocumentPreview,
+    bool HasInteractiveArtifact);

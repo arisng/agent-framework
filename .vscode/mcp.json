@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "aspire": {
+      "type": "stdio",
+      "command": "aspire",
+      "args": [
+        "mcp",
+        "start"
+      ]
+    },
+    "blazorblueprint": {
+      "command": "npx",
+      "args": ["-y", "@blazorblueprint/mcp"]
+    }
+  }
+}
