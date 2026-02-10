@@ -5,7 +5,7 @@
     border-radius: 12px;
     box-shadow: 0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -1px hsl(var(--foreground) / 0.06);
     padding: 1.5rem;
-    max-width: 600px;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -218,4 +218,11 @@
 .ingredients-list::-webkit-scrollbar-thumb:hover,
 .instructions-list::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground));
+}
+
+/* Responsive: stack form rows vertically when canvas-pane is narrow */
+@container (max-width: 500px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
 }

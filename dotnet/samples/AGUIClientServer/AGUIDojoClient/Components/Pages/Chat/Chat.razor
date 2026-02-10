@@ -4,6 +4,7 @@
 @using AGUIDojoClient.Store.ArtifactState
 @using AGUIDojoClient.Store.ChatState
 @using AGUIDojoClient.Store.PlanState
+@using BlazorBlueprint.Components.Button
 @using BlazorBlueprint.Components.Collapsible
 @using BlazorBlueprint.Components.Separator
 @inject IAGUIChatClientFactory ClientFactory
@@ -88,10 +89,10 @@
             {
                 <Collapsible DefaultOpen="false">
                     <CollapsibleTrigger>
-                        <div class="diff-preview-trigger">
+                        <Button Variant="ButtonVariant.Ghost" Class="diff-preview-trigger">
                             <LucideIcon Name="git-compare-arrows" Size="16" />
-                            <span>Recipe State Changes</span>
-                        </div>
+                            Recipe State Changes
+                        </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                         <DiffPreview Before="@StreamingService.LastDiffBefore" After="@StreamingService.LastDiffAfter" Title="@StreamingService.LastDiffTitle" />

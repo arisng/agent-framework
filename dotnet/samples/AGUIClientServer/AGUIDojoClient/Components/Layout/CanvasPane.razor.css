@@ -50,11 +50,13 @@
     gap: 0.25rem;
 }
 
-::deep .canvas-pane__scroll {
+.canvas-pane__scroll {
     flex: 1;
     min-height: 0;
     width: 100%;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    container-type: inline-size;
 }
 
 .canvas-pane__empty-state {

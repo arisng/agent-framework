@@ -3,7 +3,7 @@
 /* Root container fills the available height (SidebarInset provides width constraint) */
 .dual-pane-root {
     position: relative;
-    height: calc(100% - 3rem); /* Subtract inset header height */
+    height: calc(100svh - 3rem); /* Viewport-based: bypasses ancestor height chain */
     width: 100%;
     overflow: hidden;
 }

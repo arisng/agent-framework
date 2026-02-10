@@ -26,7 +26,7 @@
 @inject IState<PlanState> PlanStore
 
 <div class="message-list-container">
-    <chat-messages class="page-width message-list" in-progress="@(InProgressMessage is not null)">
+    <chat-messages class="message-list" in-progress="@(InProgressMessage is not null)">
         @if (_shouldVirtualize)
         {
             @* Virtualize reduces DOM element count for conversations exceeding the threshold.

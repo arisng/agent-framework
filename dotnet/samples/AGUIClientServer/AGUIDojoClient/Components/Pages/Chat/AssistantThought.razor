@@ -20,7 +20,7 @@
             <div class="thought-toggle" aria-expanded="@IsExpanded">
                 <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
                 <span class="thought-summary">
-                    @if (InProgress)
+                    @if (IsStillThinking)
                     {
                         <span>Thinking...</span>
                     }
@@ -278,6 +278,17 @@
     private bool _userToggled;
 
     private bool _previousInProgress = true;
+
+    /// <summary>
+    /// Computed property that determines if the agent is still thinking by checking
+    /// if any FunctionCallContent lacks a matching FunctionResultContent.
+    /// This is data-driven and doesn't depend on parameter lifecycle timing.
+    /// </summary>
+    private bool IsStillThinking => ThoughtContents
+        .OfType<FunctionCallContent>()
+        .Any(fcc => fcc.CallId != null &&
+            !ThoughtContents.OfType<FunctionResultContent>()
+                .Any(frc => frc.CallId == fcc.CallId));
 
     /// <summary>
     /// Handles user clicks on the Collapsible trigger.
@@ -543,8 +554,9 @@
 
     /// <summary>
     /// Attempts to parse a FunctionResultContent for the specified tool type.
+    /// Made internal so ChatMessageItem can reuse the same tool→data-type mapping.
     /// </summary>
-    private static object? TryParseToolResult(string toolName, FunctionResultContent frc)
+    internal static object? TryParseToolResult(string toolName, FunctionResultContent frc)
     {
         try
         {
