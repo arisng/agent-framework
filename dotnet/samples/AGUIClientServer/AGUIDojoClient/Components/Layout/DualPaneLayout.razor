@@ -54,7 +54,7 @@ else
             @* Dual-pane layout: context-pane + canvas-pane *@
             <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
                 @* MY CUSTOMIZATION POINT: Context Pane — chat, suggestions, approval UI *@
-                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="25" Class="context-panel">
+                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="31" Class="context-panel">
                     @if (ContextPaneContent is not null)
                     {
                         @ContextPaneContent
@@ -64,7 +64,7 @@ else
                 <ResizableHandle Class="dual-pane-handle" />
 
                 @* MY CUSTOMIZATION POINT: Canvas Pane — artifacts, plan progress, editors, previews *@
-                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="35" Class="canvas-panel">
+                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="39" Class="canvas-panel">
                     @if (CanvasPaneContent is not null)
                     {
                         @CanvasPaneContent

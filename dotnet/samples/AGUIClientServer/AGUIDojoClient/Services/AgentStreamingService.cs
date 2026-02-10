@@ -45,6 +45,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private readonly ChatOptions _chatOptions = new();
     private readonly HashSet<string> _seenFunctionCallIds = new();
     private readonly HashSet<string> _seenFunctionResultCallIds = new();
+    private readonly Dictionary<string, string> _functionCallIdToToolName = new();
 
     private CancellationTokenSource? _currentResponseCancellation;
     private ChatMessage? _streamingMessage;
@@ -176,6 +177,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                 _dispatcher.Dispatch(new PlanActions.SetPlanAction(plan));
                                 _lastDiffAfter = plan;
                                 _lastDiffTitle = "Plan State Change";
+                                _dispatcher.Dispatch(new SetDiffPreviewArtifactAction(_lastDiffBefore, plan, "Plan State Change"));
                                 _stateChanged?.Invoke();
                             }
                         }
@@ -203,6 +205,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                             _dispatcher.Dispatch(new SetRecipeAction(recipe));
                             _lastDiffAfter = _stateManager.CurrentRecipe;
                             _lastDiffTitle = "Recipe State Change";
+                            _dispatcher.Dispatch(new SetDiffPreviewArtifactAction(_lastDiffBefore, _stateManager.CurrentRecipe, "Recipe State Change"));
                             _stateChanged?.Invoke();
                         }
                         // Handle Document state snapshots (Predictive State Updates feature)
@@ -233,6 +236,12 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                 _seenFunctionCallIds.Add(fcc.CallId);
                                 _streamingMessage?.Contents.Add(content);
                                 _observabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
+
+                                // Track tool name by CallId for artifact dispatch when FRC arrives
+                                if (fcc.Name is not null)
+                                {
+                                    _functionCallIdToToolName[fcc.CallId] = fcc.Name;
+                                }
                             }
                         }
                         else if (content is DataContent dc)
@@ -246,6 +255,9 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                 _seenFunctionResultCallIds.Add(frc.CallId);
                                 _streamingMessage?.Contents.Add(content);
                                 _observabilityService.CompleteToolCall(frc.CallId, frc.Result);
+
+                                // Dispatch DataGrid artifact when show_data_grid tool result arrives
+                                TryDispatchDataGridArtifact(frc);
                             }
                             else if (frc.CallId is null)
                             {
@@ -368,6 +380,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         _dispatcher.Dispatch(new ClearArtifactsAction());
         _seenFunctionCallIds.Clear();
         _seenFunctionResultCallIds.Clear();
+        _functionCallIdToToolName.Clear();
         _approvalHandler.ClearPendingApprovals();
         _checkpointService.Clear();
         _lastDiffBefore = null;
@@ -504,6 +517,49 @@ public sealed class AgentStreamingService : IAgentStreamingService
         _dispatcher.Dispatch(new ChatActions.SetStatefulCountAction(_chatStore.Value.Messages.Count));
         _lastDiffBefore = null;
         _lastDiffAfter = null;
+    }
+
+    /// <summary>
+    /// Attempts to dispatch a <see cref="SetDataGridArtifactAction"/> when a <c>show_data_grid</c> tool result arrives.
+    /// Looks up the tool name from the CallId-to-ToolName mapping, then parses the FRC result as <see cref="DataGridResult"/>.
+    /// </summary>
+    /// <param name="frc">The <see cref="FunctionResultContent"/> to inspect.</param>
+    private void TryDispatchDataGridArtifact(FunctionResultContent frc)
+    {
+        if (frc.CallId is null)
+        {
+            return;
+        }
+
+        // Check if this FRC is from a show_data_grid tool call
+        if (!_functionCallIdToToolName.TryGetValue(frc.CallId, out var toolName)
+            || !string.Equals(toolName, "show_data_grid", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            DataGridResult? dataGrid = null;
+
+            if (frc.Result is JsonElement jsonElement)
+            {
+                dataGrid = JsonSerializer.Deserialize<DataGridResult>(jsonElement.GetRawText(), JsonDefaults.Options);
+            }
+            else if (frc.Result is string resultStr)
+            {
+                dataGrid = JsonSerializer.Deserialize<DataGridResult>(resultStr, JsonDefaults.Options);
+            }
+
+            if (dataGrid?.Columns.Count > 0)
+            {
+                _dispatcher.Dispatch(new SetDataGridArtifactAction(dataGrid));
+            }
+        }
+        catch
+        {
+            // Failed to parse DataGrid result — no-op; data is still shown inline via ToolComponentRegistry
+        }
     }
 
     /// <inheritdoc />
