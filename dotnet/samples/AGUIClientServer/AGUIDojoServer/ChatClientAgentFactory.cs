@@ -122,10 +122,24 @@ public sealed class ChatClientAgentFactory
     /// <summary>
     /// Creates an agent for backend tool rendering demonstrations.
     /// </summary>
+    /// <remarks>
+    /// The chat client pipeline is wrapped with <see cref="ToolResultStreamingChatClient"/>
+    /// to ensure <see cref="FunctionResultContent"/> items are emitted to the streaming output.
+    /// Without this middleware, <see cref="FunctionInvokingChatClient"/> consumes tool results
+    /// internally and the AG-UI conversion layer never produces <c>ToolCallResultEvent</c> events,
+    /// leaving the client unable to detect tool completion (ISS-001 through ISS-004).
+    /// </remarks>
     /// <returns>An <see cref="AIAgent"/> configured with weather tool for backend rendering, wrapped with OpenTelemetry instrumentation.</returns>
     public AIAgent CreateBackendToolRendering()
     {
-        return this._chatClient.AsIChatClient().AsAIAgent(
+        // Wrap the LLM client with ToolResultStreamingChatClient so the pipeline becomes:
+        //   FunctionInvokingChatClient → ToolResultStreamingChatClient → LLM
+        // When FunctionInvokingChatClient invokes a tool and calls the inner client again,
+        // ToolResultStreamingChatClient detects the FunctionResultContent in the messages
+        // and emits it to the stream before forwarding to the LLM.
+        IChatClient wrappedClient = new ToolResultStreamingChatClient(this._chatClient.AsIChatClient());
+
+        return wrappedClient.AsAIAgent(
             instructions: """
                 You are a helpful assistant that can chat with users and use backend tools to get information.
                 When the user asks for information that requires a tool, call the appropriate tool.
