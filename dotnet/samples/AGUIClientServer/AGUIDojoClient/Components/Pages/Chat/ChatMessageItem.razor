@@ -192,24 +192,12 @@ else if (Message.Role == ChatRole.Assistant)
             return null;
         }
 
-        // Parse result data
-        object? parsedData = null;
-        if (resultContent.Result is JsonElement jsonElement)
+        // Parse result data using the same tool-name→data-type mapping as AssistantThought.
+        // We must deserialize to the DATA type (e.g. WeatherInfo), NOT the COMPONENT type (e.g. WeatherDisplay).
+        object? parsedData = AssistantThought.TryParseToolResult(toolName, resultContent);
+        if (parsedData is null)
         {
-            try
-            {
-                // Try to deserialize JSON to the expected type
-                parsedData = JsonSerializer.Deserialize(jsonElement.GetRawText(), componentType);
-            }
-            catch
-            {
-                // If deserialization fails, use the raw JsonElement
-                parsedData = jsonElement;
-            }
-        }
-        else
-        {
-            parsedData = resultContent.Result;
+            return null;
         }
 
         return (componentType, parameterName, parsedData);

@@ -3,10 +3,11 @@
 .context-pane {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
     min-height: 0; /* Critical for flex scroll containment */
     background: hsl(var(--background));
     overflow: hidden;
+    font-size: 0.9375rem;
 }
 
 /* ScrollArea fills full height of the pane */

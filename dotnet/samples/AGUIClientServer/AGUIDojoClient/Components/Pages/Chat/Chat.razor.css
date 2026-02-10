@@ -21,15 +21,13 @@
 
 /* MY CUSTOMIZATION POINT: Chat input container — sticky at bottom of Context Pane */
 .chat-container {
-    position: sticky;
-    bottom: 0;
-    padding-top: 0.75rem;
-    padding-bottom: 1.5rem;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+    flex-shrink: 0;
+    padding-top: 0.5rem;
+    padding-bottom: 0.75rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
     border-top: 1px solid var(--border);
     background-color: hsl(var(--background));
-    margin-top: auto; /* Push to bottom of flex column */
 }
 
 /* Removed: @media max-width: 52rem — context-pane is already width-constrained by ResizablePanel */
@@ -62,19 +60,10 @@
 
 /* Endpoint selector styling handled in ChatHeader.razor.css */
 
-/* DiffPreview trigger button styling */
+/* DiffPreview trigger button styling — Ghost Button handles hover/focus */
 ::deep .diff-preview-trigger {
-    display: flex;
-    align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--muted-foreground);
-    cursor: pointer;
-    transition: color 0.15s ease;
-}
-
-::deep .diff-preview-trigger:hover {
-    color: var(--foreground);
 }

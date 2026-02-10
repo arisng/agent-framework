@@ -44,11 +44,13 @@
 }
 
 /* --------------------------------------------------------------------------
- * Hover State — Slight scale and enhanced shadow
+ * Hover State — Enhanced scale and vibrant glow
  * -------------------------------------------------------------------------- */
 ::deep .panic-button:hover {
-    transform: scale(1.1);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 25%, transparent);
+    transform: scale(1.15);
+    box-shadow:
+        0 0 0 4px color-mix(in oklch, var(--destructive) 50%, transparent),
+        0 0 20px 6px color-mix(in oklch, var(--destructive) 35%, transparent);
     animation-play-state: paused;
 }
 
@@ -68,14 +70,20 @@
 }
 
 /* --------------------------------------------------------------------------
- * Pulse Animation — Subtle ring expansion
+ * Pulse Animation — Dual ring expansion + ambient glow with scale breathing
  * -------------------------------------------------------------------------- */
 @keyframes panic-pulse {
     0%, 100% {
-        box-shadow: 0 0 0 0 color-mix(in oklch, var(--destructive) 20%, transparent);
+        transform: scale(1);
+        box-shadow:
+            0 0 0 0 color-mix(in oklch, var(--destructive) 40%, transparent),
+            0 0 8px 2px color-mix(in oklch, var(--destructive) 20%, transparent);
     }
     50% {
-        box-shadow: 0 0 0 4px color-mix(in oklch, var(--destructive) 10%, transparent);
+        transform: scale(1.05);
+        box-shadow:
+            0 0 0 6px color-mix(in oklch, var(--destructive) 15%, transparent),
+            0 0 16px 4px color-mix(in oklch, var(--destructive) 30%, transparent);
     }
 }
 

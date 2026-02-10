@@ -1,6 +1,5 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
 @* MY CUSTOMIZATION POINT: CanvasPane wrapper component for dual-pane artifact/work product area *@
-@using BlazorBlueprint.Components.ScrollArea
 @using BlazorBlueprint.Components.Card
 @using BlazorBlueprint.Components.Button
 @using BlazorBlueprint.Components.Progress
@@ -35,7 +34,7 @@
         </div>
     }
 
-    <ScrollArea Class="canvas-pane__scroll">
+    <div class="canvas-pane__scroll">
         @if (ChildContent is not null)
         {
             @ChildContent
@@ -103,7 +102,7 @@
                                  Title="Document Preview" />
             }
         }
-    </ScrollArea>
+    </div>
 </div>
 
 @* MY CUSTOMIZATION POINT: PlanSheet — slides in from right to show full plan progress *@

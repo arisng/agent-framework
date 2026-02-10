@@ -26,9 +26,9 @@
 
 ::deep .diff-preview-scroll {
     max-height: 300px;
-    border: 1px solid hsl(var(--border));
+    border: none;
     border-radius: var(--radius);
-    background: hsl(var(--muted) / 0.3);
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
 }
 
 .diff-preview-content {
@@ -56,4 +56,16 @@
     display: block;
     background-color: hsl(0 84% 60% / 0.15);
     color: hsl(0 84% 60%);
+}
+
+/* Responsive: stack columns vertically when canvas-pane is narrow */
+@container (max-width: 500px) {
+    .diff-preview-columns {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    ::deep .diff-preview-separator {
+        display: none;
+    }
 }
