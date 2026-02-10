@@ -209,6 +209,13 @@ The client uses Polly for resilience:
 
 Configure ONE of the following LLM providers:
 
+For local development, set secrets via `dotnet user-secrets` in the AGUIDojoServer project:
+
+```bash
+cd AGUIDojoServer
+dotnet user-secrets set "OPENAI_API_KEY" "sk-your-api-key"
+```
+
 **Option A: OpenAI (quickest setup)**
 ```bash
 export OPENAI_API_KEY="sk-your-api-key"
