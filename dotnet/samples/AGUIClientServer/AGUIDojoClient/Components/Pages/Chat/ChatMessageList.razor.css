@@ -12,14 +12,43 @@
     gap: 1.25rem;
 }
 
+/* Constrain chat message container width on larger screens for optimal readability */
+@media (min-width: 768px) {
+    .message-list-container {
+        max-width: 52rem;
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
 .no-messages {
     text-align: center;
     font-size: 1.25rem;
-    color: #999;
+    color: hsl(var(--muted-foreground));
     margin-top: calc(40vh - 18rem);
 }
 
 chat-messages > ::deep div:last-of-type {
     /* Adds some vertical buffer to so that suggestions don't overlap the output when they appear */
     margin-bottom: 2rem;
+}
+
+/* Plan Progress Message - inline state-based component rendering in message-list */
+.plan-progress-message {
+    margin: 0.75rem 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+
+    .plan-progress-message > * {
+        width: 100%;
+    }
+
+/* Approval Message - inline approval card rendered at the same level as assistant messages */
+.approval-message {
+    margin: 0.75rem 0;
+    padding: 0;
+    background: transparent;
+    border: none;
 }

@@ -6,9 +6,14 @@
    Accepts RenderFragment parameters for each pane's content.
    Persists splitter position to localStorage via JS interop (desktop only). *@
 @using BlazorBlueprint.Components.Resizable
+@using AGUIDojoClient.Store.ArtifactState
 @* MY CUSTOMIZATION POINT: Inject ViewportService for responsive layout switching *@
 @inject ViewportService ViewportService
 @inject IJSRuntime JSRuntime
+@* MY CUSTOMIZATION POINT: Inject ArtifactState to detect interactive artifacts *@
+@inject IState<ArtifactState> ArtifactStore
+@* MY CUSTOMIZATION POINT: Inherit FluxorComponent for automatic state change subscriptions *@
+@inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @implements IAsyncDisposable
 
 @* MY CUSTOMIZATION POINT: Responsive layout switch — mobile (<768px) vs desktop (≥768px) *@
@@ -30,25 +35,40 @@ else if (ViewportService.IsMobile)
 else
 {
     <div class="dual-pane-root" @ref="_panelGroupRef">
-        <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
-            @* MY CUSTOMIZATION POINT: Context Pane — chat, suggestions, approval UI *@
-            <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="25" Class="context-panel">
+        @* MY CUSTOMIZATION POINT: Conditional dual-pane vs single-pane layout based on artifact presence *@
+        @if (HasInteractiveArtifact)
+        {
+            @* Dual-pane layout: context-pane + canvas-pane *@
+            <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
+                @* MY CUSTOMIZATION POINT: Context Pane — chat, suggestions, approval UI *@
+                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="25" Class="context-panel">
+                    @if (ContextPaneContent is not null)
+                    {
+                        @ContextPaneContent
+                    }
+                </ResizablePanel>
+
+                <ResizableHandle Class="dual-pane-handle" />
+
+                @* MY CUSTOMIZATION POINT: Canvas Pane — artifacts, plan progress, editors, previews *@
+                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="35" Class="canvas-panel">
+                    @if (CanvasPaneContent is not null)
+                    {
+                        @CanvasPaneContent
+                    }
+                </ResizablePanel>
+            </ResizablePanelGroup>
+        }
+        else
+        {
+            @* Single-pane layout: context-pane only (canvas-pane hidden) *@
+            <div class="single-pane-layout">
                 @if (ContextPaneContent is not null)
                 {
                     @ContextPaneContent
                 }
-            </ResizablePanel>
-
-            <ResizableHandle Class="dual-pane-handle" />
-
-            @* MY CUSTOMIZATION POINT: Canvas Pane — artifacts, plan progress, editors, previews *@
-            <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="35" Class="canvas-panel">
-                @if (CanvasPaneContent is not null)
-                {
-                    @CanvasPaneContent
-                }
-            </ResizablePanel>
-        </ResizablePanelGroup>
+            </div>
+        }
     </div>
 }
 
@@ -82,6 +102,13 @@ else
     /// </summary>
     [Parameter]
     public RenderFragment? CanvasPaneContent { get; set; }
+
+    /// <summary>
+    /// Gets whether an interactive shared artifact is currently active.
+    /// When <see langword="true"/>, the canvas-pane is visible in desktop layout.
+    /// When <see langword="false"/>, the layout switches to single-pane (context-pane only).
+    /// </summary>
+    private bool HasInteractiveArtifact => ArtifactStore.Value.HasInteractiveArtifact;
 
     // MY CUSTOMIZATION POINT: Initialize ViewportService, read persisted layout,
     // subscribe to viewport changes, and set up layout persistence observer.
@@ -169,7 +196,7 @@ else
     }
 
     // MY CUSTOMIZATION POINT: Cleanup ViewportService event subscription and layout persistence
-    public async ValueTask DisposeAsync()
+    public new async ValueTask DisposeAsync()
     {
         ViewportService.OnViewportChanged -= OnViewportChanged;
 
@@ -185,6 +212,8 @@ else
                 // Circuit disconnected — JS cleanup is no longer possible.
             }
         }
+
+        await base.DisposeAsync();
     }
 
     /// <summary>

@@ -1,0 +1,272 @@
+/* =============================================================================
+ * MemoryInspector — Observability Component Styling
+ * =============================================================================
+ * Displays active agent context (session, state, tools) with Claude theme.
+ * Located in ContextPane (message-list), not CanvasPane.
+ * ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+ * Container — Card wrapper with Claude styling
+ * ----------------------------------------------------------------------------- */
+::deep .memory-inspector {
+    margin: 1rem 0;
+    transition: all 0.2s ease;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+::deep .memory-inspector:hover {
+    border-color: hsl(var(--accent-violet));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 1px hsla(263, 75%, 62%, 0.1);
+}
+
+/* Dark mode enhancements */
+.dark ::deep .memory-inspector {
+    background: hsl(var(--surface-1));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark ::deep .memory-inspector:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 20px hsla(263, 75%, 62%, 0.15);
+}
+
+/* -----------------------------------------------------------------------------
+ * Header Styling
+ * ----------------------------------------------------------------------------- */
+::deep .memory-inspector .card-header {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / 0.3);
+}
+
+::deep .memory-inspector .card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    letter-spacing: -0.01em;
+}
+
+::deep .memory-inspector .card-title svg {
+    color: hsl(var(--accent-violet));
+    flex-shrink: 0;
+}
+
+::deep .memory-inspector .card-description {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    margin-top: 0.25rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * Content Area
+ * ----------------------------------------------------------------------------- */
+::deep .memory-inspector .card-content {
+    padding: 0;
+}
+
+/* -----------------------------------------------------------------------------
+ * Memory Sections (Session, State, Tools)
+ * ----------------------------------------------------------------------------- */
+.memory-section {
+    padding: 0.875rem 1rem;
+}
+
+.memory-section-title {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.625rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.memory-section-title::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    background: linear-gradient(180deg, hsl(var(--accent-violet)) 0%, hsl(var(--accent-cyan)) 100%);
+    border-radius: 2px;
+}
+
+/* -----------------------------------------------------------------------------
+ * Memory Items (Key-Value Pairs)
+ * ----------------------------------------------------------------------------- */
+.memory-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid hsl(var(--border) / 0.4);
+    transition: all 0.15s ease;
+}
+
+.memory-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.memory-item:hover {
+    background: hsl(var(--accent) / 0.3);
+    margin: 0 -0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.memory-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    min-width: 6rem;
+    flex-shrink: 0;
+}
+
+.memory-item ::deep .badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: var(--font-mono);
+}
+
+/* -----------------------------------------------------------------------------
+ * Separator — Visual divider between sections
+ * ----------------------------------------------------------------------------- */
+::deep .memory-inspector .separator {
+    margin: 0;
+    background: hsl(var(--border));
+}
+
+/* -----------------------------------------------------------------------------
+ * Badge Customization — Enhanced visibility in memory context
+ * ----------------------------------------------------------------------------- */
+.memory-item ::deep .badge-outline {
+    background: hsl(var(--background) / 0.5);
+    border-color: hsl(var(--border));
+}
+
+.memory-item ::deep .badge-secondary {
+    background: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+}
+
+.memory-item ::deep .badge:not(.badge-outline):not(.badge-secondary) {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-weight: 600;
+}
+
+/* Dark mode badge adjustments */
+.dark .memory-item ::deep .badge-outline {
+    background: hsl(var(--surface-2) / 0.6);
+    border-color: hsl(var(--border-default));
+}
+
+.dark .memory-item ::deep .badge-secondary {
+    background: hsl(var(--surface-3));
+    color: hsl(var(--text-secondary));
+}
+
+/* -----------------------------------------------------------------------------
+ * Empty State (when no data available)
+ * ----------------------------------------------------------------------------- */
+.memory-item ::deep .badge-outline:only-child {
+    opacity: 0.6;
+}
+
+/* -----------------------------------------------------------------------------
+ * Responsive Design
+ * ----------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    ::deep .memory-inspector {
+        margin: 0.75rem 0;
+    }
+
+    .memory-section {
+        padding: 0.75rem 0.875rem;
+    }
+
+    .memory-label {
+        min-width: 5rem;
+        font-size: 0.75rem;
+    }
+
+    .memory-item {
+        flex-wrap: wrap;
+        gap: 0.375rem;
+    }
+
+    .memory-item ::deep .badge {
+        font-size: 0.6875rem;
+    }
+}
+
+/* -----------------------------------------------------------------------------
+ * Glassmorphism Enhancement (Optional, for elevated observability)
+ * ----------------------------------------------------------------------------- */
+::deep .memory-inspector.glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+}
+
+/* -----------------------------------------------------------------------------
+ * Animation — Subtle entrance
+ * ----------------------------------------------------------------------------- */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+::deep .memory-inspector {
+    animation: fadeInUp 0.3s ease-out;
+}
+
+/* -----------------------------------------------------------------------------
+ * Section-specific styling
+ * ----------------------------------------------------------------------------- */
+
+/* Session section — Emphasize conversation identity */
+.memory-section:first-child .memory-section-title::before {
+    background: linear-gradient(180deg, hsl(var(--primary)) 0%, hsl(var(--accent-violet)) 100%);
+}
+
+/* State section — Highlight active artifacts */
+.memory-section:nth-child(3) .memory-section-title::before {
+    background: linear-gradient(180deg, hsl(var(--accent-cyan)) 0%, hsl(var(--chart-4)) 100%);
+}
+
+/* Tools section — Emphasize execution summary */
+.memory-section:last-child .memory-section-title::before {
+    background: linear-gradient(180deg, hsl(var(--accent-amber)) 0%, hsl(var(--chart-3)) 100%);
+}
+
+/* -----------------------------------------------------------------------------
+ * High-contrast mode support
+ * ----------------------------------------------------------------------------- */
+@media (prefers-contrast: high) {
+    ::deep .memory-inspector {
+        border-width: 2px;
+    }
+
+    .memory-label {
+        font-weight: 600;
+    }
+
+    .memory-item {
+        border-bottom-width: 2px;
+    }
+}

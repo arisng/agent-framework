@@ -1,85 +1,91 @@
 /* AssistantThought component styles */
-/* MY CUSTOMIZATION POINT: Accordion of Thought - BlazorBlueprint Collapsible + Accordion */
-/* Collapsible thought block for tool calls, tool results, data content, state updates */
+/* Claude Design System — Accordion of Thought */
+/* BlazorBlueprint Collapsible + Accordion for tool calls, results, data, state updates */
 
 .assistant-thought {
-    margin: 0.5rem 0;
-    border: 1px solid #E5E7EB;
+    margin: 0.375rem 0;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
     border-radius: 0.5rem;
-    background: #FAFAFA;
+    background: color-mix(in oklch, var(--muted) 30%, transparent);
     overflow: hidden;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .assistant-thought.expanded {
-    border-color: #C7D2FE;
-    background: #F8FAFC;
+    border-color: var(--border);
+    border-left-color: var(--primary);
+    background: var(--card);
 }
 
-/* Toggle button (Collapsible trigger) */
+/* Toggle button (Collapsible trigger) — always interactive */
 .thought-toggle {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.625rem 0.875rem;
-    background: transparent;
+    padding: 0.5rem 0.75rem;
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
     border: none;
     cursor: pointer;
     text-align: left;
-    font-size: 0.875rem;
-    color: #4B5563;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
     transition: background-color 0.15s ease;
+    pointer-events: auto;
 }
 
 .thought-toggle:hover {
-    background: rgba(99, 102, 241, 0.05);
+    background: color-mix(in oklch, var(--muted) 80%, transparent);
 }
 
-.thought-toggle:focus {
-    outline: 2px solid #6366F1;
+.thought-toggle:focus-visible {
+    outline: 2px solid var(--ring);
     outline-offset: -2px;
 }
 
-/* MY CUSTOMIZATION POINT: LucideIcon styling for thought toggle */
+/* LucideIcon styling for thought toggle */
 ::deep .thought-icon-lucide {
-    color: #6366F1;
+    color: var(--primary);
     flex-shrink: 0;
 }
 
 .thought-summary {
     flex: 1;
     font-weight: 500;
-    color: #374151;
+    color: var(--foreground);
+    font-size: 0.8125rem;
 }
 
 ::deep .thought-chevron-icon {
-    color: #6B7280;
+    color: var(--muted-foreground);
     flex-shrink: 0;
     transition: transform 0.2s ease;
 }
 
-/* Expanded content area */
+/* Expanded content area — compact spacing */
 .thought-content {
-    padding: 0 0.875rem 0.875rem 0.875rem;
-    border-top: 1px solid #E5E7EB;
+    padding: 0 0.75rem 0.5rem 0.75rem;
+    border-top: 1px solid var(--border);
 }
 
-/* MY CUSTOMIZATION POINT: BlazorBlueprint Accordion styling for tool call cycles */
+/* BlazorBlueprint Accordion styling for tool call cycles */
 ::deep .thought-accordion {
     border: none;
     background: transparent;
 }
 
 ::deep .thought-accordion-item {
-    border: 1px solid #E5E7EB;
+    border: 1px solid var(--border);
     border-radius: 0.375rem;
-    margin: 0.375rem 0;
+    margin: 0.25rem 0;
     overflow: hidden;
-    background: #FFFFFF;
+    background: var(--card);
+    transition: border-color 0.15s ease;
 }
 
 ::deep .thought-accordion-item:first-child {
-    margin-top: 0.75rem;
+    margin-top: 0.5rem;
 }
 
 ::deep .thought-accordion-trigger {
@@ -95,14 +101,14 @@
 }
 
 ::deep .tool-icon-lucide {
-    color: #6366F1;
+    color: var(--primary);
     flex-shrink: 0;
 }
 
 .tool-call-name {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', 'Monaco', monospace;
     font-weight: 600;
-    color: #4F46E5;
+    color: var(--primary);
     font-size: 0.8125rem;
 }
 
@@ -116,8 +122,8 @@
 
 .tool-duration {
     font-size: 0.6875rem;
-    color: #6B7280;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: var(--muted-foreground);
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
     margin-left: 0.25rem;
 }
 
@@ -128,7 +134,10 @@
 
 /* Tool call arguments within accordion */
 .tool-call-arguments {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.375rem;
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    border-radius: 0.25rem;
+    padding: 0.375rem 0.5rem;
 }
 
 .tool-section-label {
@@ -136,18 +145,18 @@
     align-items: center;
     gap: 0.25rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--foreground);
     font-size: 0.75rem;
     margin-bottom: 0.25rem;
 }
 
 .tool-section-label-dynamic {
-    color: #6D28D9;
+    color: var(--primary);
     margin-bottom: 0.375rem;
 }
 
 .tool-section-label-rejected {
-    color: #B91C1C;
+    color: var(--alert-danger);
 }
 
 .tool-call-argument {
@@ -158,20 +167,22 @@
 }
 
 .argument-name {
-    color: #6B7280;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: var(--muted-foreground);
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+    white-space: nowrap;
 }
 
 .argument-value {
-    color: #1F2937;
+    color: var(--foreground);
     word-break: break-word;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
 }
 
 /* Tool result sections within accordion */
 .tool-result-section {
-    background: #ECFDF5;
-    border: 1px solid #A7F3D0;
-    border-radius: 0.375rem;
+    background: var(--alert-success-bg);
+    border: 1px solid color-mix(in oklch, var(--alert-success) 30%, transparent);
+    border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
 }
 
@@ -182,23 +193,23 @@
 }
 
 .tool-result-section-rejected {
-    background: #FEF2F2;
-    border-color: #FECACA;
+    background: var(--alert-danger-bg);
+    border-color: color-mix(in oklch, var(--alert-danger) 30%, transparent);
 }
 
 .tool-result-section-pending {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    background: #FFFBEB;
-    border: 1px solid #FDE68A;
-    border-radius: 0.375rem;
+    background: var(--alert-warning-bg);
+    border: 1px solid color-mix(in oklch, var(--alert-warning) 30%, transparent);
+    border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
     font-size: 0.75rem;
 }
 
 .tool-waiting-text {
-    color: #92400E;
+    color: var(--alert-warning);
     font-style: italic;
 }
 
@@ -210,13 +221,16 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
     font-size: 0.75rem;
     line-height: 1.4;
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.25rem;
 }
 
 .tool-result-empty {
-    color: #9CA3AF;
+    color: var(--muted-foreground);
     font-style: italic;
 }
 
@@ -226,16 +240,16 @@
 .assistant-thought .assistant-data-content,
 .assistant-thought .assistant-error {
     display: grid;
-    grid-template-columns: 1.5rem minmax(0, 1fr);
+    grid-template-columns: 1.25rem minmax(0, 1fr);
     gap: 0.375rem;
-    margin: 0.5rem 0;
+    margin: 0.375rem 0;
 }
 
 .assistant-thought .assistant-state-snapshot:first-child,
 .assistant-thought .assistant-state-delta:first-child,
 .assistant-thought .assistant-data-content:first-child,
 .assistant-thought .assistant-error:first-child {
-    margin-top: 0.75rem;
+    margin-top: 0.5rem;
 }
 
 .assistant-thought .assistant-state-snapshot:last-child,
@@ -251,20 +265,20 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 0.125rem;
-    color: #8B5CF6;
+    color: var(--primary);
 }
 
 .assistant-thought .state-snapshot-content {
-    background: #F5F3FF;
-    border: 1px solid #DDD6FE;
-    border-radius: 0.375rem;
+    background: color-mix(in oklch, var(--primary) 10%, transparent);
+    border: 1px solid color-mix(in oklch, var(--primary) 25%, transparent);
+    border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
     font-size: 0.8125rem;
 }
 
 .assistant-thought .state-snapshot-header {
     font-weight: 600;
-    color: #6D28D9;
+    color: var(--primary);
     margin-bottom: 0.125rem;
     font-size: 0.8125rem;
 }
@@ -273,11 +287,14 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
     font-size: 0.75rem;
     line-height: 1.4;
     max-height: 150px;
     overflow-y: auto;
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.25rem;
 }
 
 /* State Delta Styles */
@@ -286,20 +303,20 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 0.125rem;
-    color: #F59E0B;
+    color: var(--alert-warning);
 }
 
 .assistant-thought .state-delta-content {
-    background: #FFFBEB;
-    border: 1px solid #FDE68A;
-    border-radius: 0.375rem;
+    background: var(--alert-warning-bg);
+    border: 1px solid color-mix(in oklch, var(--alert-warning) 25%, transparent);
+    border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
     font-size: 0.8125rem;
 }
 
 .assistant-thought .state-delta-header {
     font-weight: 600;
-    color: #B45309;
+    color: var(--alert-warning);
     margin-bottom: 0.125rem;
     font-size: 0.8125rem;
 }
@@ -308,9 +325,12 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
     font-size: 0.75rem;
     line-height: 1.4;
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.25rem;
 }
 
 /* Generic Data Content Styles */
@@ -319,20 +339,20 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 0.125rem;
-    color: #6B7280;
+    color: var(--muted-foreground);
 }
 
 .assistant-thought .data-content-content {
-    background: #F9FAFB;
-    border: 1px solid #E5E7EB;
-    border-radius: 0.375rem;
+    background: color-mix(in oklch, var(--muted) 30%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
     font-size: 0.8125rem;
 }
 
 .assistant-thought .data-content-header {
     font-weight: 600;
-    color: #374151;
+    color: var(--foreground);
     margin-bottom: 0.125rem;
     font-size: 0.8125rem;
 }
@@ -341,11 +361,14 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
     font-size: 0.75rem;
     line-height: 1.4;
     max-height: 150px;
     overflow-y: auto;
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.25rem;
 }
 
 /* Error Content Styles */
@@ -354,20 +377,20 @@
     justify-content: center;
     align-items: flex-start;
     padding-top: 0.125rem;
-    color: #DC2626;
+    color: var(--alert-danger);
 }
 
 .assistant-thought .error-content {
-    background: #FEF2F2;
-    border: 1px solid #FECACA;
-    border-radius: 0.375rem;
+    background: var(--alert-danger-bg);
+    border: 1px solid color-mix(in oklch, var(--alert-danger) 30%, transparent);
+    border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
     font-size: 0.8125rem;
 }
 
 .assistant-thought .error-header {
     font-weight: 600;
-    color: #B91C1C;
+    color: var(--alert-danger);
     margin-bottom: 0.125rem;
     font-size: 0.8125rem;
 }
@@ -375,11 +398,11 @@
 .assistant-thought .error-code {
     font-weight: 400;
     font-size: 0.75rem;
-    color: #991B1B;
+    color: var(--alert-danger);
     margin-left: 0.125rem;
 }
 
 .assistant-thought .error-message {
     font-size: 0.75rem;
-    color: #7F1D1D;
+    color: var(--alert-danger);
 }

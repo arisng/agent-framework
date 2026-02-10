@@ -1,9 +1,9 @@
 /* DocumentPreview.razor.css - Styles for the predictive state document preview */
 
 .document-preview {
-    background-color: #ffffff;
+    background-color: hsl(var(--card));
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px hsl(var(--foreground) / 0.15);
     overflow: hidden;
     width: 100%;
     max-height: 70vh;
@@ -13,22 +13,22 @@
 }
 
 .document-preview.is-preview {
-    border: 2px solid #3b82f6;
+    border: 2px solid hsl(var(--accent-cyan));
     animation: pulse-border 2s ease-in-out infinite;
 }
 
 .document-preview.is-finalized {
-    border: 2px solid #22c55e;
+    border: 2px solid hsl(var(--alert-success));
 }
 
 @keyframes pulse-border {
     0%, 100% {
-        border-color: #3b82f6;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+        border-color: hsl(var(--accent-cyan));
+        box-shadow: 0 4px 12px hsl(var(--accent-cyan) / 0.25);
     }
     50% {
-        border-color: #93c5fd;
-        box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+        border-color: hsl(var(--accent-cyan) / 0.6);
+        box-shadow: 0 4px 16px hsl(var(--accent-cyan) / 0.4);
     }
 }
 
@@ -37,15 +37,15 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border-bottom: 1px solid #e2e8f0;
+    background: hsl(var(--muted) / 0.3);
+    border-bottom: 1px solid hsl(var(--border));
 }
 
 .document-header h3 {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: hsl(var(--foreground));
 }
 
 .preview-status {
@@ -64,20 +64,20 @@
 }
 
 .status-badge.preview {
-    background-color: #dbeafe;
-    color: #1d4ed8;
+    background-color: hsl(var(--accent-cyan) / 0.2);
+    color: hsl(var(--accent-cyan));
 }
 
 .status-badge.finalized {
-    background-color: #dcfce7;
-    color: #15803d;
+    background-color: hsl(var(--alert-success-bg));
+    color: hsl(var(--alert-success));
 }
 
 .status-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: #3b82f6;
+    background-color: hsl(var(--accent-cyan));
     animation: blink 1s ease-in-out infinite;
 }
 
@@ -100,21 +100,21 @@
     overflow-y: auto;
     font-size: 0.9375rem;
     line-height: 1.7;
-    color: #334155;
+    color: hsl(var(--text-secondary));
 }
 
 .document-content h1,
 .document-content h2,
 .document-content h3,
 .document-content h4 {
-    color: #1e293b;
+    color: hsl(var(--foreground));
     margin-top: 1rem;
     margin-bottom: 0.5rem;
 }
 
 .document-content h1 {
     font-size: 1.5rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid hsl(var(--border));
     padding-bottom: 0.5rem;
 }
 
@@ -141,7 +141,7 @@
 }
 
 .document-content code {
-    background-color: #f1f5f9;
+    background-color: hsl(var(--muted));
     padding: 0.125rem 0.375rem;
     border-radius: 4px;
     font-family: 'Consolas', 'Courier New', monospace;
@@ -149,8 +149,8 @@
 }
 
 .document-content pre {
-    background-color: #1e293b;
-    color: #e2e8f0;
+    background-color: hsl(var(--surface-3));
+    color: hsl(var(--text-primary));
     padding: 1rem;
     border-radius: 8px;
     overflow-x: auto;
@@ -166,7 +166,7 @@
 /* Document text for predictive state preview */
 .document-content .document-text {
     background-color: transparent;
-    color: #334155;
+    color: hsl(var(--text-secondary));
     white-space: pre-wrap;
     word-wrap: break-word;
     font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -177,15 +177,15 @@
 }
 
 .document-content blockquote {
-    border-left: 4px solid #3b82f6;
+    border-left: 4px solid hsl(var(--accent-cyan));
     margin: 1rem 0;
     padding: 0.5rem 1rem;
-    background-color: #f8fafc;
-    color: #475569;
+    background-color: hsl(var(--muted) / 0.3);
+    color: hsl(var(--text-secondary));
 }
 
 .empty-state {
-    color: #94a3b8;
+    color: hsl(var(--muted-foreground));
     font-style: italic;
     text-align: center;
     padding: 2rem;
@@ -193,13 +193,13 @@
 
 .document-footer {
     padding: 12px 20px;
-    background-color: #f8fafc;
-    border-top: 1px solid #e2e8f0;
+    background-color: hsl(var(--muted) / 0.3);
+    border-top: 1px solid hsl(var(--border));
     display: flex;
     justify-content: flex-end;
 }
 
 .char-count {
     font-size: 0.75rem;
-    color: #64748b;
+    color: hsl(var(--muted-foreground));
 }

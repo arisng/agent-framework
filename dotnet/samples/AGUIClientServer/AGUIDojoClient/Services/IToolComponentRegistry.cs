@@ -29,12 +29,21 @@ public interface IToolComponentRegistry
     bool TryGetParameterName(string toolName, out string? parameterName);
 
     /// <summary>
+    /// Tries to get metadata for the specified tool component.
+    /// </summary>
+    /// <param name="toolName">The name of the tool.</param>
+    /// <param name="metadata">When this method returns, contains the metadata if found; otherwise, null.</param>
+    /// <returns>True if metadata was found for the tool; otherwise, false.</returns>
+    bool TryGetMetadata(string toolName, out ToolMetadata? metadata);
+
+    /// <summary>
     /// Registers a Blazor component for a specific tool.
     /// </summary>
     /// <typeparam name="TComponent">The type of Blazor component to register.</typeparam>
     /// <param name="toolName">The name of the tool.</param>
     /// <param name="parameterName">The name of the component parameter that receives the tool result data.</param>
-    void Register<TComponent>(string toolName, string parameterName) where TComponent : Microsoft.AspNetCore.Components.IComponent;
+    /// <param name="metadata">Optional metadata for component rendering. If null, defaults to AssistantThought rendering.</param>
+    void Register<TComponent>(string toolName, string parameterName, ToolMetadata? metadata = null) where TComponent : Microsoft.AspNetCore.Components.IComponent;
 
     /// <summary>
     /// Checks if a Blazor component is registered for the specified tool.

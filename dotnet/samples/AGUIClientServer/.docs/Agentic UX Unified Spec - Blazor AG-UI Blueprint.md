@@ -1,4 +1,4 @@
-# Unified Architectural Specification for Agentic User Experiences: Blazor, AG-UI, and the Nebula Design System
+# Unified Architectural Specification for Agentic User Experiences: Blazor, AG-UI, and the Claude Design System
 
 > **Consolidation of:** *"Architectural Specification for Agentic UX: Integrating Blazor, AG-UI, and Generative Components"* (Feb 4, 2026) and *"Implementing Agentic UX/UI Patterns with Blazor Blueprint UI Library"* (Feb 8, 2026).
 >
@@ -28,7 +28,7 @@ Research into autonomous systems identifies six critical behavioral patterns tha
 This document provides an exhaustive architectural blueprint for implementing all six patterns within the .NET ecosystem, combining:
 
 - **Infrastructure & Protocol:** The AG-UI protocol over SSE, ASP.NET Core backend, .NET Aspire orchestration, and OpenTelemetry observability.
-- **UI Components & Design:** The Blazor Blueprint UI library with the "Nebula" design system, covering layout, theming, and six concrete component patterns.
+- **UI Components & Design:** The Blazor Blueprint UI library with the "Claude" design system, covering layout, theming, and six concrete component patterns.
 - **State Management:** Fluxor-based state with DAG conversation branching and AG-UI state snapshots.
 
 ---
@@ -52,7 +52,7 @@ The architecture necessitates a distributed system where the Agent Backend and t
 │  │  │ LLM + Reasoning│  │         │  │ AGUIChatClient      │  │   │
 │  │  │ Server Tools   │  │         │  │ DynamicComponent    │  │   │
 │  │  │ MapAGUI()      │  │         │  │ Monaco Editor       │  │   │
-│  │  └────────────────┘  │         │  │ Nebula Theme        │  │   │
+│  │  └────────────────┘  │         │  │ Claude Theme        │  │   │
 │  └─────────────────────┘         │  └────────────────────┘  │   │
 │                                   └─────────────────────────┘    │
 │  ┌─────────────────────────────────────────────────────────┐    │
@@ -214,9 +214,9 @@ Layout preferences are persisted via `Blazored.LocalStorage`: [^17]
 
 ---
 
-## 7. The Visual Design System: Project "Nebula"
+## 7. The Visual Design System: Project "Claude"
 
-The "Nebula" design system is a custom implementation of Blazor Blueprint's CSS variable tokens, optimized for the cognitive demands of AI-assisted workflows. [^12]
+The "Claude" design system is a custom implementation of Blazor Blueprint's CSS variable tokens, optimized for the cognitive demands of AI-assisted workflows. [^12]
 
 ### 7.1 Design Theory: Sleek Modernism
 
@@ -788,7 +788,7 @@ The "Golden Triangle" methodology combines three operational pillars: [^1a]
 
 ## 16. Mobile Responsiveness
 
-The Nebula theme and Blazor Blueprint components support mobile-first design via Tailwind utilities.
+The Claude theme and Blazor Blueprint components support mobile-first design via Tailwind utilities.
 
 | Component              | Desktop                                        | Mobile                                |
 | :--------------------- | :--------------------------------------------- | :------------------------------------ |
@@ -802,14 +802,14 @@ The Nebula theme and Blazor Blueprint components support mobile-first design via
 
 ## 17. Conclusion
 
-This unified specification defines a complete architectural blueprint for Agentic UX with Blazor, spanning from the transport layer (SSE via AG-UI) through to pixel-level visual design (the "Nebula" system). The six UX patterns — **Reflection**, **Tool Use**, **Planning**, **Multi-Agent Orchestration**, **Artifact Editing**, and **Generative UI** — transform the "Black Box" of AI into a "Glass Box," ensuring that as systems become more intelligent, they also become more intelligible.
+This unified specification defines a complete architectural blueprint for Agentic UX with Blazor, spanning from the transport layer (SSE via AG-UI) through to pixel-level visual design (the "Claude" system). The six UX patterns — **Reflection**, **Tool Use**, **Planning**, **Multi-Agent Orchestration**, **Artifact Editing**, and **Generative UI** — transform the "Black Box" of AI into a "Glass Box," ensuring that as systems become more intelligent, they also become more intelligible.
 
 The architecture is characterized by:
 
 - **Strict separation of concerns:** Brain (Agent Backend) and Body (Blazor Frontend) communicate via the AG-UI protocol over SSE.
 - **Robust state management:** Fluxor stores with DAG-based conversation branching and AG-UI state snapshots.
 - **Orchestration and observability:** .NET Aspire for service discovery, OpenTelemetry for distributed tracing.
-- **Visual precision:** The Nebula design system delivers sleek, high-contrast aesthetics optimized for cognitive-heavy AI workflows.
+- **Visual precision:** The Claude design system delivers sleek, high-contrast aesthetics optimized for cognitive-heavy AI workflows.
 - **Component flexibility:** Blazor Blueprint UI's headless primitives enable novel agentic components without the constraints of opinionated frameworks.
 
 This blueprint provides the foundation for engineering teams to build production-grade, agentic AI applications within the .NET ecosystem.

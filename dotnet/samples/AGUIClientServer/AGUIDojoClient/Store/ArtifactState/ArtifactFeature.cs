@@ -9,7 +9,7 @@ namespace AGUIDojoClient.Store.ArtifactState;
 /// it with the Fluxor store via assembly scanning.
 /// </summary>
 /// <remarks>
-/// The initial state has no recipe, no document, and document preview enabled.
+/// The initial state has no recipe, no document, document preview enabled, and no interactive artifacts.
 /// Fluxor discovers this feature automatically through
 /// <c>AddFluxor(o =&gt; o.ScanAssemblies(typeof(Program).Assembly))</c>
 /// registered in <c>Program.cs</c>.
@@ -21,5 +21,5 @@ public class ArtifactFeature : Feature<ArtifactState>
 
     /// <inheritdoc />
     protected override ArtifactState GetInitialState() =>
-        new(CurrentRecipe: null, CurrentDocumentState: null, IsDocumentPreview: true);
+        new(CurrentRecipe: null, CurrentDocumentState: null, IsDocumentPreview: true, HasInteractiveArtifact: false);
 }

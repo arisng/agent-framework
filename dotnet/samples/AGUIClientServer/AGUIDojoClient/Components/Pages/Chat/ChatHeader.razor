@@ -1,26 +1,70 @@
-<div class="chat-header-container main-background-gradient">
-    <div class="chat-header-controls page-width">
-        <div class="endpoint-selector">
-            <label for="endpoint-select">Endpoint:</label>
-            <select id="endpoint-select" @onchange="OnEndpointSelectionChangedAsync">
-                @foreach (var endpoint in AvailableEndpoints)
-                {
-                    <option value="@endpoint.Path" selected="@(endpoint.Path == SelectedEndpointPath)">
-                        @endpoint.DisplayName
-                    </option>
-                }
-            </select>
-        </div>
-        <button class="btn-default" @onclick="@OnNewChat">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="new-chat-icon">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            New chat
-        </button>
-    </div>
+@* MY CUSTOMIZATION POINT: Sidebar component — vertical navigation replacing the old horizontal ChatHeader.
+   Uses BlazorBlueprint Sidebar (Sidebar-06 pattern) with collapsible icon-only mode on desktop
+   and slide-out drawer on mobile. Contains: app title, endpoint selector, new chat, theme toggle.
+   Claude theme sidebar CSS variables (--sidebar, --sidebar-foreground, etc.) are used automatically. *@
+@using BlazorBlueprint.Primitives.Services
+@inject IThemeService ThemeService
 
-    <h1 class="page-width">AG-UI Dojo Chat</h1>
-</div>
+<Sidebar>
+    @* Sidebar Header — App identity with sparkle icon *@
+    <SidebarHeader>
+        <div class="sidebar-brand">
+            <div class="sidebar-brand-icon">
+                <LucideIcon Name="sparkles" Size="20" />
+            </div>
+            <span class="sidebar-brand-title">AG-UI Dojo</span>
+        </div>
+    </SidebarHeader>
+
+    @* Sidebar Content — Endpoint selector as menu items *@
+    <SidebarContent>
+        <SidebarGroup>
+            <SidebarGroupLabel>Endpoints</SidebarGroupLabel>
+            <SidebarGroupContent>
+                <SidebarMenu>
+                    @foreach (var endpoint in AvailableEndpoints)
+                    {
+                        var isActive = string.Equals(endpoint.Path, SelectedEndpointPath, StringComparison.OrdinalIgnoreCase);
+                        <SidebarMenuItem>
+                            <SidebarMenuButton @onclick="() => SelectEndpointAsync(endpoint.Path)"
+                                               IsActive="@isActive"
+                                               title="@endpoint.Description">
+                                <LucideIcon Name="@GetEndpointIcon(endpoint.Path)" Size="16" />
+                                <span>@endpoint.DisplayName</span>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    }
+                </SidebarMenu>
+            </SidebarGroupContent>
+        </SidebarGroup>
+    </SidebarContent>
+
+    @* Sidebar Footer — New Chat button + Theme toggle *@
+    <SidebarFooter>
+        <SidebarMenu>
+            <SidebarMenuItem>
+                <SidebarMenuButton @onclick="@OnNewChat" title="Start new conversation">
+                    <LucideIcon Name="plus" Size="16" />
+                    <span>New Chat</span>
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+                <SidebarMenuButton @onclick="ToggleThemeAsync" title="@(_isDark ? "Switch to light theme" : "Switch to dark theme")">
+                    @if (_isDark)
+                    {
+                        <LucideIcon Name="sun" Size="16" />
+                        <span>Light Mode</span>
+                    }
+                    else
+                    {
+                        <LucideIcon Name="moon" Size="16" />
+                        <span>Dark Mode</span>
+                    }
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+        </SidebarMenu>
+    </SidebarFooter>
+</Sidebar>
 
 @code {
     /// <summary>
@@ -47,12 +91,61 @@
     [Parameter]
     public EventCallback<string> OnEndpointChanged { get; set; }
 
-    private async Task OnEndpointSelectionChangedAsync(ChangeEventArgs e)
+    /// <summary>
+    /// Tracks whether the current theme is dark. Updated on initialization
+    /// and after each toggle.
+    /// </summary>
+    private bool _isDark;
+
+    /// <summary>
+    /// Reads the persisted theme from localStorage on first render and sets
+    /// the initial <c>_isDark</c> state so the correct icon is displayed.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        string? newPath = e.Value?.ToString();
-        if (!string.IsNullOrEmpty(newPath))
+        if (firstRender)
         {
-            await OnEndpointChanged.InvokeAsync(newPath);
+            string theme = await ThemeService.GetThemeAsync();
+            _isDark = string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase);
+            StateHasChanged();
         }
     }
+
+    /// <summary>
+    /// Handles endpoint selection from the sidebar menu.
+    /// </summary>
+    private async Task SelectEndpointAsync(string path)
+    {
+        if (!string.Equals(path, SelectedEndpointPath, StringComparison.OrdinalIgnoreCase))
+        {
+            await OnEndpointChanged.InvokeAsync(path);
+        }
+    }
+
+    /// <summary>
+    /// Toggles between light and dark themes and updates the sidebar icon.
+    /// </summary>
+    private async Task ToggleThemeAsync()
+    {
+        string newTheme = await ThemeService.ToggleThemeAsync();
+        _isDark = string.Equals(newTheme, "dark", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns an appropriate Lucide icon name for each endpoint type.
+    /// </summary>
+    private static string GetEndpointIcon(string path) => path switch
+    {
+        "agentic_chat" => "message-square",
+        "backend_tool_rendering" => "wrench",
+        "human_in_the_loop" => "shield-check",
+        "agentic_generative_ui" => "layout-list",
+        "tool_based_generative_ui" => "component",
+        "shared_state" => "share-2",
+        "predictive_state_updates" => "activity",
+        "data_grid" => "table-2",
+        "chart" => "bar-chart-3",
+        "dynamic_form" => "file-input",
+        _ => "radio"
+    };
 }

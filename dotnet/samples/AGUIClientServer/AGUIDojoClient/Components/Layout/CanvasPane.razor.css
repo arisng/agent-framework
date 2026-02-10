@@ -51,8 +51,10 @@
 }
 
 ::deep .canvas-pane__scroll {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     width: 100%;
+    overflow-y: auto;
 }
 
 .canvas-pane__empty-state {

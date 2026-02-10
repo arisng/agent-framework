@@ -1,60 +1,203 @@
-/* MY CUSTOMIZATION POINT — ApprovalQueue scoped styles */
+/* MY CUSTOMIZATION POINT — ApprovalQueue scoped styles (Claude theme) */
 
-.approval-queue-card {
-    border-left: 4px solid var(--primary);
+/* Wrapper with fade-in animation */
+.approval-card-wrapper {
+    animation: approval-fade-in 0.4s ease-out;
+}
+
+@keyframes approval-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Card with left accent border */
+::deep .approval-queue-card {
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.06), 0 1px 2px -1px hsl(0 0% 0% / 0.06);
+}
+
+/* Header layout — icon+title left, risk badge right */
+.approval-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.approval-icon-title {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+}
+
+.approval-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius);
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    flex-shrink: 0;
+}
+
+.approval-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+::deep .approval-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--foreground);
+    line-height: 1.4;
+}
+
+::deep .approval-subtitle {
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+    line-height: 1.4;
+}
+
+/* Function section — prominent function name */
+.approval-function-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.approval-section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+}
+
+.approval-function-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--foreground);
+    font-family: var(--font-mono), ui-monospace, monospace;
+    background-color: var(--muted);
+    padding: 0.125rem 0.5rem;
+    border-radius: calc(var(--radius) - 2px);
+}
+
+/* Separator */
+::deep .approval-separator {
     margin: 0.5rem 0;
 }
 
-.approval-detail {
+/* Collapsible arguments section */
+.approval-arguments-details {
+    cursor: default;
+}
+
+.approval-arguments-summary {
     display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.375rem 0;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
 }
 
-.approval-detail-label {
-    font-size: 0.75rem;
-    font-weight: 600;
+.approval-arguments-summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Chevron rotation on open */
+::deep .approval-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
     color: var(--muted-foreground);
-    min-width: 5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding-top: 0.125rem;
 }
 
-.approval-detail-value {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--foreground);
-    font-family: monospace;
+.approval-arguments-details[open] ::deep .approval-chevron {
+    transform: rotate(90deg);
 }
 
-.approval-arguments {
+::deep .approval-arg-count {
+    font-size: 0.6875rem;
+    padding: 0 0.375rem;
+    height: 1.125rem;
+    line-height: 1.125rem;
+}
+
+.approval-arguments-body {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    padding: 0.375rem 0 0.25rem 1.375rem;
+    border-left: 2px solid var(--border);
+    margin-left: 0.375rem;
+    margin-top: 0.25rem;
 }
 
 .approval-argument-item {
     display: flex;
-    gap: 0.375rem;
+    gap: 0.5rem;
     font-size: 0.8125rem;
+    line-height: 1.5;
 }
 
 .approval-argument-name {
     font-weight: 500;
     color: var(--muted-foreground);
-    font-family: monospace;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    flex-shrink: 0;
 }
+
+    .approval-argument-name::after {
+        content: ":";
+    }
 
 .approval-argument-value {
     color: var(--foreground);
     word-break: break-word;
+    font-family: var(--font-mono), ui-monospace, monospace;
 }
 
+/* Action buttons */
 .approval-actions {
     display: flex;
     gap: 0.5rem;
     width: 100%;
     justify-content: flex-end;
 }
+
+/* Reject button — outline with destructive text color */
+::deep .approval-btn-reject {
+    color: var(--destructive);
+    border-color: var(--destructive);
+}
+
+    ::deep .approval-btn-reject:hover:not(:disabled) {
+        background-color: var(--destructive);
+        color: var(--destructive-foreground);
+    }
+
+/* Approve button — primary background (default variant already uses --primary) */
+::deep .approval-btn-approve {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+}
+
+    ::deep .approval-btn-approve:hover:not(:disabled) {
+        opacity: 0.9;
+    }

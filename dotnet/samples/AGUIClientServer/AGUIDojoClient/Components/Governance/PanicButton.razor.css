@@ -1,0 +1,100 @@
+/*
+ * ==========================================================================
+ * PanicButton Component Styles
+ * ==========================================================================
+ * Compact inline emergency stop button rendered next to the send button.
+ * Uses Claude theme destructive colors with subtle pulse animation.
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+ * Panic Button — Compact inline icon button
+ * --------------------------------------------------------------------------
+ * Sized to match the send button height, positioned inline to its left.
+ * Uses var(--destructive) for danger signaling.
+ * -------------------------------------------------------------------------- */
+.panic-button {
+    border-radius: 9999px;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background-color: var(--destructive) !important;
+    color: var(--destructive-foreground) !important;
+    border: none;
+    cursor: pointer;
+    margin-left: auto;
+
+    /* Smooth transitions for interactive states */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Subtle pulse animation for urgency */
+    animation: panic-pulse 2s ease-in-out infinite;
+}
+
+/* --------------------------------------------------------------------------
+ * Icon sizing — compact for inline placement
+ * -------------------------------------------------------------------------- */
+.panic-button :global(svg) {
+    width: 18px;
+    height: 18px;
+}
+
+/* --------------------------------------------------------------------------
+ * Hover State — Slight scale and enhanced shadow
+ * -------------------------------------------------------------------------- */
+.panic-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 25%, transparent);
+    animation-play-state: paused;
+}
+
+/* --------------------------------------------------------------------------
+ * Active State — Scale down for tactile feedback
+ * -------------------------------------------------------------------------- */
+.panic-button:active {
+    transform: scale(0.95);
+}
+
+/* --------------------------------------------------------------------------
+ * Focus State — Accessible keyboard navigation
+ * -------------------------------------------------------------------------- */
+.panic-button:focus-visible {
+    outline: 2px solid var(--destructive);
+    outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+ * Pulse Animation — Subtle ring expansion
+ * -------------------------------------------------------------------------- */
+@keyframes panic-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 color-mix(in oklch, var(--destructive) 20%, transparent);
+    }
+    50% {
+        box-shadow: 0 0 0 4px color-mix(in oklch, var(--destructive) 10%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Accessibility — High Contrast Mode Support
+ * -------------------------------------------------------------------------- */
+@media (prefers-contrast: high) {
+    .panic-button {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced Motion — Disable animations for users who prefer reduced motion
+ * -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    .panic-button {
+        animation: none;
+        transition: none;
+    }
+}

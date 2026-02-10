@@ -227,7 +227,7 @@ local.settings.json
 # Database files
 *.db
 python/dotnet-ref
-.playwright-cli/**
+**/.playwright-cli/**
 .ralph-sessions/**
 **/appsettings.Localhost.json
 

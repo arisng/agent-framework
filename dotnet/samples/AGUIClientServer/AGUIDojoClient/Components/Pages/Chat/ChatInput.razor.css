@@ -1,15 +1,15 @@
 .input-box {
     display: flex;
     flex-direction: column;
-    background: white;
-    border: 1px solid rgb(229, 231, 235);
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     margin-top: 0.75rem;
 }
 
     .input-box:focus-within {
-        outline: 2px solid #4152d5;
+        outline: 2px solid hsl(var(--ring));
     }
 
 textarea {
@@ -20,13 +20,14 @@ textarea {
 }
 
     textarea:placeholder-shown + .tools {
-        --send-button-color: #aaa;
+        --send-button-color: hsl(var(--muted-foreground));
     }
 
 .tools {
     display: flex;
     margin-top: 1rem;
     align-items: center;
+    gap: 0.5rem;
 }
 
 .tool-icon {
@@ -40,18 +41,18 @@ textarea {
 }
 
     .send-button:hover {
-        color: black;
+        color: hsl(var(--foreground));
     }
 
 .attach {
-    background-color: white;
+    background-color: hsl(var(--background));
     border-style: dashed;
-    color: #888;
-    border-color: #888;
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border));
     padding: 3px 8px;
 }
 
     .attach:hover {
-        background-color: #f0f0f0;
-        color: black;
+        background-color: hsl(var(--muted));
+        color: hsl(var(--foreground));
     }

@@ -15,7 +15,7 @@
 
 <div class="assistant-thought @(IsExpanded ? "expanded" : "collapsed")">
     @* MY CUSTOMIZATION POINT: BlazorBlueprint Collapsible replaces hand-rolled expand/collapse *@
-    <Collapsible @bind-Open="IsExpanded">
+    <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
         <CollapsibleTrigger AsChild>
             <button class="thought-toggle" type="button" aria-expanded="@IsExpanded">
                 <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
@@ -267,17 +267,34 @@
     /// <summary>
     /// Tracks whether the thought block is expanded or collapsed.
     /// Default: expanded during streaming, collapsed after completion.
-    /// Bound to BlazorBlueprint Collapsible via @bind-Open.
+    /// Bound to BlazorBlueprint Collapsible via Open/OpenChanged.
     /// </summary>
     private bool IsExpanded { get; set; } = true;
 
+    /// <summary>
+    /// Tracks whether the user has manually toggled the collapsible.
+    /// When true, auto-collapse on stream completion is suppressed.
+    /// </summary>
+    private bool _userToggled;
+
     private bool _previousInProgress = true;
+
+    /// <summary>
+    /// Handles user clicks on the Collapsible trigger.
+    /// Sets the _userToggled flag so auto-collapse doesn't override.
+    /// </summary>
+    private void OnToggleChanged(bool newOpen)
+    {
+        IsExpanded = newOpen;
+        _userToggled = true;
+    }
 
     /// <inheritdoc />
     protected override void OnParametersSet()
     {
         // Auto-collapse when streaming completes (InProgress transitions from true to false)
-        if (_previousInProgress && !InProgress)
+        // BUT only if the user hasn't manually toggled the collapsible
+        if (_previousInProgress && !InProgress && !_userToggled)
         {
             IsExpanded = false;
         }

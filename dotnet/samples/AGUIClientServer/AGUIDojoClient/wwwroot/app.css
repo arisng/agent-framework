@@ -1,165 +1,276 @@
 /*
  * ==========================================================================
- * Nebula Design System — AGUIDojo Theme
+ * Claude Design System — AGUIDojo Theme
  * ==========================================================================
  *
  * Custom implementation of Blazor Blueprint's CSS variable tokens, optimized
  * for the cognitive demands of AI-assisted agentic workflows. Provides two
- * themes: Light "Ceramic" (default) and Dark "Deep Space" (.dark class).
+ * themes: Light "Claude Light" (default) and Dark "Claude Dark" (.dark class).
  *
  * Compatible with shadcn/ui theming convention used by BlazorBlueprint.
  * Variables are referenced as var(--background) etc. in BlazorBlueprint CSS.
  *
- * Typography: Inter (UI text) + JetBrains Mono (code/agent logs).
+ * Color space: oklch() for perceptually uniform color manipulation.
+ * Primary: oklch(0.6171 0.1375 39.0427) — warm terracotta/amber.
+ * Typography: System fonts (ui-sans-serif stack for UI, ui-monospace stack
+ * for code/agent logs). No custom web font imports for performance.
  * ==========================================================================
  */
 
 /* --------------------------------------------------------------------------
- * Font Imports — Inter (UI text) + JetBrains Mono (code/agent logs)
- * -------------------------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
-/* --------------------------------------------------------------------------
  * Theme Tokens
  * --------------------------------------------------------------------------
- * Light "Ceramic": Clean laboratory aesthetic. High-brightness whites with
- * Deep Azure (#2563eb) accent — professional and trustworthy.
+ * Light "Claude Light": Warm, approachable aesthetic. Cream-tinted whites
+ * with Terracotta primary oklch(0.6171 0.1375 39.0427) — inviting and
+ * professional for AI-assisted agentic workflows.
  * -------------------------------------------------------------------------- */
 :root {
-    /* Font families */
-    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    /* Font families — system font stacks (no custom web font imports) */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-    /* Light Mode ("Ceramic") — Core shadcn/ui theme tokens */
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(240 10% 3.9%);
+    /* Claude Light Mode — Core shadcn/ui theme tokens (oklch color space) */
+    --background: oklch(0.9818 0.0054 95.0986);
+    --foreground: oklch(0.3438 0.0269 95.7226);
 
-    --card: hsl(0 0% 100%);
-    --card-foreground: hsl(240 10% 3.9%);
+    --card: oklch(0.9818 0.0054 95.0986);
+    --card-foreground: oklch(0.1908 0.0020 106.5859);
 
-    --popover: hsl(0 0% 100%);
-    --popover-foreground: hsl(240 10% 3.9%);
+    --popover: oklch(1.0000 0 0);
+    --popover-foreground: oklch(0.2671 0.0196 98.9390);
 
-    --primary: hsl(221.2 83.2% 53.3%);          /* Deep Azure #2563eb */
-    --primary-foreground: hsl(210 40% 98%);
+    --primary: oklch(0.6171 0.1375 39.0427);       /* Warm terracotta */
+    --primary-foreground: oklch(1.0000 0 0);
 
-    --secondary: hsl(240 4.8% 95.9%);
-    --secondary-foreground: hsl(240 5.9% 10%);
+    --secondary: oklch(0.9245 0.0138 92.9892);
+    --secondary-foreground: oklch(0.4334 0.0177 98.6048);
 
-    --muted: hsl(240 4.8% 95.9%);
-    --muted-foreground: hsl(240 3.8% 46.1%);
+    --muted: oklch(0.9341 0.0153 90.2390);
+    --muted-foreground: oklch(0.6059 0.0075 97.4233);
 
-    --accent: hsl(240 4.8% 95.9%);
-    --accent-foreground: hsl(240 5.9% 10%);
+    --accent: oklch(0.9245 0.0138 92.9892);
+    --accent-foreground: oklch(0.2671 0.0196 98.9390);
 
-    --destructive: hsl(0 84.2% 60.2%);
-    --destructive-foreground: hsl(0 0% 98%);
+    --destructive: oklch(0.1908 0.0020 106.5859);
+    --destructive-foreground: oklch(1.0000 0 0);
 
-    --border: hsl(240 5.9% 90%);
-    --input: hsl(240 5.9% 90%);
-    --ring: hsl(221.2 83.2% 53.3%);              /* Matches primary */
+    --border: oklch(0.8847 0.0069 97.3627);
+    --input: oklch(0.7621 0.0156 98.3528);
+    --ring: oklch(0.6171 0.1375 39.0427);           /* Matches primary */
 
     --radius: 0.5rem;
 
     /* Sidebar tokens (used by BlazorBlueprint Sidebar component) */
-    --sidebar: hsl(0 0% 98%);
-    --sidebar-foreground: hsl(240 5.3% 26.1%);
-    --sidebar-primary: hsl(221.2 83.2% 53.3%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(240 4.8% 95.9%);
-    --sidebar-accent-foreground: hsl(240 5.9% 10%);
-    --sidebar-border: hsl(240 5.9% 90%);
-    --sidebar-ring: hsl(221.2 83.2% 53.3%);
+    --sidebar: oklch(0.9663 0.0080 98.8792);
+    --sidebar-foreground: oklch(0.3590 0.0051 106.6524);
+    --sidebar-primary: oklch(0.6171 0.1375 39.0427);
+    --sidebar-primary-foreground: oklch(0.9881 0 0);
+    --sidebar-accent: oklch(0.9245 0.0138 92.9892);
+    --sidebar-accent-foreground: oklch(0.3250 0 0);
+    --sidebar-border: oklch(0.9401 0 0);
+    --sidebar-ring: oklch(0.7731 0 0);
+
+    /* Sidebar dimensions */
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
 
     /* Chart palette */
-    --chart-1: hsl(221.2 83.2% 53.3%);           /* Primary blue */
-    --chart-2: hsl(160 60% 45%);                  /* Teal */
-    --chart-3: hsl(30 80% 55%);                   /* Orange */
-    --chart-4: hsl(280 65% 60%);                  /* Purple */
-    --chart-5: hsl(340 75% 55%);                  /* Rose */
+    --chart-1: oklch(0.5583 0.1276 42.9956);       /* Terracotta */
+    --chart-2: oklch(0.6898 0.1581 290.4107);       /* Violet */
+    --chart-3: oklch(0.8816 0.0276 93.1280);        /* Sand */
+    --chart-4: oklch(0.8822 0.0403 298.1792);       /* Lavender */
+    --chart-5: oklch(0.5608 0.1348 42.0584);        /* Burnt sienna */
 
-    /* Alert tokens */
-    --alert-danger: hsl(0 84.2% 60.2%);
-    --alert-danger-bg: hsl(0 86% 97%);
-    --alert-info: hsl(221.2 83.2% 53.3%);
-    --alert-info-bg: hsl(214 95% 93%);
-    --alert-success: hsl(142 71% 45%);
-    --alert-success-bg: hsl(138 76% 97%);
-    --alert-warning: hsl(38 92% 50%);
-    --alert-warning-bg: hsl(48 96% 89%);
+    /* Alert tokens (derived from Claude palette, WCAG AA compliant) */
+    --alert-danger: oklch(0.5782 0.2135 22.7170);   /* Danger red */
+    --alert-danger-bg: oklch(0.9640 0.0150 20.0000); /* Light red background */
+    --alert-info: oklch(0.5500 0.1300 250.0000);     /* Info blue */
+    --alert-info-bg: oklch(0.9500 0.0200 250.0000);  /* Light blue background */
+    --alert-success: oklch(0.5200 0.1400 145.0000);  /* Success green */
+    --alert-success-bg: oklch(0.9600 0.0200 145.0000); /* Light green background */
+    --alert-warning: oklch(0.7000 0.1500 70.0000);   /* Warning amber */
+    --alert-warning-bg: oklch(0.9400 0.0300 80.0000); /* Light amber background */
 
-    /* Nebula-specific tokens for custom agentic UI components */
-    --glass-bg: hsla(0, 0%, 100%, 0.6);
-    --glass-border: hsla(0, 0%, 100%, 0.3);
-    --glow-primary: hsla(221.2, 83.2%, 53.3%, 0.15);
+    /* Claude-specific tokens for custom agentic UI components */
+    --glass-bg: oklch(1.0000 0 0 / 0.6);             /* Semi-transparent white */
+    --glass-border: oklch(1.0000 0 0 / 0.3);         /* Subtle white border */
+    --glow-primary: oklch(0.6171 0.1375 39.0427 / 0.15); /* Terracotta glow */
+
+    /* Shadow tokens */
+    --shadow-x: 0;
+    --shadow-y: 1px;
+    --shadow-blur: 3px;
+    --shadow-spread: 0px;
+    --shadow-opacity: 0.1;
+    --shadow-color: oklch(0 0 0);
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --tracking-normal: 0em;
+    --spacing: 0.25rem;
 }
 
 /* --------------------------------------------------------------------------
- * Dark Mode: "Deep Space"
+ * Dark Mode: "Claude Dark"
  * --------------------------------------------------------------------------
- * Designed for prolonged usage. Background is dark zinc (#09090b), not pure
- * black. Primary accent is Electric Violet (#8b5cf6).
+ * Warm dark theme with WCAG AA compliance. Features earth-toned surfaces
+ * with terracotta primary accent — cohesive with Claude Light identity.
+ *
+ * Design Principles:
+ * - Warm neutral backgrounds (not cold blue/violet)
+ * - High-contrast text (WCAG AA: 4.5:1 minimum for normal text)
+ * - Terracotta primary carries through from light mode
+ * - oklch() color space for perceptual uniformity
  * -------------------------------------------------------------------------- */
 .dark {
-    --background: hsl(240 10% 3.9%);             /* Dark zinc #09090b */
-    --foreground: hsl(0 0% 98%);                  /* Near-white #fafafa */
+    /* Core shadcn/ui theme tokens — Claude Dark (oklch color space) */
+    --background: oklch(0.2679 0.0036 106.6427);
+    --foreground: oklch(0.8074 0.0142 93.0137);
 
-    --card: hsl(240 10% 3.9%);
-    --card-foreground: hsl(0 0% 98%);
+    --card: oklch(0.2679 0.0036 106.6427);
+    --card-foreground: oklch(0.9818 0.0054 95.0986);
 
-    --popover: hsl(240 10% 3.9%);
-    --popover-foreground: hsl(0 0% 98%);
+    --popover: oklch(0.3085 0.0035 106.6039);
+    --popover-foreground: oklch(0.9211 0.0040 106.4781);
 
-    --primary: hsl(263.4 70% 50.4%);              /* Electric Violet #8b5cf6 */
-    --primary-foreground: hsl(210 40% 98%);
+    --primary: oklch(0.6724 0.1308 38.7559);       /* Terracotta (bright for dark bg) */
+    --primary-foreground: oklch(1.0000 0 0);
 
-    --secondary: hsl(240 3.7% 15.9%);
-    --secondary-foreground: hsl(0 0% 98%);
+    --secondary: oklch(0.9818 0.0054 95.0986);
+    --secondary-foreground: oklch(0.3085 0.0035 106.6039);
 
-    --muted: hsl(240 3.7% 15.9%);
-    --muted-foreground: hsl(240 5% 64.9%);
+    --muted: oklch(0.2213 0.0038 106.7070);
+    --muted-foreground: oklch(0.7713 0.0169 99.0657);
 
-    --accent: hsl(240 3.7% 15.9%);
-    --accent-foreground: hsl(0 0% 98%);
+    --accent: oklch(0.2130 0.0078 95.4245);
+    --accent-foreground: oklch(0.9663 0.0080 98.8792);
 
-    --destructive: hsl(0 62.8% 30.6%);
-    --destructive-foreground: hsl(0 0% 98%);
+    --destructive: oklch(0.6368 0.2078 25.3313);
+    --destructive-foreground: oklch(1.0000 0 0);
 
-    --border: hsl(240 3.7% 15.9%);
-    --input: hsl(240 3.7% 15.9%);
-    --ring: hsl(263.4 70% 50.4%);                 /* Matches primary */
+    --border: oklch(0.3618 0.0101 106.8928);
+    --input: oklch(0.4336 0.0113 100.2195);
+    --ring: oklch(0.6724 0.1308 38.7559);           /* Matches primary */
 
-    /* Sidebar — dark variant */
-    --sidebar: hsl(240 5.9% 10%);
-    --sidebar-foreground: hsl(240 4.8% 95.9%);
-    --sidebar-primary: hsl(263.4 70% 50.4%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(240 3.7% 15.9%);
-    --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-    --sidebar-border: hsl(240 3.7% 15.9%);
-    --sidebar-ring: hsl(263.4 70% 50.4%);
+    /* Sidebar Component — Integrated dark navigation */
+    --sidebar: oklch(0.2357 0.0024 67.7077);
+    --sidebar-foreground: oklch(0.8074 0.0142 93.0137);
+    --sidebar-primary: oklch(0.3250 0 0);
+    --sidebar-primary-foreground: oklch(0.9881 0 0);
+    --sidebar-accent: oklch(0.1680 0.0020 106.6177);
+    --sidebar-accent-foreground: oklch(0.8074 0.0142 93.0137);
+    --sidebar-border: oklch(0.9401 0 0);
+    --sidebar-ring: oklch(0.7731 0 0);
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
 
-    /* Chart palette — dark variant */
-    --chart-1: hsl(263.4 70% 50.4%);              /* Violet primary */
-    --chart-2: hsl(160 60% 45%);                  /* Teal */
-    --chart-3: hsl(30 80% 55%);                   /* Orange */
-    --chart-4: hsl(199 89% 48%);                  /* Cyan */
-    --chart-5: hsl(340 75% 55%);                  /* Rose */
+    /* Font families — same system font stacks in dark mode */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-    /* Alert tokens — dark variant */
-    --alert-danger: hsl(0 62.8% 50%);
-    --alert-danger-bg: hsl(0 63% 15%);
-    --alert-info: hsl(217 91% 60%);
-    --alert-info-bg: hsl(224 65% 15%);
-    --alert-success: hsl(142 71% 45%);
-    --alert-success-bg: hsl(145 65% 12%);
-    --alert-warning: hsl(38 92% 50%);
-    --alert-warning-bg: hsl(40 80% 15%);
+    /* Chart palette — Vibrant data visualization colors */
+    --chart-1: oklch(0.5583 0.1276 42.9956);       /* Terracotta */
+    --chart-2: oklch(0.6898 0.1581 290.4107);       /* Violet */
+    --chart-3: oklch(0.2130 0.0078 95.4245);        /* Dark sand */
+    --chart-4: oklch(0.3074 0.0516 289.3230);       /* Deep violet */
+    --chart-5: oklch(0.5608 0.1348 42.0584);        /* Burnt sienna */
 
-    /* Nebula-specific — dark variant */
-    --glass-bg: hsla(240, 10%, 3.9%, 0.6);
-    --glass-border: hsla(240, 3.7%, 15.9%, 0.5);
-    --glow-primary: hsla(263.4, 70%, 50.4%, 0.2);
+    /* Alert System — Enhanced semantic colors with proper contrast */
+    --alert-danger: oklch(0.6368 0.2078 25.3313);   /* Error red */
+    --alert-danger-bg: oklch(0.2200 0.0400 25.0000); /* Dark red background */
+    --alert-info: oklch(0.6500 0.1400 250.0000);     /* Info blue */
+    --alert-info-bg: oklch(0.2200 0.0400 250.0000);  /* Dark blue background */
+    --alert-success: oklch(0.6500 0.1400 145.0000);  /* Success green */
+    --alert-success-bg: oklch(0.2200 0.0400 145.0000); /* Dark green background */
+    --alert-warning: oklch(0.7500 0.1500 70.0000);   /* Warning amber */
+    --alert-warning-bg: oklch(0.2500 0.0400 70.0000); /* Dark amber background */
+
+    /* Claude Glass Effects — Enhanced depth and layering */
+    --glass-bg: oklch(0.2679 0.0036 106.6427 / 0.75); /* Semi-transparent backdrop */
+    --glass-border: oklch(0.6724 0.1308 38.7559 / 0.15); /* Subtle terracotta border */
+    --glow-primary: oklch(0.6724 0.1308 38.7559 / 0.25); /* Ambient terracotta glow */
+
+    /* Shadow tokens */
+    --shadow-x: 0;
+    --shadow-y: 1px;
+    --shadow-blur: 3px;
+    --shadow-spread: 0px;
+    --shadow-opacity: 0.1;
+    --shadow-color: oklch(0 0 0);
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+}
+
+/* --------------------------------------------------------------------------
+ * Tailwind CSS v4 Theme Mapping (@theme inline)
+ * --------------------------------------------------------------------------
+ * Maps CSS variables to Tailwind utility-class tokens for BlazorBlueprint
+ * component compatibility. Essential for bg-primary, text-foreground, etc.
+ * -------------------------------------------------------------------------- */
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    --font-sans: var(--font-sans);
+    --font-mono: var(--font-mono);
+    --font-serif: var(--font-serif);
+
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    --shadow-2xs: var(--shadow-2xs);
+    --shadow-xs: var(--shadow-xs);
+    --shadow-sm: var(--shadow-sm);
+    --shadow: var(--shadow);
+    --shadow-md: var(--shadow-md);
+    --shadow-lg: var(--shadow-lg);
+    --shadow-xl: var(--shadow-xl);
+    --shadow-2xl: var(--shadow-2xl);
 }
 
 /* --------------------------------------------------------------------------

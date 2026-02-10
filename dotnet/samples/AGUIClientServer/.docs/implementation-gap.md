@@ -36,18 +36,18 @@ The implementation adds several production patterns absent from the spec: YARP B
 
 ## Critical Gaps
 
-### 1. No "Nebula" Design System (Spec §7) — **Major Gap**
+### 1. No "Claude" Design System (Spec §7) — **Major Gap**
 
 The spec's central visual identity is completely absent. The current app.css uses a basic ASP.NET Core template with a blue-to-cyan gradient and Segoe UI font.
 
-| Spec Requirement                                                        | Current State             |
-| ----------------------------------------------------------------------- | ------------------------- |
-| Dark Mode "Deep Space" (Electric Violet `#8b5cf6`, zinc `#09090b`)      | No dark mode              |
-| Light Mode "Ceramic" (Deep Azure `#2563eb`, pure white)                 | Default template gradient |
-| HSL CSS custom properties (`--background`, `--primary`, `--card`, etc.) | No custom properties      |
-| Theme switching via `.dark` class on `<html>`                           | Not implemented           |
-| Inter font for UI, JetBrains Mono for code/logs                         | Segoe UI everywhere       |
-| Glassmorphism (`backdrop-filter: blur()`) for overlays                  | Flat design               |
+| Spec Requirement                                                               | Current State             |
+| ------------------------------------------------------------------------------ | ------------------------- |
+| Dark Mode "Claude Dark" (warm terracotta primary, dark warm neutrals)          | No dark mode              |
+| Light Mode "Claude Light" (Terracotta primary, cream-tinted whites)            | Default template gradient |
+| oklch() CSS custom properties (`--background`, `--primary`, `--card`, etc.)    | No custom properties      |
+| Theme switching via `.dark` class on `<html>`                                  | Not implemented           |
+| System font stacks for UI and code                                             | Segoe UI everywhere       |
+| Glassmorphism (`backdrop-filter: blur()`) for overlays                         | Flat design               |
 
 This is the single most visible gap. The spec's entire visual vocabulary — contrast reduction, depth via background shading, typographic cues between "human" and "machine" text — is unimplemented.
 
@@ -154,7 +154,7 @@ Multiple locations create `new JsonSerializerOptions { PropertyNameCaseInsensiti
 | Brain/Body separation (§2) | **Complete**        | Clean SSE + Aspire                      |
 | AG-UI Protocol (§3–5)      | **Complete**        | All 7 features, streaming, throttling   |
 | Dual-Pane Layout (§6)      | **Mostly Complete** | Missing layout persistence              |
-| Nebula Design System (§7)  | **Not Started**     | No theming, dark mode, typography       |
+| Claude Design System (§7)  | **Not Started**     | No theming, dark mode, typography       |
 | Reflection UX (§8)         | **Mostly Complete** | Accordion/Collapsible + Lucide ✓        |
 | Tool Use / Cockpit (§9)    | **Partial**         | HITL ✓, no Command Palette              |
 | Planning UX (§10)          | **Partial**         | Inline, not in Sheet overlay            |
@@ -165,4 +165,4 @@ Multiple locations create `new JsonSerializerOptions { PropertyNameCaseInsensiti
 | Observability (§15)        | **Complete**        | OpenTelemetry + Aspire Dashboard        |
 | Mobile (§16)               | **Complete**        | ViewportService + MobileLayout          |
 
-**Bottom line:** The implementation is a strong protocol-level demo with excellent infrastructure, but it's a functional MVP compared to the spec's vision of a polished, production-grade agentic UX. The three highest-impact gaps to close are: **(1)** Nebula design system, **(2)** Fluxor state management + conversation branching, and **(3)** Monaco editor integration.
+**Bottom line:** The implementation is a strong protocol-level demo with excellent infrastructure, but it's a functional MVP compared to the spec's vision of a polished, production-grade agentic UX. The three highest-impact gaps to close are: **(1)** Claude design system, **(2)** Fluxor state management + conversation branching, and **(3)** Monaco editor integration.
