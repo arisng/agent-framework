@@ -80,28 +80,10 @@
     </ContextPaneContent>
     <CanvasPaneContent>
         <CanvasPane>
-            @* MY CUSTOMIZATION POINT: Governance components — removed from rendering (will be redesigned)
-            <CheckpointManager Checkpoints="@CheckpointService.GetAllCheckpoints()"
-                               OnRevert="@HandleCheckpointRevertAsync" />
-            *@
-
-            @if (StreamingService.LastDiffBefore is not null || StreamingService.LastDiffAfter is not null)
-            {
-                <Collapsible DefaultOpen="false">
-                    <CollapsibleTrigger>
-                        <Button Variant="ButtonVariant.Ghost" Class="diff-preview-trigger">
-                            <LucideIcon Name="git-compare-arrows" Size="16" />
-                            Recipe State Changes
-                        </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                        <DiffPreview Before="@StreamingService.LastDiffBefore" After="@StreamingService.LastDiffAfter" Title="@StreamingService.LastDiffTitle" />
-                    </CollapsibleContent>
-                </Collapsible>
-            }
-
-            @* MY CUSTOMIZATION POINT: Artifact components (RecipeEditor, DocumentPreview) are now
-               rendered by CanvasPane directly from IState<ArtifactState> — see CanvasPane.razor *@
+            @* MY CUSTOMIZATION POINT: All artifact content is now rendered by CanvasPane's BB Tabs
+               infrastructure from IState<ArtifactState> — DiffPreview, RecipeEditor, DocumentPreview,
+               and DataGrid tabs are dynamically shown/hidden based on ArtifactState.VisibleTabs.
+               See CanvasPane.razor for tab implementation details. *@
         </CanvasPane>
     </CanvasPaneContent>
 </DualPaneLayout>

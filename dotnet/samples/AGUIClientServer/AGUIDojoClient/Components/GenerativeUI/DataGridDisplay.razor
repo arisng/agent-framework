@@ -1,15 +1,16 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* DataGridDisplay: Renders tabular data from the show_data_grid tool as a styled table *@
+@* DataGridDisplay: Renders tabular data from the show_data_grid tool using BB DataTable.
+   Features: built-in search, sort, pagination, column visibility toggle, horizontal/vertical scroll.
+   Shared State AG-UI feature — renders in Canvas Pane via Fluxor ArtifactState. *@
 
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Icons.Lucide.Components
 
 <div class="data-grid-display">
+    @* Header: title + row count badge *@
     @if (!string.IsNullOrWhiteSpace(DataGrid.Title))
     {
         <div class="data-grid-header">
-            <LucideIcon Name="table" Size="16" Class="data-grid-icon" />
+            <LucideIcon Name="table-2" Size="16" Class="data-grid-icon" />
             <span class="data-grid-title">@DataGrid.Title</span>
             <Badge Variant="BadgeVariant.Secondary" Class="data-grid-count">
                 @DataGrid.Rows.Count @(DataGrid.Rows.Count == 1 ? "row" : "rows")
@@ -17,48 +18,61 @@
         </div>
     }
 
-    <div class="data-grid-table-container">
-        <table class="data-grid-table">
-            <thead>
-                <tr>
-                    @foreach (var column in DataGrid.Columns)
-                    {
-                        <th>@column</th>
-                    }
-                </tr>
-            </thead>
-            <tbody>
-                @if (DataGrid.Rows.Count == 0)
+    @* BB DataTable with built-in toolbar (search + column visibility), pagination, sort *@
+    <div class="data-grid-table-wrapper">
+        <DataTable TData="Dictionary<string, string>"
+                   Data="@DataGrid.Rows"
+                   ShowToolbar="true"
+                   ShowPagination="true"
+                   InitialPageSize="10"
+                   PageSizes="@(new[] { 5, 10, 20, 50 })"
+                   EnableKeyboardNavigation="true"
+                   Class="data-grid-datatable">
+            <Columns>
+                @foreach (var column in DataGrid.Columns)
                 {
-                    <tr>
-                        <td colspan="@DataGrid.Columns.Count" class="data-grid-empty">
-                            No data available.
-                        </td>
-                    </tr>
-                }
-                else
-                {
-                    @foreach (var row in DataGrid.Rows)
+                    var col = column;
+                    @if (col.Equals("Status", StringComparison.OrdinalIgnoreCase))
                     {
-                        <tr>
-                            @foreach (var column in DataGrid.Columns)
-                            {
-                                <td>
-                                    @if (row.TryGetValue(column, out var value))
+                        <DataTableColumn TData="Dictionary<string, string>"
+                                         TValue="string"
+                                         Property="@(row => row.GetValueOrDefault(col, ""))"
+                                         Header="@col"
+                                         Sortable="true"
+                                         Filterable="true">
+                            <CellTemplate Context="row">
+                                @{
+                                    var cellValue = row.GetValueOrDefault(col, "");
+                                    if (!string.IsNullOrEmpty(cellValue))
                                     {
-                                        @RenderCellValue(column, value)
+                                        <Badge Variant="@GetStatusBadgeVariant(cellValue)">@cellValue</Badge>
                                     }
                                     else
                                     {
                                         <span class="data-grid-null">—</span>
                                     }
-                                </td>
-                            }
-                        </tr>
+                                }
+                            </CellTemplate>
+                        </DataTableColumn>
+                    }
+                    else
+                    {
+                        <DataTableColumn TData="Dictionary<string, string>"
+                                         TValue="string"
+                                         Property="@(row => row.GetValueOrDefault(col, ""))"
+                                         Header="@col"
+                                         Sortable="true"
+                                         Filterable="true" />
                     }
                 }
-            </tbody>
-        </table>
+            </Columns>
+            <EmptyTemplate>
+                <div class="data-grid-empty-state">
+                    <LucideIcon Name="inbox" Size="32" Class="data-grid-empty-icon" />
+                    <p class="data-grid-empty-text">No data available</p>
+                </div>
+            </EmptyTemplate>
+        </DataTable>
     </div>
 </div>
 
@@ -70,32 +84,14 @@
     public required DataGridResult DataGrid { get; set; }
 
     /// <summary>
-    /// Renders a cell value, applying special formatting for known patterns like status badges.
+    /// Returns the BB Badge variant for status-like column values.
     /// </summary>
-    private static RenderFragment RenderCellValue(string column, string value)
+    private static BadgeVariant GetStatusBadgeVariant(string value) => value.ToLowerInvariant() switch
     {
-        // Render status-like values as badges
-        if (column.Equals("Status", StringComparison.OrdinalIgnoreCase))
-        {
-            return builder =>
-            {
-                var variant = value.ToLowerInvariant() switch
-                {
-                    "shipped" or "delivered" or "completed" or "active" => BadgeVariant.Default,
-                    "processing" or "in progress" => BadgeVariant.Secondary,
-                    "pending" or "draft" => BadgeVariant.Outline,
-                    "cancelled" or "failed" or "rejected" => BadgeVariant.Destructive,
-                    _ => BadgeVariant.Secondary
-                };
-
-                builder.OpenComponent<Badge>(0);
-                builder.AddAttribute(1, "Variant", variant);
-                builder.AddAttribute(2, "ChildContent", (RenderFragment)(b => b.AddContent(0, value)));
-                builder.CloseComponent();
-            };
-        }
-
-        // Default: plain text
-        return builder => builder.AddContent(0, value);
-    }
+        "shipped" or "delivered" or "completed" or "active" => BadgeVariant.Default,
+        "processing" or "in progress" => BadgeVariant.Secondary,
+        "pending" or "draft" => BadgeVariant.Outline,
+        "cancelled" or "failed" or "rejected" => BadgeVariant.Destructive,
+        _ => BadgeVariant.Secondary
+    };
 }

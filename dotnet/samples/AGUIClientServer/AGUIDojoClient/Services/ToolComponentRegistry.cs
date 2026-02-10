@@ -194,16 +194,16 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             });
 
         // Register DataGridDisplay for the show_data_grid tool
-        // Classification: Visual component (read-only data display)
-        // Per task-5: Read-only tabular data, should render in message-list
+        // Classification: Interactive shared artifact (search, sort, paginate, column visibility)
+        // Per task-36/FR-001: Renders in CanvasPane "Data Table" tab via Fluxor ArtifactState
         this.Register<DataGridDisplay>(
             toolName: "show_data_grid",
             parameterName: "DataGrid",
             metadata: new ToolMetadata
             {
-                RenderLocation = RenderLocation.MessageList,
+                RenderLocation = RenderLocation.CanvasPane,
                 IsVisual = true,
-                IsInteractive = false
+                IsInteractive = true
             });
 
         // Register ChartDisplay for the show_chart tool

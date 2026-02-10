@@ -72,6 +72,13 @@
                                                 <span class="tool-duration">@FormatDuration(cycle.Duration.Value)</span>
                                             }
                                         }
+                                        else
+                                        {
+                                            @* Defense-in-depth: agent completed but no FRC received *@
+                                            <Badge Class="tool-status-badge">
+                                                <LucideIcon Name="circle-check" Size="12" /> Completed
+                                            </Badge>
+                                        }
                                     </div>
                                 </AccordionTrigger>
                                 <AccordionContent Class="thought-accordion-content">
@@ -154,8 +161,17 @@
                                     else if (cycle.IsRunning)
                                     {
                                         <div class="tool-result-section tool-result-section-pending">
-                                        <Spinner Size="SpinnerSize.Small" />
+                                            <Spinner Size="SpinnerSize.Small" />
                                             <span class="tool-waiting-text">Waiting for result...</span>
+                                        </div>
+                                    }
+                                    else if (!InProgress)
+                                    {
+                                        @* Defense-in-depth: agent completed but no FRC received for this tool call *@
+                                        <div class="tool-result-section">
+                                            <div class="tool-section-label">
+                                                <LucideIcon Name="circle-check" Size="12" /> Tool Completed
+                                            </div>
                                         </div>
                                     }
                                 </AccordionContent>
@@ -280,11 +296,12 @@
     private bool _previousInProgress = true;
 
     /// <summary>
-    /// Computed property that determines if the agent is still thinking by checking
-    /// if any FunctionCallContent lacks a matching FunctionResultContent.
-    /// This is data-driven and doesn't depend on parameter lifecycle timing.
+    /// Computed property that determines if the agent is still thinking.
+    /// Defense-in-depth: Gated by InProgress so that once the agent run completes
+    /// (no more SSE events), this returns false regardless of FRC matching.
+    /// When InProgress is true, checks if any FunctionCallContent lacks a matching FunctionResultContent.
     /// </summary>
-    private bool IsStillThinking => ThoughtContents
+    private bool IsStillThinking => InProgress && ThoughtContents
         .OfType<FunctionCallContent>()
         .Any(fcc => fcc.CallId != null &&
             !ThoughtContents.OfType<FunctionResultContent>()

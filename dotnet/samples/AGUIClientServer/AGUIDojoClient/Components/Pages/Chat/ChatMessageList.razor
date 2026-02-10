@@ -36,7 +36,7 @@
                 {
                     <AgentHandoff AgentName="@item.HandoffAgentName" />
                 }
-                <ChatMessageItem @key="@item.Message" Message="@item.Message" />
+                <ChatMessageItem @key="@item.Message" Message="@item.Message" InProgress="false" />
             </Virtualize>
         }
         else
@@ -56,7 +56,7 @@
                     <AgentHandoff AgentName="@currentAuthorName" />
                 }
 
-                <ChatMessageItem @key="@message" Message="@message" />
+                <ChatMessageItem @key="@message" Message="@message" InProgress="false" />
 
                 if (!string.IsNullOrEmpty(currentAuthorName))
                 {
