@@ -17,3 +17,7 @@ ADRs in `docs/decisions/` capture significant design decisions and their rationa
 - `adr-short-template.md` - Abbreviated template for simpler decisions
 
 When proposing architectural changes, create an ADR to capture options considered and the decision rationale. See [docs/decisions/README.md](../docs/decisions/README.md) for the full process.
+
+## Agent Skills
+
+Using `#tool:terminal/runInTerminal` to read agent skills if they are outside the current workspace.
