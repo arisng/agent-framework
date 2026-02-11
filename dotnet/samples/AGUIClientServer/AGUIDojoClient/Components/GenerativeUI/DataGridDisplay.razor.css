@@ -4,7 +4,7 @@
 .data-grid-display {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
     min-height: 0;
     overflow: hidden;
     padding: 0.75rem;
@@ -41,6 +41,10 @@
 
 /* ==========================================================================
    Table wrapper: contains BB DataTable, handles scroll
+   ISS-608: DataGrid uses flex column layout:
+     - BB DataTable fills available space (flex: 1)
+     - Inside DataTable: toolbar (flex-shrink:0), table body (scrollable, flex:1),
+       pagination (flex-shrink:0, always visible at bottom)
    ========================================================================== */
 
 .data-grid-table-wrapper {
@@ -48,22 +52,46 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
 }
 
-/* BB DataTable — fill available space */
+/* BB DataTable — fill available space and manage internal scroll */
 ::deep .data-grid-datatable {
     flex: 1;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
-/* BB DataTable internal table container — horizontal + vertical scroll */
+/* BB DataTable inner wrapper — propagate flex height chain */
 ::deep .data-grid-datatable > div {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1;
+    min-height: 0;
+}
+
+/* BB DataTable toolbar area — stay fixed at top */
+::deep .data-grid-datatable [data-slot="toolbar"],
+::deep .data-grid-datatable > div > div:first-child:not([role="table"]):not(table):not(.overflow-auto) {
+    flex-shrink: 0;
+}
+
+/* BB DataTable table container — scrollable area for table body */
+::deep .data-grid-datatable .overflow-auto,
+::deep .data-grid-datatable [role="table"] {
     flex: 1;
     min-height: 0;
     overflow: auto;
+}
+
+/* BB DataTable pagination — fixed at bottom, always visible */
+::deep .data-grid-datatable nav,
+::deep .data-grid-datatable [data-slot="pagination"],
+::deep .data-grid-datatable > div > div:last-child:not([role="table"]):not(table):not(.overflow-auto) {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border, #e4e4e7);
+    padding-top: 0.5rem;
 }
 
 /* Table cells — prevent text wrapping for clean horizontal scroll */

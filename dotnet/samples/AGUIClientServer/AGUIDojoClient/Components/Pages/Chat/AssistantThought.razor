@@ -1,6 +1,3 @@
-@* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT: Refactored to Accordion of Thought using BlazorBlueprint Collapsible + Accordion *@
-
 @using System.Text.Json
 @using AGUIDojoClient.Services
 @using AGUIDojoClient.Models
@@ -14,11 +11,11 @@
 @inject IToolComponentRegistry ToolRegistry
 
 <div class="assistant-thought @(IsExpanded ? "expanded" : "collapsed")">
-    @* MY CUSTOMIZATION POINT: BlazorBlueprint Collapsible replaces hand-rolled expand/collapse *@
-    <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
+    <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged" Style="width: 100%;">
         <CollapsibleTrigger>
             <div class="thought-toggle" aria-expanded="@IsExpanded">
                 <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
+                <LucideIcon Name="@(IsExpanded ? "chevron-up" : "chevron-down")" Size="14" Class="thought-chevron-icon" />
                 <span class="thought-summary">
                     @if (IsStillThinking)
                     {
@@ -29,7 +26,6 @@
                         <span>Thinking (@GetStepCount() steps)</span>
                     }
                 </span>
-                <LucideIcon Name="@(IsExpanded ? "chevron-up" : "chevron-down")" Size="16" Class="thought-chevron-icon" />
             </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -102,7 +98,22 @@
                                     @if (cycle.Result is not null)
                                     {
                                         var toolInfo = GetToolRenderingInfo(cycle.Result);
-                                        @if (toolInfo.HasComponent)
+                                        @if (toolInfo.IsVisualAndHiddenInThought)
+                                        {
+                                            @* Skip rendering visual tools destined for the message list (read-only components like Weather, Chart) *@
+                                        }
+                                        else if (toolInfo.IsInteractive)
+                                        {
+                                            <div class="tool-result-section tool-result-section-interactive">
+                                                <div class="tool-section-label">
+                                                    <LucideIcon Name="info" Size="12" /> Data Available
+                                                </div>
+                                                <div class="tool-result-data interactive-redirect">
+                                                    <p>Data available in Canvas Pane under the '<strong>@GetTabName(toolInfo.ToolName)</strong>' tab.</p>
+                                                </div>
+                                            </div>
+                                        }
+                                        else if (toolInfo.HasComponent)
                                         {
                                             <div class="tool-result-section tool-result-section-dynamic">
                                                 <div class="tool-section-label tool-section-label-dynamic">
@@ -526,26 +537,50 @@
         string? toolName = GetToolNameForResult(frc);
         if (string.IsNullOrWhiteSpace(toolName))
         {
-            return new ToolRenderingInfo(null, null, null, null);
+            return new ToolRenderingInfo(null, null, null, null, false, false);
         }
+
+        if (!ToolRegistry.TryGetMetadata(toolName, out ToolMetadata? metadata) || metadata is null)
+        {
+            return new ToolRenderingInfo(toolName, null, null, null, false, false);
+        }
+
+        // Check if visual tool should be hidden in thought (it renders in message-list instead)
+        // Only hide MessageList tools; CanvasPane tools should show a redirect message via IsInteractive branch
+        bool isVisualAndHiddenInThought = metadata.IsVisual && metadata.RenderLocation == RenderLocation.MessageList;
 
         if (!ToolRegistry.TryGetComponent(toolName, out Type? componentType) || componentType is null)
         {
-            return new ToolRenderingInfo(toolName, null, null, null);
+            return new ToolRenderingInfo(toolName, null, null, null, false, isVisualAndHiddenInThought);
         }
 
         if (!ToolRegistry.TryGetParameterName(toolName, out string? parameterName) || parameterName is null)
         {
-            return new ToolRenderingInfo(toolName, null, null, null);
+            return new ToolRenderingInfo(toolName, null, null, null, false, isVisualAndHiddenInThought);
         }
 
         object? parsedData = TryParseToolResult(toolName, frc);
         if (parsedData is null)
         {
-            return new ToolRenderingInfo(toolName, null, null, null);
+            return new ToolRenderingInfo(toolName, null, null, null, false, isVisualAndHiddenInThought);
         }
 
-        return new ToolRenderingInfo(toolName, componentType, parameterName, parsedData);
+        return new ToolRenderingInfo(toolName, componentType, parameterName, parsedData, metadata.IsInteractive, isVisualAndHiddenInThought);
+    }
+
+    /// <summary>
+    /// Maps tool names to their Canvas Pane tab names.
+    /// </summary>
+    private static string GetTabName(string? toolName)
+    {
+        return toolName?.ToLowerInvariant() switch
+        {
+            "show_data_grid" => "Data Table",
+            "show_chart" => "Charts",
+            "show_form" => "Forms",
+            "get_weather" => "Weather",
+            _ => "Canvas"
+        };
     }
 
     /// <summary>
@@ -704,7 +739,7 @@
     /// <summary>
     /// Contains all information needed to render a tool result.
     /// </summary>
-    private sealed record ToolRenderingInfo(string? ToolName, Type? ComponentType, string? ParameterName, object? ParsedData)
+    private sealed record ToolRenderingInfo(string? ToolName, Type? ComponentType, string? ParameterName, object? ParsedData, bool IsInteractive, bool IsVisualAndHiddenInThought)
     {
         public bool HasComponent => ComponentType is not null && ParsedData is not null;
     }

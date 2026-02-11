@@ -9,6 +9,8 @@
     border-radius: 0.5rem;
     background: color-mix(in oklch, var(--muted) 30%, transparent);
     overflow: hidden;
+    min-width: 0;           /* ISS-601: Allow flex child to shrink below content width */
+    max-width: 100%;
     transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
@@ -22,10 +24,9 @@
 .thought-toggle {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.375rem 0.625rem;
-    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    gap: 0.375rem;
+    width: auto;
+    padding: 0.25rem 0.5rem;
     border: none;
     cursor: pointer;
     text-align: left;
@@ -51,7 +52,6 @@
 }
 
 .thought-summary {
-    flex: 1;
     font-weight: 500;
     color: var(--foreground);
     font-size: 0.8125rem;
@@ -61,36 +61,52 @@
     color: var(--muted-foreground);
     flex-shrink: 0;
     transition: transform 0.2s ease;
+    opacity: 0.6;
 }
 
 /* Expanded content area — compact spacing */
 .thought-content {
-    padding: 0 0.75rem 0.5rem 0.75rem;
+    padding: 0 0.5rem 0.375rem 0.5rem;
     border-top: 1px solid var(--border);
+    min-width: 0;           /* ISS-601: Allow content to shrink */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 /* BlazorBlueprint Accordion styling for tool call cycles */
 ::deep .thought-accordion {
-    border: none;
+    border: none !important;
     background: transparent;
 }
 
-::deep .thought-accordion-item {
-    border: 1px solid var(--border);
-    border-radius: 0.375rem;
-    margin: 0.25rem 0;
-    overflow: hidden;
-    background: var(--card);
-    transition: border-color 0.15s ease;
+/* Remove ALL borders from BB accordion items — override BB defaults */
+::deep .thought-accordion > div,
+::deep .thought-accordion [data-orientation] {
+    border: none !important;
 }
 
-::deep .thought-accordion-item:first-child {
-    margin-top: 0.5rem;
+::deep .thought-accordion-item {
+    border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    transition: background-color 0.15s ease;
+}
+
+::deep .thought-accordion-item:hover {
+    background: color-mix(in oklch, var(--muted) 20%, transparent);
 }
 
 ::deep .thought-accordion-trigger {
-    padding: 0.375rem 0.5rem;
+    padding: 0.1875rem 0.375rem;
     font-size: 0.8125rem;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    gap: 0.375rem;
 }
 
 .accordion-trigger-content {
@@ -110,6 +126,9 @@
     font-weight: 600;
     color: var(--primary);
     font-size: 0.8125rem;
+    overflow-wrap: break-word;  /* ISS-601: Break long tool names */
+    word-break: break-word;
+    min-width: 0;
 }
 
 ::deep .tool-status-badge {
@@ -128,16 +147,21 @@
 }
 
 ::deep .thought-accordion-content {
-    padding: 0.375rem 0.5rem;
+    padding: 0.125rem 0.375rem 0.25rem 1.5rem;
     font-size: 0.8125rem;
+    min-width: 0;           /* ISS-601: Allow accordion content to shrink */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 /* Tool call arguments within accordion */
 .tool-call-arguments {
     margin-bottom: 0.375rem;
-    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    /* background: color-mix(in oklch, var(--muted) 50%, transparent); */
     border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
+    min-width: 0;           /* ISS-601: Allow arguments block to shrink */
+    overflow: hidden;
 }
 
 .tool-section-label {
@@ -175,15 +199,17 @@
 .argument-value {
     color: var(--foreground);
     word-break: break-word;
+    overflow-wrap: break-word;  /* ISS-601: Ensure long values wrap */
     font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+    min-width: 0;
 }
 
 /* Tool result sections within accordion */
 .tool-result-section {
-    background: var(--alert-success-bg);
-    border: 1px solid color-mix(in oklch, var(--alert-success) 30%, transparent);
     border-radius: 0.25rem;
     padding: 0.375rem 0.5rem;
+    min-width: 0;           /* ISS-601: Allow tool result to shrink */
+    overflow: hidden;
 }
 
 .tool-result-section-dynamic {

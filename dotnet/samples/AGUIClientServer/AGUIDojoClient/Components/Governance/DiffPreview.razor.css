@@ -1,6 +1,9 @@
 /* MY CUSTOMIZATION POINT — DiffPreview scoped styles */
 
-.diff-preview-card {
+/* Wrapper div provides scoped containment around the BB Card root
+   (Card's root element doesn't receive the Blazor scope attribute b-XXXX,
+   so .diff-preview-card rules would be dead code without this wrapper) */
+.diff-preview-wrapper {
     width: 100%;
     min-width: 0;
     overflow: hidden;
@@ -11,7 +14,9 @@
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 0.5rem;
     min-height: 120px;
+    width: 100%;
     min-width: 0;
+    overflow: hidden;
 }
 
 .diff-preview-column {
@@ -20,6 +25,7 @@
     gap: 0.5rem;
     overflow: hidden;
     min-width: 0;
+    contain: inline-size;
 }
 
 .diff-preview-column-header {
@@ -28,13 +34,15 @@
     padding-bottom: 0.25rem;
 }
 
-::deep .diff-preview-scroll {
+.diff-preview-scroll {
     max-height: 300px;
+    width: 100%;
     border: none;
     border-radius: var(--radius);
     background: color-mix(in oklch, var(--muted) 50%, transparent);
     min-width: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .diff-preview-content {
@@ -45,24 +53,23 @@
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-all;
-    overflow-wrap: break-word;
-    overflow-x: auto;
+    overflow-wrap: anywhere;
     max-width: 100%;
     min-width: 0;
 }
 
-::deep .diff-line-unchanged {
+.diff-line-unchanged {
     display: block;
     color: hsl(var(--foreground));
 }
 
-::deep .diff-line-added {
+.diff-line-added {
     display: block;
     background-color: hsl(142 76% 36% / 0.15);
     color: hsl(142 76% 36%);
 }
 
-::deep .diff-line-removed {
+.diff-line-removed {
     display: block;
     background-color: hsl(0 84% 60% / 0.15);
     color: hsl(0 84% 60%);
