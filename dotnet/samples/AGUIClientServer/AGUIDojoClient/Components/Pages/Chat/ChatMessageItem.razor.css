@@ -1,19 +1,30 @@
 .user-message {
-    background: hsl(var(--accent-cyan) / 0.2);
+    background: color-mix(in oklch, var(--primary) 10%, transparent);
     align-self: flex-end;
     min-width: 25%;
-    max-width: calc(100% - 5rem);
-    padding: 0.5rem 1.25rem;
-    border-radius: 0.25rem;
-    color: hsl(var(--foreground));
+    max-width: calc(100% - 3rem);
+    padding: 0.75rem 1.25rem;
+    border-radius: 1rem 1rem 0.25rem 1rem;
+    color: var(--foreground);
     white-space: pre-wrap;
+    overflow-wrap: break-word; /* ISS-601: Break long words/URLs */
+    word-break: break-word;
+    border: 1px solid color-mix(in oklch, var(--primary) 20%, transparent);
 }
 
 .assistant-message, .assistant-search {
     display: grid;
     grid-template-rows: min-content;
     grid-template-columns: 2rem minmax(0, 1fr);
-    gap: 0.25rem;
+    gap: 0.5rem;
+    background: var(--muted);
+    padding: 1rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    margin: 0.5rem 0;
+    min-width: 0;           /* ISS-601: Allow grid to shrink below content width */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .assistant-message-header {
@@ -31,8 +42,8 @@
     border-radius: 9999px;
     width: 1.5rem;
     height: 1.5rem;
-    color: hsl(var(--primary-foreground));
-    background: hsl(var(--primary));
+    color: var(--primary-foreground);
+    background: var(--primary);
 }
 
     .assistant-message-icon svg {
@@ -92,6 +103,8 @@
     border: 1px solid hsl(var(--accent-violet) / 0.3);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
 .tool-call-header {
@@ -163,6 +176,8 @@
     border: 1px solid hsl(var(--alert-success) / 0.3);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
 .tool-result-header {
@@ -215,6 +230,8 @@
     border: 1px solid hsl(var(--alert-danger) / 0.3);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
     .tool-result-content-rejected .tool-result-header {
@@ -338,6 +355,8 @@
     border: 1px solid hsl(var(--accent-violet) / 0.3);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
 .state-snapshot-header {
@@ -387,6 +406,8 @@
     border: 1px solid hsl(var(--accent-amber) / 0.3);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
 .state-delta-header {
@@ -434,6 +455,8 @@
     border: 1px solid hsl(var(--border));
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
 .data-content-header {
@@ -483,6 +506,8 @@
     border: 1px solid hsl(var(--alert-danger) / 0.3);
     border-radius: 0.375rem;
     padding: 0.5rem 0.75rem;
+    min-width: 0;           /* ISS-601: Allow grid child to shrink */
+    overflow: hidden;
 }
 
 .error-header {
@@ -506,6 +531,9 @@
 /* Markdown Content Styles */
 .markdown-content {
     line-height: 1.6;
+    min-width: 0;               /* ISS-601: Allow flex/grid child to shrink */
+    overflow-wrap: break-word;  /* ISS-601: Break long words */
+    word-wrap: break-word;
 }
 
     .markdown-content p {
@@ -542,6 +570,7 @@
         border-radius: 0.25rem;
         font-size: 0.875em;
         color: hsl(var(--accent-violet));
+        word-break: break-all;  /* ISS-601: Break long inline code tokens */
     }
 
     .markdown-content pre {
@@ -549,7 +578,8 @@
         padding: 0.75rem 1rem;
         background: hsl(var(--surface-3));
         border-radius: 0.375rem;
-        overflow-x: auto;
+        overflow-x: auto;       /* Horizontal scroll within code block, not the pane */
+        max-width: 100%;        /* ISS-601: Constrain pre to parent width */
     }
 
     .markdown-content pre code {
@@ -587,6 +617,8 @@
     .markdown-content a {
         color: hsl(var(--accent-violet));
         text-decoration: underline;
+        overflow-wrap: break-word; /* ISS-601: Break long URLs */
+        word-break: break-all;
     }
 
     .markdown-content a:hover {
@@ -595,6 +627,8 @@
 
     .markdown-content table {
         width: 100%;
+        max-width: 100%;        /* ISS-601: Prevent table from exceeding container */
+        table-layout: fixed;    /* ISS-601: Fixed layout prevents content-driven width expansion */
         margin: 0.75rem 0;
         border-collapse: collapse;
     }
@@ -604,6 +638,8 @@
         padding: 0.5rem 0.75rem;
         border: 1px solid hsl(var(--border));
         text-align: left;
+        overflow-wrap: break-word; /* ISS-601: Break long words in table cells */
+        word-break: break-word;
     }
 
     .markdown-content th {
@@ -633,8 +669,13 @@
     padding: 0;
     background: transparent;
     border: none;
+    overflow: hidden;       /* ISS-601: Contain visual tool results */
+    min-width: 0;
+    max-width: 100%;
 }
 
     .visual-tool-result > * {
         width: 100%;
+        min-width: 0;       /* ISS-601: Allow children to shrink */
+        max-width: 100%;
     }

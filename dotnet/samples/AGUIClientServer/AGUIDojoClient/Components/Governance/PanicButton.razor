@@ -26,9 +26,9 @@
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                @* MY CUSTOMIZATION POINT — Use Button with @onclick instead of AlertDialogAction
-                   (AlertDialogAction doesn't support OnClick or @onclick parameters in BlazorBlueprint) *@
+                <AlertDialogCancel AsChild>
+                    <Button Variant="ButtonVariant.Outline">Cancel</Button>
+                </AlertDialogCancel>
                 <Button Variant="ButtonVariant.Destructive" @onclick="HandleConfirm">
                     Stop &amp; Revert
                 </Button>

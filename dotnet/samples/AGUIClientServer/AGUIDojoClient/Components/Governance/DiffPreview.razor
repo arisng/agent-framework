@@ -4,9 +4,9 @@
 @using System.Text.Json
 @using BlazorBlueprint.Components.Badge
 @using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Components.ScrollArea
 @using BlazorBlueprint.Components.Separator
 
+<div class="diff-preview-wrapper">
 <Card Class="diff-preview-card">
     <CardHeader>
         <CardTitle>@Title</CardTitle>
@@ -18,26 +18,27 @@
                 <div class="diff-preview-column-header">
                     <Badge Variant="BadgeVariant.Secondary">Before</Badge>
                 </div>
-                <ScrollArea Class="diff-preview-scroll">
+                <div class="diff-preview-scroll">
                     <pre class="diff-preview-content">@foreach (var line in _beforeLines)
 {<span class="@line.CssClass">@line.Text</span>
 }</pre>
-                </ScrollArea>
+                </div>
             </div>
             <Separator Orientation="SeparatorOrientation.Vertical" Class="diff-preview-separator" />
             <div class="diff-preview-column">
                 <div class="diff-preview-column-header">
                     <Badge Variant="BadgeVariant.Default">After</Badge>
                 </div>
-                <ScrollArea Class="diff-preview-scroll">
+                <div class="diff-preview-scroll">
                     <pre class="diff-preview-content">@foreach (var line in _afterLines)
 {<span class="@line.CssClass">@line.Text</span>
 }</pre>
-                </ScrollArea>
+                </div>
             </div>
         </div>
     </CardContent>
 </Card>
+</div>
 
 @code {
     /// <summary>
