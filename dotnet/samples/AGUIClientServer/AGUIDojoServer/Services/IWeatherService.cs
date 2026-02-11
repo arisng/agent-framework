@@ -1,5 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System.Text.Json.Serialization;
+
 namespace AGUIDojoServer.Services;
 
 /// <summary>
@@ -11,11 +13,11 @@ namespace AGUIDojoServer.Services;
 /// <param name="WindSpeed">The wind speed in km/h.</param>
 /// <param name="FeelsLike">The feels-like temperature in degrees Celsius.</param>
 public sealed record WeatherInfo(
-    int Temperature,
-    string Conditions,
-    int Humidity,
-    int WindSpeed,
-    int FeelsLike);
+    [property: JsonPropertyName("temperature")] int Temperature,
+    [property: JsonPropertyName("conditions")] string Conditions,
+    [property: JsonPropertyName("humidity")] int Humidity,
+    [property: JsonPropertyName("wind_speed")] int WindSpeed,
+    [property: JsonPropertyName("feelsLike")] int FeelsLike);
 
 /// <summary>
 /// Provides weather information for locations.

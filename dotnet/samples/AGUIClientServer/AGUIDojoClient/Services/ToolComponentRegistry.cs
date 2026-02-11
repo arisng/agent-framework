@@ -2,7 +2,6 @@
 
 using System.Collections.Concurrent;
 using AGUIDojoClient.Components.GenerativeUI;
-using AGUIDojoClient.Components.ToolResults;
 
 namespace AGUIDojoClient.Services;
 
