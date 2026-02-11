@@ -19,6 +19,16 @@
     text-overflow: ellipsis;
 }
 
+.canvas-toggle-btn {
+    margin-left: auto;
+    color: var(--muted-foreground, #6b7280);
+    transition: color 0.15s ease;
+}
+
+.canvas-toggle-btn:hover {
+    color: var(--foreground, #111827);
+}
+
 /* MY CUSTOMIZATION POINT: Chat input container — sticky at bottom of Context Pane */
 .chat-container {
     flex-shrink: 0;

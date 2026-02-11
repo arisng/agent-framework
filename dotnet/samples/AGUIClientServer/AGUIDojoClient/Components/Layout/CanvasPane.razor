@@ -1,5 +1,4 @@
-@* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT: CanvasPane wrapper component for dual-pane artifact/work product area.
+@* CanvasPane wrapper component for dual-pane artifact/work product area.
    Uses BB Tabs (controlled mode) bound to Fluxor ArtifactState for dynamic tabbed artifact display. *@
 @using BlazorBlueprint.Components.Card
 @using BlazorBlueprint.Components.Badge
@@ -19,7 +18,7 @@
 @inject IDispatcher Dispatcher
 
 <div class="canvas-pane">
-    @* MY CUSTOMIZATION POINT: Compact plan indicator — shown when an active plan exists.
+    @* Compact plan indicator — shown when an active plan exists.
        Displays progress bar + "View Plan" button that opens the PlanSheet overlay. *@
     @if (PlanStore.Value.Plan is not null)
     {
@@ -37,7 +36,7 @@
         </div>
     }
 
-    @* MY CUSTOMIZATION POINT: Tabbed artifact display using BB Tabs (controlled mode).
+    @* Tabbed artifact display using BB Tabs (controlled mode).
        Tabs are dynamically shown/hidden based on ArtifactState.VisibleTabs.
        ActiveArtifactType drives which tab is selected; auto-switches when new artifacts arrive. *@
     @if (ArtifactStore.Value.VisibleTabs.Count == 0 && ChildContent is null)
@@ -103,16 +102,16 @@
                 </TabsContent>
             }
 
-            @* DataGrid tab — BB DataTable with search, sort, pagination, column visibility *@
+            @* DataGrid tab — BB DataTable with search, sort, pagination, column visibility.
+               No canvas-pane__scroll wrapper: DataGrid manages its own internal scroll
+               so pagination stays fixed at the bottom of the tab. *@
             @if (ArtifactStore.Value.VisibleTabs.Contains(ArtifactType.DataGrid))
             {
                 <TabsContent Value="@nameof(ArtifactType.DataGrid)" ForceMount="true" Class="canvas-pane__tab-content">
-                    <div class="canvas-pane__scroll">
-                        @if (ArtifactStore.Value.CurrentDataGrid is not null)
-                        {
-                            <DataGridDisplay DataGrid="@ArtifactStore.Value.CurrentDataGrid" />
-                        }
-                    </div>
+                    @if (ArtifactStore.Value.CurrentDataGrid is not null)
+                    {
+                        <DataGridDisplay DataGrid="@ArtifactStore.Value.CurrentDataGrid" />
+                    }
                 </TabsContent>
             }
 
@@ -173,7 +172,7 @@
     }
 </div>
 
-@* MY CUSTOMIZATION POINT: PlanSheet — slides in from right to show full plan progress *@
+@* PlanSheet — slides in from right to show full plan progress *@
 <PlanSheet @bind-IsOpen="_showPlanSheet" />
 
 @code {
