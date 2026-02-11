@@ -3,8 +3,10 @@
     flex: 1;
     /* Enable scrolling for the message list, allowing ChatInput to stay sticky at bottom */
     overflow-y: auto;
+    overflow-x: hidden; /* ISS-601: Prevent horizontal scroll in message list */
     overscroll-behavior: contain;
     min-height: 0;
+    min-width: 0; /* ISS-601: Allow flex child to shrink below content width */
     display: flex;
     flex-direction: column;
 }
@@ -14,6 +16,7 @@
     flex-direction: column;
     gap: 0.875rem;
     flex: 1;
+    min-width: 0; /* ISS-601: Allow flex child to shrink below content width */
 }
 
 /* Removed: @media max-width: 52rem — context-pane is already width-constrained by ResizablePanel in dual-pane mode */

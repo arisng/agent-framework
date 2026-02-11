@@ -63,6 +63,16 @@
     overflow: hidden;
 }
 
+/* ISS-606/607/608: BB Tabs renders an intermediate <div> wrapper (no class)
+   between the outermost Tabs div and the TabsList/TabsContent children.
+   This wrapper must participate in the flex height chain. */
+::deep .canvas-pane__tabs > div {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 /* MY CUSTOMIZATION POINT: Tabs list — horizontal scrolling strip at top of canvas pane */
 ::deep .canvas-pane__tabs-list {
     flex-shrink: 0;
@@ -99,23 +109,38 @@
     font-weight: 600;
 }
 
-/* MY CUSTOMIZATION POINT: Tab content panel — scrollable content area */
+/* MY CUSTOMIZATION POINT: Tab content panel — scrollable content area.
+   Must be a flex column container so .canvas-pane__scroll can use flex: 1.
+   Override BB's default mt-2 margin which wastes vertical space. */
 ::deep .canvas-pane__tab-content {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    margin-top: 0;
 }
 
-/* Hide inactive tab content panels (ForceMount keeps them in DOM but hidden) */
+/* Hide inactive tab content panels (ForceMount keeps them in DOM).
+   BB uses the HTML hidden attribute, but also apply display:none for safety. */
+::deep .canvas-pane__tab-content[hidden] {
+    display: none !important;
+}
+
 ::deep .canvas-pane__tab-content[data-state="inactive"] {
-    display: none;
+    display: none !important;
 }
 
 /* ==========================================================================
    Scroll container — independent scroll per tab
    ========================================================================== */
 
+/* Scroll container — independent scroll per tab.
+   flex: 1 + min-height: 0 gives bounded height from the flex column parent.
+   overflow-y: auto enables vertical scrolling when content exceeds bounds. */
 .canvas-pane__scroll {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
     width: 100%;

@@ -23,70 +23,64 @@
 
 <PageTitle>AG-UI Dojo Chat</PageTitle>
 
-@* MY CUSTOMIZATION POINT: Sidebar — vertical navigation with endpoints, new chat, theme toggle *@
+@* Sidebar — vertical navigation with endpoints, new chat, theme toggle *@
 <ChatHeader OnNewChat="@ResetConversationAsync"
             AvailableEndpoints="@ClientFactory.AvailableEndpoints"
             SelectedEndpointPath="@AgentStore.Value.SelectedEndpointPath"
             OnEndpointChanged="@OnEndpointChangedAsync" />
 
-@* MY CUSTOMIZATION POINT: SidebarInset — main content area pushed by the sidebar *@
+@* SidebarInset — main content area pushed by the sidebar *@
 <SidebarInset>
     @* Compact header bar with sidebar toggle trigger *@
     <header class="sidebar-inset-header">
         <SidebarTrigger />
         <Separator Orientation="SeparatorOrientation.Vertical" Class="h-6" />
         <span class="inset-header-title">@GetCurrentEndpointDisplayName()</span>
+
+        @if (ArtifactStore.Value.HasInteractiveArtifact)
+        {
+            <Button Variant="ButtonVariant.Ghost"
+                    Size="ButtonSize.IconSmall"
+                    Class="canvas-toggle-btn ml-auto"
+                    OnClick="@(() => _dualPane?.ToggleCanvasPane() ?? Task.CompletedTask)"
+                    AriaLabel="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "Show canvas pane" : "Hide canvas pane")">
+                <LucideIcon Name="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "panel-right-open" : "panel-right-close")" Size="16" />
+            </Button>
+        }
     </header>
 
-    @* MY CUSTOMIZATION POINT: Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
-    <DualPaneLayout>
-    <ContextPaneContent>
-        <ContextPane>
-            <ChatMessageList Messages="@ChatStore.Value.Messages"
-                             InProgressMessage="@ChatStore.Value.CurrentResponseMessage"
-                             PendingApproval="@ChatStore.Value.PendingApproval"
-                             OnApprovalDecision="@OnApprovalDecision"
-                             RiskLevel="@(ChatStore.Value.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName) : RiskLevel.Low)"
-                             IsMobile="@ViewportService.IsMobile">
-                <NoMessagesContent>
-                    <div>Ask the assistant a question to start a conversation.</div>
-                </NoMessagesContent>
-            </ChatMessageList>
-            <div class="chat-container">
-                <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
-                <ChatInput OnSend="@AddUserMessageAsync"
-                           IsAgentRunning="@AgentStore.Value.IsRunning"
-                           OnPanic="@HandlePanicAsync"
-                           @ref="@chatInput" />
-            </div>
-
-            @* MY CUSTOMIZATION POINT: Approval UI moved to ChatMessageList — renders inline with messages *@
-
-            @* MY CUSTOMIZATION POINT: Observability components — removed from rendering (will be redesigned)
-            <div class="observability-section">
-                <MemoryInspector ConversationId="@ChatStore.Value.ConversationId"
-                                 SelectedEndpoint="@AgentStore.Value.SelectedEndpointPath"
-                                 MessageCount="@ChatStore.Value.Messages.Count"
-                                 PlanStepCount="@(PlanStore.Value.Plan?.Steps?.Count)"
-                                 PlanCompletedCount="@(PlanStore.Value.Plan?.Steps?.Count(s => s.Status == StepStatus.Completed))"
-                                 RecipeName="@(IsSharedStateEndpoint ? ArtifactStore.Value.CurrentRecipe?.Title : null)"
-                                 DocumentLength="@(IsPredictiveStateEndpoint ? ArtifactStore.Value.CurrentDocumentState?.Document?.Length : null)"
-                                 ToolInvocations="@StreamingService.GetToolInvocationSummary()" />
-
-                <ToolExecutionTracker Steps="@ObservabilityService.GetSteps()" />
-            </div>
-            *@
-        </ContextPane>
-    </ContextPaneContent>
-    <CanvasPaneContent>
-        <CanvasPane>
-            @* MY CUSTOMIZATION POINT: All artifact content is now rendered by CanvasPane's BB Tabs
-               infrastructure from IState<ArtifactState> — DiffPreview, RecipeEditor, DocumentPreview,
-               and DataGrid tabs are dynamically shown/hidden based on ArtifactState.VisibleTabs.
-               See CanvasPane.razor for tab implementation details. *@
-        </CanvasPane>
-    </CanvasPaneContent>
-</DualPaneLayout>
+    @* Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
+    <DualPaneLayout @ref="_dualPane">
+        <ContextPaneContent>
+            <ContextPane>
+                <ChatMessageList Messages="@ChatStore.Value.Messages"
+                                InProgressMessage="@ChatStore.Value.CurrentResponseMessage"
+                                PendingApproval="@ChatStore.Value.PendingApproval"
+                                OnApprovalDecision="@OnApprovalDecision"
+                                RiskLevel="@(ChatStore.Value.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName) : RiskLevel.Low)"
+                                IsMobile="@ViewportService.IsMobile">
+                    <NoMessagesContent>
+                        <div>Ask the assistant a question to start a conversation.</div>
+                    </NoMessagesContent>
+                </ChatMessageList>
+                <div class="chat-container">
+                    <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
+                    <ChatInput OnSend="@AddUserMessageAsync"
+                            IsAgentRunning="@AgentStore.Value.IsRunning"
+                            OnPanic="@HandlePanicAsync"
+                            @ref="@chatInput" />
+                </div>
+            </ContextPane>
+        </ContextPaneContent>
+        <CanvasPaneContent>
+            <CanvasPane>
+                @* All artifact content is now rendered by CanvasPane's BB Tabs
+                infrastructure from IState<ArtifactState> — DiffPreview, RecipeEditor, DocumentPreview,
+                and DataGrid tabs are dynamically shown/hidden based on ArtifactState.VisibleTabs.
+                See CanvasPane.razor for tab implementation details. *@
+            </CanvasPane>
+        </CanvasPaneContent>
+    </DualPaneLayout>
 </SidebarInset>
 
 @code {
@@ -96,6 +90,7 @@
 
     private const int ThrottleDelayMs = 100; // Throttle StateHasChanged to prevent render thrashing
 
+    private DualPaneLayout? _dualPane;
     private ChatInput? chatInput;
     private ChatSuggestions? chatSuggestions;
     private IChatClient? activeChatClient;

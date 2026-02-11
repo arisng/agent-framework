@@ -5,8 +5,12 @@
     flex-direction: column;
     flex: 1;
     min-height: 0; /* Critical for flex scroll containment */
+    min-width: 0;  /* ISS-601: Allow flex child to shrink below content width */
+    max-width: 100%;
     background: hsl(var(--background));
     overflow: hidden;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
     font-size: 0.9375rem;
 }
 

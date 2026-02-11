@@ -1,5 +1,5 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT: Dual-pane layout container for 2026 Agentic UX *@
+@* Dual-pane layout container for 2026 Agentic UX *@
 @* Uses BlazorBlueprint ResizablePanelGroup for desktop (≥768px) and
    MobileLayout with bottom drawer for mobile (<768px). ViewportService
    detects viewport width and triggers layout switch at the breakpoint.
@@ -8,17 +8,17 @@
 @using BlazorBlueprint.Components.Resizable
 @using BlazorBlueprint.Components.Button
 @using AGUIDojoClient.Store.ArtifactState
-@* MY CUSTOMIZATION POINT: Inject ViewportService for responsive layout switching *@
+@* Inject ViewportService for responsive layout switching *@
 @inject ViewportService ViewportService
 @inject IJSRuntime JSRuntime
-@* MY CUSTOMIZATION POINT: Inject ArtifactState to detect interactive artifacts *@
+@* Inject ArtifactState to detect interactive artifacts *@
 @inject IState<ArtifactState> ArtifactStore
-@* MY CUSTOMIZATION POINT: Inherit FluxorComponent for automatic state change subscriptions *@
+@* Inherit FluxorComponent for automatic state change subscriptions *@
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @implements IAsyncDisposable
 
-@* MY CUSTOMIZATION POINT: Responsive layout switch — mobile (<768px) vs desktop (≥768px) *@
-@* MY CUSTOMIZATION POINT: Wait for ViewportService initialization and layout persistence
+@* Responsive layout switch — mobile (<768px) vs desktop (≥768px) *@
+@* Wait for ViewportService initialization and layout persistence
    read before rendering to avoid mounting MobileLayout's Drawer JS interop on desktop
    and immediately disposing it, which causes a Blazor circuit error.
    ViewportWidth defaults to 0 (IsMobile=true) before init. *@
@@ -28,7 +28,7 @@
 }
 else if (ViewportService.IsMobile)
 {
-    @* MY CUSTOMIZATION POINT: Mobile layout — single-column with bottom drawer for artifacts *@
+    @* Mobile layout — single-column with bottom drawer for artifacts *@
     <MobileLayout ContextPaneContent="@ContextPaneContent"
                   CanvasPaneContent="@CanvasPaneContent"
                   @bind-IsDrawerOpen="_mobileDrawerOpen" />
@@ -36,35 +36,24 @@ else if (ViewportService.IsMobile)
 else
 {
     <div class="dual-pane-root" @ref="_panelGroupRef">
-        @* MY CUSTOMIZATION POINT: Canvas pane toggle button — visible when there's an artifact *@
-        @if (HasInteractiveArtifact)
-        {
-            <Button Variant="ButtonVariant.Ghost"
-                    Size="ButtonSize.IconSmall"
-                    Class="canvas-toggle-btn"
-                    OnClick="ToggleCanvasPane"
-                    AriaLabel="@(_canvasPaneHidden ? "Show canvas pane" : "Hide canvas pane")">
-                <LucideIcon Name="@(_canvasPaneHidden ? "panel-right-open" : "panel-right-close")" Size="16" />
-            </Button>
-        }
 
-        @* MY CUSTOMIZATION POINT: Conditional dual-pane vs single-pane layout based on artifact + user toggle *@
+        @* Conditional dual-pane vs single-pane layout based on artifact + user toggle *@
         @if (ShowCanvasPane)
         {
             @* Dual-pane layout: context-pane + canvas-pane *@
             <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
-                @* MY CUSTOMIZATION POINT: Context Pane — chat, suggestions, approval UI *@
-                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="31" Class="context-panel">
+                @* Context Pane — chat, suggestions, approval UI *@
+                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="30" Class="context-panel" Collapsible="false">
                     @if (ContextPaneContent is not null)
                     {
                         @ContextPaneContent
                     }
                 </ResizablePanel>
 
-                <ResizableHandle Class="dual-pane-handle" />
+                <ResizableHandle WithHandle="false" Class="dual-pane-handle" />
 
-                @* MY CUSTOMIZATION POINT: Canvas Pane — artifacts, plan progress, editors, previews *@
-                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="39" Class="canvas-panel">
+                @* Canvas Pane — artifacts, plan progress, editors, previews *@
+                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="30" Class="canvas-panel" Collapsible="true">
                     @if (CanvasPaneContent is not null)
                     {
                         @CanvasPaneContent
@@ -86,19 +75,20 @@ else
 }
 
 @code {
-    // MY CUSTOMIZATION POINT: Mobile drawer open state
+    // Mobile drawer open state
     private bool _mobileDrawerOpen;
 
-    // MY CUSTOMIZATION POINT: Track ViewportService initialization to prevent
+    // Track ViewportService initialization to prevent
     // rendering MobileLayout's Drawer JS interop on desktop before switching.
     private bool _viewportInitialized;
 
-    // MY CUSTOMIZATION POINT: User-controlled canvas pane hidden state.
+    // User-controlled canvas pane hidden state.
     // When true, the canvas pane is hidden and context pane takes full width.
     // Persisted to localStorage via layoutPersistence.js interop.
+    public bool IsCanvasPaneHidden => _canvasPaneHidden;
     private bool _canvasPaneHidden;
 
-    // MY CUSTOMIZATION POINT: Layout persistence state.
+    // Layout persistence state.
     // Splitter position is saved/restored via layoutPersistence.js interop.
     // Falls back to DefaultSize="40"/"60" if no persisted value exists.
     private IJSObjectReference? _layoutModule;
@@ -134,7 +124,7 @@ else
     /// </summary>
     private bool ShowCanvasPane => HasInteractiveArtifact && !_canvasPaneHidden;
 
-    // MY CUSTOMIZATION POINT: Initialize ViewportService, read persisted layout,
+    // Initialize ViewportService, read persisted layout,
     // subscribe to viewport changes, and set up layout persistence observer.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -143,7 +133,7 @@ else
             await ViewportService.InitializeAsync();
             ViewportService.OnViewportChanged += OnViewportChanged;
 
-            // MY CUSTOMIZATION POINT: Read persisted splitter position and canvas hidden state on desktop only.
+            // Read persisted splitter position and canvas hidden state on desktop only.
             // Mobile viewport ignores persisted values.
             if (!ViewportService.IsMobile)
             {
@@ -151,13 +141,13 @@ else
                 await ReadPersistedCanvasHiddenAsync();
             }
 
-            // MY CUSTOMIZATION POINT: Mark initialized and re-render with correct layout.
+            // Mark initialized and re-render with correct layout.
             _viewportInitialized = true;
             StateHasChanged();
             return;
         }
 
-        // MY CUSTOMIZATION POINT: Initialize persistence observer after panels render.
+        // Initialize persistence observer after panels render.
         // This runs on the second render (after _viewportInitialized triggers re-render)
         // so that the ResizablePanelGroup DOM elements exist for the MutationObserver.
         if (_viewportInitialized && !_persistenceInitialized && !ViewportService.IsMobile)
@@ -192,7 +182,7 @@ else
     /// <summary>
     /// Toggles the canvas pane hidden state and persists to localStorage.
     /// </summary>
-    private async Task ToggleCanvasPane()
+    public async Task ToggleCanvasPane()
     {
         _canvasPaneHidden = !_canvasPaneHidden;
 
@@ -211,7 +201,7 @@ else
             // Circuit disconnected — state is still toggled in memory.
         }
 
-        // MY CUSTOMIZATION POINT: Re-initialize persistence observer when restoring dual-pane
+        // Re-initialize persistence observer when restoring dual-pane
         // because the ResizablePanelGroup DOM was destroyed and recreated.
         if (!_canvasPaneHidden)
         {
@@ -266,13 +256,13 @@ else
         }
     }
 
-    // MY CUSTOMIZATION POINT: Re-render when viewport crosses mobile breakpoint
+    // Re-render when viewport crosses mobile breakpoint
     private void OnViewportChanged(object? sender, EventArgs e)
     {
         InvokeAsync(StateHasChanged);
     }
 
-    // MY CUSTOMIZATION POINT: Cleanup ViewportService event subscription and layout persistence
+    // Cleanup ViewportService event subscription and layout persistence
     public new async ValueTask DisposeAsync()
     {
         ViewportService.OnViewportChanged -= OnViewportChanged;
