@@ -60,6 +60,8 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    min-width: 0; /* Enable width shrinking */
+    max-width: 100%; /* Enforce width constraint */
     overflow: hidden;
 }
 
@@ -71,6 +73,8 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    min-width: 0; /* Enable width shrinking */
+    max-width: 100%; /* Enforce width constraint */
 }
 
 /* MY CUSTOMIZATION POINT: Tabs list — horizontal scrolling strip at top of canvas pane */
@@ -117,6 +121,8 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    width: 100%; /* Explicit width */
+    max-width: 100%; /* Enforce width constraint */
     overflow: hidden;
     margin-top: 0;
 }
@@ -144,9 +150,12 @@
     flex: 1;
     min-height: 0;
     width: 100%;
+    max-width: 100%; /* Enforce width constraint */
     overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal overflow */
     overscroll-behavior: contain;
     container-type: inline-size;
+    container-name: canvas-scroll; /* Named container for robust querying */
 }
 
 /* ==========================================================================

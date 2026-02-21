@@ -6,6 +6,23 @@
  * All colors use oklch() vars from app.css (--background, --foreground, etc.)
  * ========================================================================== */
 
+/* Use a wrapper to ensure scoped CSS applies correctly to the Card root (ISS-608)
+   and to enforce width constraints for responsiveness. */
+.recipe-editor-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%; /* Enforce width constraint */
+    container-type: inline-size; /* Enable container queries for local responsiveness */
+}
+
+/* Ensure the Card takes full width but respects container bounds */
+::deep .recipe-editor-card {
+    width: 100%;
+    max-width: 100%;
+}
+
 /* Content layout — consistent vertical rhythm via gap only */
 .recipe-editor-content {
     display: flex;
@@ -62,8 +79,7 @@
     display: flex;
     flex-direction: column;
     gap: calc(var(--spacing) * 2); /* 0.5rem */
-    max-height: 200px;
-    overflow-y: auto;
+    /* Allow list to expand naturally within the scrollable CanvasPane */
     padding-right: calc(var(--spacing) * 1); /* 0.25rem */
 }
 
@@ -120,8 +136,7 @@
     background: var(--muted);
     border-radius: var(--radius);
     border: 1px solid var(--border);
-    max-height: 200px;
-    overflow-y: auto;
+    /* Allow list to expand naturally within the scrollable CanvasPane */
 }
 
 /* Instruction step */
