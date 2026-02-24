@@ -312,3 +312,60 @@ Note: SC-026 and SC-028 are positive observations (no fix needed). Effective iss
 8. **SC-018** (Major/BB v3) — Verify BB v3 toast component API name and method signatures
 9. **SC-027** (Major/Cross-Ref) — Fix cross-reference range for 03-session-lifecycle.md
 10. **SC-012** (Major/Actionability) — Expand AgentStreamingService refactoring description
+
+---
+
+## Resolution Summary (task-11)
+
+> **Resolved by:** task-11 (Iteration 1, Attempt 1)
+> **Resolution date:** 2026-02-24T13:42:36+0700
+> **Spec version after fixes:** v2.1
+
+### Resolution Status
+
+| SC-ID | Severity | Status | Resolution |
+|-------|----------|--------|------------|
+| SC-001 | Major | **[RESOLVED]** | Added Appendix A: Research Traceability with full Q-ID→Section map (52 Q-IDs) and R-finding→Section map (R1–R13) |
+| SC-002 | Major | **[RESOLVED]** | All 12 missing Q-IDs now covered in Appendix A, including Q-MAF-001 through Q-MAF-006 |
+| SC-003 | Minor | **[RESOLVED]** | R1–R13 findings mapped in Appendix A §A.2 |
+| SC-004 | Minor | **[RESOLVED]** | Added OQ-6 to §13.1: context window management (full history MVP, sliding window future) |
+| SC-005 | Major | **[RESOLVED]** | Added Builder Ordering Note to §4.2: "Use() applies in reverse order" with implementer guidance |
+| SC-006 | Major | **[RESOLVED]** | `StatefulMessageCount` was already present in §5.2 Chat group (verified in original spec) |
+| SC-007 | Minor | **[RESOLVED]** | §6.2 transition table updated: "Active → Streaming (two sequential reducer dispatches)" |
+| SC-008 | Minor | **[RESOLVED]** | F3 HITL Canvas Component changed to "None (modal overlay in chat pane)" in §9.1 |
+| SC-009 | Critical | **[RESOLVED]** | Added feasibility verification to §9.2: DataContent is schema-free binary container `(BinaryData, string)` — $type envelope adds top-level key without violating protocol. Verified against codebase. |
+| SC-010 | Major | **[RESOLVED]** | §4.2 expanded with 4-point phase flag contract: (1) flag set via ChatOptions.AdditionalProperties, (2) all outer wrappers MUST check, (3) never serialized to event stream, (4) new wrappers must implement phase-awareness |
+| SC-011 | Critical | **[RESOLVED]** | §7.2 rewritten: InvokeAsync marshalling required for background→circuit dispatch. Code example added. AgentStreamingService callback pattern described. |
+| SC-012 | Major | **[RESOLVED]** | §5.6 expanded with session routing, thread safety (ConcurrentDictionary), and cleanup protocol details + cross-ref to design-sections/02 §8–§9 |
+| SC-013 | Major | **[RESOLVED]** | §4.4 now states: prompt is a "starting point" — iterate based on GPT-4o/GPT-5 testing |
+| SC-014 | Minor | **[RESOLVED]** | §10.1 M3 row now includes cross-reference to design-sections/07 §5 for before/after examples |
+| SC-015 | Critical | **[RESOLVED]** | Explicit MEAI001 callout added to §4.2 with pragma, experimental type names, and Q-MAF-006 abstraction recommendation. ISS-011 resolution in §12 updated from "implicit" to explicit section reference. |
+| SC-016 | Minor | **[RESOLVED]** | §4.1 now states: "MapAGUI calls RunStreamingAsync() internally; RunAsync() is not used." |
+| SC-017 | Minor | **[RESOLVED]** | §13.2 Workflow API item expanded: "cross-session, durable agent handoffs" + Q-MAF-002 note |
+| SC-018 | Major | **[RESOLVED]** | §10.2 toast row updated with verification note: BB v3 may use BbSonner; confirm at implementation time |
+| SC-019 | Minor | **[RESOLVED]** | §10.2 session delete changed from `BbAlertDialog` to `DialogService.Confirm()` (programmatic) |
+| SC-020 | Minor | **[RESOLVED]** | §10.3 icon imports note added: verify BB v3 namespace flattening at migration time |
+| SC-021 | Major | **[RESOLVED]** | §6.4 expanded: client-side enforcement in AgentStreamingService, FIFO queue (max 5), "(waiting...)" indicator, Send button disabled at capacity |
+| SC-022 | Major | **[RESOLVED]** | New §7.5 added: concurrent HITL handling — each renders persistent toast, FIFO ordering, one dialog at a time, blocked agents wait on TaskCompletionSource |
+| SC-023 | Minor | **[RESOLVED]** | New §5.4 added: session eviction — Archived immediately removed, max 20 active, oldest Completed auto-archived |
+| SC-024 | Minor | **[RESOLVED]** | §6.2 transition table now includes: Completed → Active → Streaming (user sends follow-up) |
+| SC-025 | Minor | **[RESOLVED]** | §8.1 BbCommandDialog marked as "Optional MVP Enhancement" |
+| SC-026 | Minor | **[NO FIX NEEDED]** | Positive observation — scope management is correct |
+| SC-027 | Major | **[RESOLVED]** | §6 cross-reference updated to "§1–§13" with specific mention of §12 canonical transition table |
+| SC-028 | Minor | **[NO FIX NEEDED]** | Positive observation — cross-reference is accurate |
+| SC-029 | Minor | **[RESOLVED]** | §12 ISS-034 resolution expanded with acknowledgment of relevance + future work deferral |
+
+### Summary Totals
+
+| Category | Count |
+|----------|-------|
+| **Resolved** | 26 |
+| **No Fix Needed** (positive observations) | 2 |
+| **Deferred** | 0 |
+| **Total** | 28 |
+
+**All Critical issues:** RESOLVED (3/3)
+**All Major issues:** RESOLVED (11/11)
+**All Minor issues:** RESOLVED or NO FIX NEEDED (14/14)
+
+**Zero unresolved issues remain.**
