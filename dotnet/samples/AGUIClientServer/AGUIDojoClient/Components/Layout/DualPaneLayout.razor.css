@@ -16,35 +16,27 @@
 
 /* Context Pane (left) — chat and negotiation area */
 /* ISS-005: min-width enforces a hard pixel floor so the pane cannot be
-   dragged below a readable width, regardless of the percentage-based
-   ResizablePanel MinSize constraint.
-   !important is required because BB ResizablePanel applies min-width as
-   an inline style from the MinSize parameter, which otherwise overrides
-   external CSS due to specificity rules. */
+   dragged below a readable width. */
 .dual-pane-root ::deep .context-panel {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow-x: hidden !important;
     overflow-y: hidden !important;
-    min-width: 320px !important;
+    min-width: 300px !important;
     /* ISS-601: Override default min-width: auto so flex children can shrink below content size */
     contain: inline-size;
 }
 
 /* Canvas Pane (right) — artifact and work product area */
 /* ISS-005: min-width enforces a hard pixel floor so the pane cannot be
-   dragged below a readable width, regardless of the percentage-based
-   ResizablePanel MinSize constraint.
-   !important is required because BB ResizablePanel applies min-width as
-   an inline style from the MinSize parameter, which otherwise overrides
-   external CSS due to specificity rules. */
+   dragged below a readable width. */
 .dual-pane-root ::deep .canvas-panel {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    min-width: 400px !important;
+    min-width: 300px !important;
 }
 
 /* Resizable handle styling */

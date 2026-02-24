@@ -2,14 +2,15 @@
 
 @using AGUIDojoClient.Models
 
-<Card Class="recipe-editor-card">
-    <CardHeader Class="pb-3">
-        <CardTitle Class="text-lg">🍳 Recipe Editor</CardTitle>
-        <CardDescription>Customize your recipe preferences, then ask the assistant to generate a recipe!</CardDescription>
-    </CardHeader>
-    <CardContent>
-        <div class="recipe-editor-content">
-        @* Recipe Title *@
+<div class="recipe-editor-wrapper">
+    <Card Class="recipe-editor-card">
+        <CardHeader Class="pb-3">
+            <CardTitle Class="text-lg">🍳 Recipe Editor</CardTitle>
+            <CardDescription>Customize your recipe preferences, then ask the assistant to generate a recipe!</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <div class="recipe-editor-content">
+            @* Recipe Title *@
         <div class="recipe-field">
             <Label For="recipe-title" Class="text-sm font-medium">Recipe Title (Optional)</Label>
             <Input Id="recipe-title"
@@ -140,7 +141,8 @@
         }
         </div>
     </CardContent>
-</Card>
+    </Card>
+</div>
 
 @code {
     private static readonly string[] _availablePreferences =

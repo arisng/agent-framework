@@ -11,7 +11,7 @@
 @inject IToolComponentRegistry ToolRegistry
 
 <div class="assistant-thought @(IsExpanded ? "expanded" : "collapsed")">
-    <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged" Style="width: 100%;">
+    <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
         <CollapsibleTrigger>
             <div class="thought-toggle" aria-expanded="@IsExpanded">
                 <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
