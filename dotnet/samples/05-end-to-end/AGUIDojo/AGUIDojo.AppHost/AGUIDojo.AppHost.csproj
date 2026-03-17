@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- MY CUSTOMIZATION POINT: Use the AGUIDojo-scoped Aspire AppHost SDK override from the local Directory.Packages.props -->
+  <!-- Use the AGUIDojo-scoped Aspire AppHost SDK override from the local Directory.Packages.props -->
   <Sdk Name="Aspire.AppHost.Sdk" Version="$(AspireAppHostSdkVersion)" />
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- MY CUSTOMIZATION POINT: Use single-targeting for AGUIDojo (net10.0) -->
+    <!-- Use single-targeting for AGUIDojo (net10.0) -->
     <TargetFrameworks>net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
