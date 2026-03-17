@@ -43,4 +43,8 @@ namespace AGUIDojoServer;
 [JsonSerializable(typeof(EmailResponse))]
 [JsonSerializable(typeof(TokenRequest))]
 [JsonSerializable(typeof(TokenResponse))]
+[JsonSerializable(typeof(TitleRequest))]
+[JsonSerializable(typeof(TitleMessage))]
+[JsonSerializable(typeof(TitleResponse))]
+[JsonSerializable(typeof(List<TitleMessage>))]
 internal sealed partial class AGUIDojoServerSerializerContext : JsonSerializerContext;

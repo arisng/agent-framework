@@ -46,6 +46,7 @@ using Microsoft.Agents.AI.Hosting.AGUI.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpLogging;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -303,6 +304,9 @@ builder.Services.AddSingleton<DocumentTool>();
 // Factory creates ChatClient during construction and provides methods to create pre-configured agents
 builder.Services.AddSingleton<ChatClientAgentFactory>();
 
+// Register IChatClient for lightweight LLM calls (e.g., session title generation)
+builder.Services.AddSingleton<IChatClient>(sp => sp.GetRequiredService<ChatClientAgentFactory>().GetChatClient());
+
 // Add health checks for operational monitoring
 // Health checks verify:
 // - Server is running (self check)
@@ -453,6 +457,7 @@ RouteGroupBuilder apiGroup = app.MapGroup("/api")
     .WithTags("Business API");
 apiGroup.MapWeatherEndpoints();
 apiGroup.MapEmailEndpoints();
+apiGroup.MapTitleEndpoints();
 
 // Map development-only authentication endpoints
 // AuthEndpoints.MapAuthEndpoints checks IsDevelopment() internally and returns early if not Dev

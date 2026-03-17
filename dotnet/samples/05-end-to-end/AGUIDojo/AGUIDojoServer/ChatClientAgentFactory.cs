@@ -72,6 +72,13 @@ public sealed class ChatClientAgentFactory
     private readonly DocumentTool _documentTool;
 
     /// <summary>
+    /// Gets an <see cref="IChatClient"/> wrapper around the underlying <see cref="ChatClient"/>,
+    /// suitable for lightweight LLM calls such as session title generation.
+    /// </summary>
+    /// <returns>An <see cref="IChatClient"/> instance backed by the configured LLM provider.</returns>
+    public IChatClient GetChatClient() => _chatClient.AsIChatClient();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="ChatClientAgentFactory"/> class.
     /// </summary>
     /// <param name="configuration">The configuration containing LLM provider settings.</param>
