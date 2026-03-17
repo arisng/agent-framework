@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <ParentDirectoryPackagesProps>$([MSBuild]::GetPathOfFileAbove(Directory.Packages.props, $(MSBuildThisFileDirectory)..))</ParentDirectoryPackagesProps>
+  </PropertyGroup>
+
+  <Import Project="$(ParentDirectoryPackagesProps)" Condition="'$(ParentDirectoryPackagesProps)' != ''" />
+
+  <PropertyGroup>
+    <!-- MY CUSTOMIZATION POINT: Scope the Aspire AppHost SDK override to AGUIDojo only -->
+    <AspireAppHostSdkVersion>13.1.2</AspireAppHostSdkVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MY CUSTOMIZATION POINT: The AppHost SDK provides this package implicitly, so AGUIDojo must remove the central package entry to avoid NU1009 -->
+    <PackageVersion Remove="Aspire.Hosting.AppHost" />
+  </ItemGroup>
+</Project>

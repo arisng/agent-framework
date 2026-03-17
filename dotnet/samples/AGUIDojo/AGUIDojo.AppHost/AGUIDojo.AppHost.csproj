@@ -1,4 +1,7 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.1.0">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- MY CUSTOMIZATION POINT: Use the AGUIDojo-scoped Aspire AppHost SDK override from the local Directory.Packages.props -->
+  <Sdk Name="Aspire.AppHost.Sdk" Version="$(AspireAppHostSdkVersion)" />
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -7,10 +10,6 @@
     <Nullable>enable</Nullable>
     <IsAspireHost>true</IsAspireHost>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AGUIDojoClient\AGUIDojoClient.csproj" />

@@ -8,7 +8,7 @@ using Microsoft.Extensions.AI;
 
 namespace AGUIDojoServer.AgenticUI;
 
-[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by AGUIDojoChatClientAgentFactory.CreateAgenticUI")]
+[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by ChatClientAgentFactory.CreateAgenticUI")]
 internal sealed class AgenticUIAgent : DelegatingAIAgent
 {
     private readonly JsonSerializerOptions _jsonSerializerOptions;

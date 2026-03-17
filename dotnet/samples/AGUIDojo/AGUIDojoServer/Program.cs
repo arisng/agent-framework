@@ -299,9 +299,9 @@ builder.Services.AddSingleton<WeatherTool>();
 builder.Services.AddSingleton<EmailTool>();
 builder.Services.AddSingleton<DocumentTool>();
 
-// Register the AGUIDojoChatClientAgentFactory as Singleton
+// Register the ChatClientAgentFactory as Singleton
 // Factory creates ChatClient during construction and provides methods to create pre-configured agents
-builder.Services.AddSingleton<AGUIDojoChatClientAgentFactory>();
+builder.Services.AddSingleton<ChatClientAgentFactory>();
 
 // Add health checks for operational monitoring
 // Health checks verify:
@@ -459,7 +459,7 @@ apiGroup.MapEmailEndpoints();
 apiGroup.MapAuthEndpoints(app.Configuration, app.Environment);
 
 // Get the factory from DI for creating agents
-AGUIDojoChatClientAgentFactory agentFactory = app.Services.GetRequiredService<AGUIDojoChatClientAgentFactory>();
+ChatClientAgentFactory agentFactory = app.Services.GetRequiredService<ChatClientAgentFactory>();
 
 // Map the AG-UI agent endpoints for different scenarios
 app.MapAGUI("/agentic_chat", agentFactory.CreateAgenticChat());

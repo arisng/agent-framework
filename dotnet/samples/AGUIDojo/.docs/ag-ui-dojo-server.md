@@ -16,7 +16,7 @@ AGUIDojoServer configures ASP.NET Core with AG-UI endpoints via `MapAGUI`, each 
 
 References:
 - [dotnet/samples/AGUIDojo/AGUIDojoServer/Program.cs](dotnet/samples/AGUIDojo/AGUIDojoServer/Program.cs)
-- [dotnet/samples/AGUIDojo/AGUIDojoServer/AGUIDojoChatClientAgentFactory.cs](dotnet/samples/AGUIDojo/AGUIDojoServer/AGUIDojoChatClientAgentFactory.cs)
+- [dotnet/samples/AGUIDojo/AGUIDojoServer/ChatClientAgentFactory.cs](dotnet/samples/AGUIDojo/AGUIDojoServer/ChatClientAgentFactory.cs)
 
 ## Data Models
 ### Backend Tool Rendering

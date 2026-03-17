@@ -8,7 +8,7 @@ using Microsoft.Extensions.AI;
 
 namespace AGUIDojoServer.PredictiveStateUpdates;
 
-[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by AGUIDojoChatClientAgentFactory.CreatePredictiveStateUpdates")]
+[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by ChatClientAgentFactory.CreatePredictiveStateUpdates")]
 internal sealed class PredictiveStateUpdatesAgent : DelegatingAIAgent
 {
     private readonly JsonSerializerOptions _jsonSerializerOptions;

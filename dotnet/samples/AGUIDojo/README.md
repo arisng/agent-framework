@@ -110,7 +110,7 @@ The Blazor client includes production-quality UX patterns:
 ```
 AGUIDojoServer/
 ├── Program.cs                     # Entry point: DI, JWT auth, OpenTelemetry, MapAGUI + Minimal API
-├── AGUIDojoChatClientAgentFactory.cs # DI-based agent factory with OpenTelemetry wrapping
+├── ChatClientAgentFactory.cs # DI-based agent factory with OpenTelemetry wrapping
 ├── AGUIDojoServerSerializerContext.cs  # JSON source gen context
 ├── Services/                      # Shared business services (Scoped)
 │   ├── IWeatherService.cs / WeatherService.cs
