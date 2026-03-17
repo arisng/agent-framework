@@ -10,12 +10,12 @@
 //
 // Option A: OpenAI (recommended for quick start)
 //   OPENAI_API_KEY              - Your OpenAI API key (e.g., sk-...)
-//   OPENAI_MODEL                - Model name (optional, defaults to gpt-5-mini)
+//   OPENAI_MODEL                - Model name (optional, defaults to gpt-5.4-mini)
 //
 // Option B: Azure OpenAI with API Key authentication
 //   AZURE_OPENAI_ENDPOINT       - Your Azure OpenAI endpoint URL (e.g., https://myresource.openai.azure.com)
 //   AZURE_OPENAI_API_KEY        - Your Azure OpenAI API key
-//   AZURE_OPENAI_DEPLOYMENT_NAME - Your deployment name (e.g., gpt-4o)
+//   AZURE_OPENAI_DEPLOYMENT_NAME - Your deployment name (e.g., gpt-5.4-mini)
 //
 // Option C: Azure OpenAI with Managed Identity (production recommended)
 //   AZURE_OPENAI_ENDPOINT       - Your Azure OpenAI endpoint URL

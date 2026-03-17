@@ -83,7 +83,7 @@ Example server environment:
 ```bash
 export OPENAI_API_KEY="sk-your-api-key"
 # optional
-export OPENAI_MODEL="gpt-5-mini"
+export OPENAI_MODEL="gpt-5.4-mini"
 ```
 
 Optional:

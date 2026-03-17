@@ -90,7 +90,7 @@ export OPENAI_API_KEY="sk-your-api-key"
 
 # OR for Azure OpenAI (set on the SERVER)
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5.4-mini"
 ```
 
 ## YARP Reverse Proxy Configuration
