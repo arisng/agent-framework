@@ -46,6 +46,18 @@ internal sealed class ServerFunctionApprovalAgent : DelegatingAIAgent
         AgentRunOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (options is ChatClientAgentRunOptions { ChatOptions.AdditionalProperties: { } properties } &&
+            properties.TryGetValue("ag_ui_shared_state_phase", out var phase) &&
+            string.Equals(phase?.ToString(), "state_update", StringComparison.Ordinal))
+        {
+            await foreach (var update in this.InnerAgent.RunStreamingAsync(messages, session, options, cancellationToken).ConfigureAwait(false))
+            {
+                yield return update;
+            }
+
+            yield break;
+        }
+
         // Process and transform incoming approval responses from client
         var processedMessages = ProcessIncomingFunctionApprovals(messages.ToList(), this._jsonSerializerOptions);
 

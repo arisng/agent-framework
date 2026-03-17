@@ -461,27 +461,9 @@ apiGroup.MapAuthEndpoints(app.Configuration, app.Environment);
 // Get the factory from DI for creating agents
 ChatClientAgentFactory agentFactory = app.Services.GetRequiredService<ChatClientAgentFactory>();
 
-// Map the AG-UI agent endpoints for different scenarios
-app.MapAGUI("/agentic_chat", agentFactory.CreateAgenticChat());
-
-app.MapAGUI("/backend_tool_rendering", agentFactory.CreateBackendToolRendering());
-
+// Map the unified AG-UI chat endpoint.
 var jsonOptions = app.Services.GetRequiredService<IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>();
-app.MapAGUI("/human_in_the_loop", agentFactory.CreateHumanInTheLoop(jsonOptions.Value.SerializerOptions));
-
-app.MapAGUI("/tool_based_generative_ui", agentFactory.CreateToolBasedGenerativeUI());
-
-app.MapAGUI("/agentic_generative_ui", agentFactory.CreateAgenticUI(jsonOptions.Value.SerializerOptions));
-
-app.MapAGUI("/shared_state", agentFactory.CreateSharedState(jsonOptions.Value.SerializerOptions));
-
-app.MapAGUI("/predictive_state_updates", agentFactory.CreatePredictiveStateUpdates(jsonOptions.Value.SerializerOptions));
-
-app.MapAGUI("/data_grid", agentFactory.CreateDataGrid());
-
-app.MapAGUI("/chart", agentFactory.CreateChart());
-
-app.MapAGUI("/dynamic_form", agentFactory.CreateDynamicForm());
+app.MapAGUI("/chat", agentFactory.CreateUnifiedAgent(jsonOptions.Value.SerializerOptions));
 
 await app.RunAsync();
 

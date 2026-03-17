@@ -3,12 +3,13 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using AGUIDojoServer;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
 namespace AGUIDojoServer.SharedState;
 
-[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by ChatClientAgentFactory.CreateSharedState")]
+[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by ChatClientAgentFactory.CreateUnifiedAgent")]
 internal sealed class SharedStateAgent : DelegatingAIAgent
 {
     private readonly JsonSerializerOptions _jsonSerializerOptions;
@@ -31,7 +32,8 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (options is not ChatClientAgentRunOptions { ChatOptions.AdditionalProperties: { } properties } chatRunOptions ||
-            !properties.TryGetValue("ag_ui_state", out JsonElement state))
+            !properties.TryGetValue("ag_ui_state", out JsonElement state) ||
+            state.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {
             await foreach (var update in this.InnerAgent.RunStreamingAsync(messages, session, options, cancellationToken).ConfigureAwait(false))
             {
@@ -50,6 +52,9 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
             ContinuationToken = chatRunOptions.ContinuationToken,
             ChatClientFactory = chatRunOptions.ChatClientFactory,
         };
+        firstRunOptions.ChatOptions ??= new ChatOptions();
+        firstRunOptions.ChatOptions.AdditionalProperties ??= new AdditionalPropertiesDictionary();
+        firstRunOptions.ChatOptions.AdditionalProperties["ag_ui_shared_state_phase"] = "state_update";
 
         // Only configure RecipeResponse JSON schema if current state is recipe-like
         // For other state types, use the generic JSON format
@@ -95,9 +100,25 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
         //if (response.TryDeserialize(this._jsonSerializerOptions, out JsonElement stateSnapshot))
         if (TryDeserialize(response.Text, this._jsonSerializerOptions, out JsonElement stateSnapshot))
         {
-            byte[] stateBytes = JsonSerializer.SerializeToUtf8Bytes(
-                stateSnapshot,
-                this._jsonSerializerOptions.GetTypeInfo(typeof(JsonElement)));
+            byte[] stateBytes;
+
+            if (isRecipeState && TryExtractRecipeSnapshot(stateSnapshot, this._jsonSerializerOptions, out Recipe? recipeSnapshot) && recipeSnapshot is not null)
+            {
+                stateBytes = JsonSerializer.SerializeToUtf8Bytes(
+                    new TypedDataEnvelope<Recipe>
+                    {
+                        Type = TypedDataEnvelopeTypes.RecipeSnapshot,
+                        Data = recipeSnapshot,
+                    },
+                    AGUIDojoServerSerializerContext.Default.RecipeEnvelope);
+            }
+            else
+            {
+                stateBytes = JsonSerializer.SerializeToUtf8Bytes(
+                    stateSnapshot,
+                    this._jsonSerializerOptions.GetTypeInfo(typeof(JsonElement)));
+            }
+
             yield return new AgentResponseUpdate
             {
                 Contents = [new DataContent(stateBytes, "application/json")]
@@ -168,5 +189,18 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
         }
 
         return false;
+    }
+
+    private static bool TryExtractRecipeSnapshot(JsonElement stateSnapshot, JsonSerializerOptions jsonSerializerOptions, out Recipe? recipe)
+    {
+        recipe = null;
+
+        if (TryDeserialize(stateSnapshot.GetRawText(), jsonSerializerOptions, out RecipeResponse recipeResponse))
+        {
+            recipe = recipeResponse.Recipe;
+            return true;
+        }
+
+        return TryDeserialize(stateSnapshot.GetRawText(), jsonSerializerOptions, out recipe) && recipe is not null;
     }
 }

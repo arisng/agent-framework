@@ -40,6 +40,31 @@ public sealed class ChatClientAgentFactory
     /// The source name for OpenTelemetry instrumentation, identifying telemetry from this server.
     /// </summary>
     private const string SourceName = "AGUIDojoServer";
+    private const string UnifiedSystemPrompt = """
+        You are a versatile AI assistant that helps users with conversations, data queries,
+        document editing, planning, and data visualization. Format responses in markdown.
+
+        ## Tool Usage Guidelines
+
+        Choose tools based on user intent:
+        - **Email**: Use `send_email` when asked to send an email. The tool will prompt the user
+          for approval automatically — do NOT ask for confirmation in chat.
+        - **Documents**: Use `write_document` for writing or editing content. Always write the full
+          document in markdown. Keep content concise.
+          Do NOT use italic or strike-through formatting in documents.
+        - **Planning**: Use `create_plan` to start a new plan, then `update_plan_step` to progress
+          each step. Only one plan can be active at a time. Do NOT summarize the plan in chat —
+          the UI renders it automatically. Continue updating steps until all are completed.
+        - **Visualization**: Use `show_chart` for trends/comparisons/distributions, `show_data_grid`
+          for tabular data, `show_form` for user input collection.
+        - **Weather**: Use `get_weather` when asked about weather conditions.
+        - **General chat**: For questions that don't require tools, respond conversationally.
+
+        ## Rules
+        - When planning, use tools only without additional chat messages.
+        - After tool execution, provide a brief summary of the result.
+        - Do NOT repeat tool output in your text response — the UI renders tool results directly.
+        """;
 
     private readonly ChatClient _chatClient;
     private readonly WeatherTool _weatherTool;
@@ -101,361 +126,85 @@ public sealed class ChatClientAgentFactory
         }
     }
 
-    /// <summary>
-    /// Creates an agent for basic agentic chat using LLM capabilities.
-    /// </summary>
-    /// <returns>An <see cref="AIAgent"/> configured for general conversation, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateAgenticChat()
-    {
-        return this._chatClient.AsIChatClient().AsAIAgent(
-            instructions: """
-            You are a helpful assistant that can chat with users using LLM capabilities. 
-            Format your user-facing text response as in markdown.
-            """,
-            name: "AgenticChat",
-            description: "A simple AI Assistant that can chat with users using LLM capabilities.")
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for backend tool rendering demonstrations.
-    /// </summary>
-    /// <remarks>
-    /// The chat client pipeline is wrapped with <see cref="ToolResultStreamingChatClient"/>
-    /// to ensure <see cref="FunctionResultContent"/> items are emitted to the streaming output.
-    /// Without this middleware, <see cref="FunctionInvokingChatClient"/> consumes tool results
-    /// internally and the AG-UI conversion layer never produces <c>ToolCallResultEvent</c> events,
-    /// leaving the client unable to detect tool completion (ISS-001 through ISS-004).
-    /// </remarks>
-    /// <returns>An <see cref="AIAgent"/> configured with weather tool for backend rendering, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateBackendToolRendering()
-    {
-        // Wrap the LLM client with ToolResultStreamingChatClient so the pipeline becomes:
-        //   FunctionInvokingChatClient → ToolResultStreamingChatClient → LLM
-        // When FunctionInvokingChatClient invokes a tool and calls the inner client again,
-        // ToolResultStreamingChatClient detects the FunctionResultContent in the messages
-        // and emits it to the stream before forwarding to the LLM.
-        IChatClient wrappedClient = new ToolResultStreamingChatClient(this._chatClient.AsIChatClient());
-
-        return wrappedClient.AsAIAgent(
-            instructions: """
-                You are a helpful assistant that can chat with users and use backend tools to get information.
-                When the user asks for information that requires a tool, call the appropriate tool.
-                Format your user-facing text response as in markdown.
-                """,
-            name: "BackendToolRenderer",
-            description: "A simple AI Assistant that can chat with users using LLM capabilities. Format your user-facing text response as in markdown.",
-            tools: [AIFunctionFactory.Create(
-                this._weatherTool.GetWeatherAsync,
-                name: "get_weather",
-                description: "Get the weather for a given location.",
-                AGUIDojoServerSerializerContext.Default.Options)])
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
 #pragma warning disable MEAI001 // Type is for evaluation purposes only
     /// <summary>
-    /// Creates a Human-in-the-Loop agent that requires approval for sensitive tool calls.
-    /// The agent wraps the send_email tool with ApprovalRequiredAIFunction to demonstrate
-    /// the approval workflow in AG-UI.
+    /// Creates the unified server-side agent for the consolidated <c>/chat</c> endpoint.
     /// </summary>
-    /// <param name="jsonSerializerOptions">The JSON serializer options for approval data.</param>
-    /// <returns>An AIAgent wrapped with ServerFunctionApprovalAgent and OpenTelemetry instrumentation for approval handling.</returns>
-    public AIAgent CreateHumanInTheLoop(JsonSerializerOptions jsonSerializerOptions)
+    /// <param name="jsonSerializerOptions">The JSON serializer options for wrapper-specific state transformations.</param>
+    /// <returns>An <see cref="AIAgent"/> composed from the unified tool registry and wrapper pipeline.</returns>
+    public AIAgent CreateUnifiedAgent(JsonSerializerOptions jsonSerializerOptions)
     {
-        // Create the approval-required tool using DI-compatible EmailTool
-        AITool approvalTool = new ApprovalRequiredAIFunction(
-            AIFunctionFactory.Create(
-                this._emailTool.SendEmailAsync,
-                name: "send_email",
-                description: "Send an email to a recipient.",
-                AGUIDojoServerSerializerContext.Default.Options));
+        IChatClient wrappedClient = new ToolResultStreamingChatClient(this._chatClient.AsIChatClient());
 
-        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
+        var baseAgent = wrappedClient.AsAIAgent(new ChatClientAgentOptions
         {
-            Name = "HumanInTheLoopAgent",
-            Description = "An agent that involves human feedback in its decision-making process",
+            Name = "UnifiedAgent",
+            Description = "Unified agentic chat agent with all AG-UI capabilities",
             ChatOptions = new ChatOptions
             {
-                Instructions = """
-                    You are a helpful assistant that can send emails on behalf of the user.
-                    IMPORTANT: When asked to send an email, immediately call the send_email tool.
-                    Do NOT ask the user for confirmation in chat - the tool will automatically
-                    prompt for approval through the UI. Just call the tool directly.
-                    After the user approves or rejects, report the outcome.
-                    Format your user-facing text response as in markdown.
-                    """,
-                Tools = [approvalTool]
+                Instructions = UnifiedSystemPrompt,
+                Tools = CreateUnifiedChatTools(),
             }
         });
 
-        // Wrap with ServerFunctionApprovalAgent to transform approval content to AG-UI format
-        // Then wrap with OpenTelemetry for distributed tracing
-        return new ServerFunctionApprovalAgent(baseAgent, jsonSerializerOptions)
+        return baseAgent
             .AsBuilder()
+            .Use(inner => new ServerFunctionApprovalAgent(inner, jsonSerializerOptions))
+            .Use(inner => new AgenticUIAgent(inner, jsonSerializerOptions))
+            .Use(inner => new PredictiveStateUpdatesAgent(inner, jsonSerializerOptions))
+            .Use(inner => new SharedStateAgent(inner, jsonSerializerOptions))
             .UseOpenTelemetry(SourceName)
             .Build();
     }
 #pragma warning restore MEAI001
 
-    /// <summary>
-    /// Creates an agent for tool-based generative UI demonstrations.
-    /// </summary>
-    /// <returns>An <see cref="AIAgent"/> configured with weather tool for UI generation, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateToolBasedGenerativeUI()
+    #pragma warning disable MEAI001 // Type is for evaluation purposes only
+    private AITool[] CreateUnifiedChatTools()
     {
-        return this._chatClient.AsIChatClient().AsAIAgent(
-            instructions: "Format your user-facing text response as in markdown.",
-            name: "ToolBasedGenerativeUIAgent",
-            description: "A simple AI Assistant that demonstrates tool-based generative UI patterns.",
-            tools: [AIFunctionFactory.Create(
+        return
+        [
+            AIFunctionFactory.Create(
                 this._weatherTool.GetWeatherAsync,
                 name: "get_weather",
                 description: "Get the weather for a given location.",
-                AGUIDojoServerSerializerContext.Default.Options)])
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for agentic UI demonstrations with planning capabilities.
-    /// </summary>
-    /// <param name="options">The JSON serializer options for UI state.</param>
-    /// <returns>An <see cref="AIAgent"/> configured for agentic planning UI, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateAgenticUI(JsonSerializerOptions options)
-    {
-        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
-        {
-            Name = "AgenticUIAgent",
-            Description = "An agent that generates agentic user interfaces using Azure OpenAI",
-            ChatOptions = new ChatOptions
-            {
-                Instructions = """
-                    When planning use tools only, without any other messages.
-                    IMPORTANT:
-                    - Use the `create_plan` tool to set the initial state of the steps
-                    - Use the `update_plan_step` tool to update the status of each step
-                    - Do NOT repeat the plan or summarise it in a message
-                    - Do NOT confirm the creation or updates in a message
-                    - Do NOT ask the user for additional information or next steps
-                    - Do NOT leave a plan hanging, always complete the plan via `update_plan_step` if one is ongoing.
-                    - Continue calling update_plan_step until all steps are marked as completed.
-
-                    Only one plan can be active at a time, so do not call the `create_plan` tool
-                    again until all the steps in current plan are completed.
-                    """,
-                Tools = [
-                    AIFunctionFactory.Create(
-                        AgenticPlanningTools.CreatePlan,
-                        name: "create_plan",
-                        description: "Create a plan with multiple steps.",
-                        AGUIDojoServerSerializerContext.Default.Options),
-                    AIFunctionFactory.Create(
-                        AgenticPlanningTools.UpdatePlanStepAsync,
-                        name: "update_plan_step",
-                        description: "Update a step in the plan with new description or status.",
-                        AGUIDojoServerSerializerContext.Default.Options)
-                ],
-                AllowMultipleToolCalls = false
-            }
-        });
-
-        // Wrap with AgenticUIAgent for agentic UI state management, then with OpenTelemetry
-        return new AgenticUIAgent(baseAgent, options)
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for shared state demonstrations.
-    /// </summary>
-    /// <param name="options">The JSON serializer options for state management.</param>
-    /// <returns>An <see cref="AIAgent"/> configured for shared state patterns, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateSharedState(JsonSerializerOptions options)
-    {
-        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(
-            instructions: """
-                You are a recipe assistant that helps users create and manage recipes.
-                When users provide recipe information (ingredients, cooking instructions, preferences),
-                update the recipe state accordingly.
-                
-                If users ask about non-recipe topics, politely guide them back to recipe creation.
-                For example, if they mention a favorite color, you might suggest creating a recipe
-                that uses ingredients of that color (e.g., blueberry recipes for blue, tomato recipes for red).
-                
-                Format your user-facing text response as in markdown.
-                """,
-            name: "SharedStateAgent",
-            description: "An agent that demonstrates shared state patterns for recipe management.");
-
-        // Wrap with SharedStateAgent for state management, then with OpenTelemetry
-        return new SharedStateAgent(baseAgent, options)
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for predictive state updates demonstrations.
-    /// </summary>
-    /// <param name="options">The JSON serializer options for state updates.</param>
-    /// <returns>An <see cref="AIAgent"/> configured for predictive state update patterns, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreatePredictiveStateUpdates(JsonSerializerOptions options)
-    {
-        var baseAgent = this._chatClient.AsIChatClient().AsAIAgent(new ChatClientAgentOptions
-        {
-            Name = "PredictiveStateUpdatesAgent",
-            Description = "An agent that demonstrates predictive state updates.",
-            ChatOptions = new ChatOptions
-            {
-                Instructions = """
-                    You are a document editor assistant. When asked to write or edit content:
-                    
-                    IMPORTANT:
-                    - Use the `write_document` tool with the full document text in Markdown format
-                    - Format the document extensively so it's easy to read
-                    - You can use all kinds of markdown (headings, lists, bold, etc.)
-                    - However, do NOT use italic or strike-through formatting
-                    - You MUST write the full document, even when changing only a few words
-                    - When making edits to the document, try to make them minimal - do not change every word
-                    - Keep stories SHORT!
-                    - After you are done writing the document you MUST call a confirm_changes tool after you call write_document
-                    
-                    After the user confirms the changes, provide a brief summary of what you wrote.
-                    """,
-                Tools = [
-                    AIFunctionFactory.Create(
-                        this._documentTool.WriteDocumentAsync,
-                        name: "write_document",
-                        description: "Write a document. Use markdown formatting to format the document.",
-                        AGUIDojoServerSerializerContext.Default.Options)
-                ]
-            }
-        });
-
-        // Wrap with PredictiveStateUpdatesAgent for state updates, then with OpenTelemetry
-        return new PredictiveStateUpdatesAgent(baseAgent, options)
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for chart generative UI demonstrations.
-    /// </summary>
-    /// <remarks>
-    /// The agent uses the <c>show_chart</c> tool to return chart data that the
-    /// client's <c>ChartDisplay</c> component renders as a chart visualization.
-    /// This demonstrates the tool-based generative UI pattern where tool results
-    /// are rendered as custom Blazor components via <c>ToolComponentRegistry</c>.
-    /// </remarks>
-    /// <returns>An <see cref="AIAgent"/> configured with the chart tool, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateChart()
-    {
-        return this._chatClient.AsIChatClient().AsAIAgent(
-            instructions: """
-                You are a helpful data visualization assistant that can display data as charts.
-                When the user asks for trends, comparisons, distributions, or any visual data representation,
-                use the show_chart tool to visualize it.
-                
-                IMPORTANT:
-                - Always use the show_chart tool when the user asks for data visualization
-                - Choose the appropriate topic based on what the user is asking about
-                - Select the best chart type: 'bar' for comparisons, 'line' for trends, 'pie' for distributions, 'area' for cumulative data
-                - After showing the chart, provide a brief summary of the key insights
-                
-                Format your user-facing text response as in markdown.
-                """,
-            name: "ChartAgent",
-            description: "An agent that demonstrates chart generative UI by visualizing data.",
-            tools: [AIFunctionFactory.Create(
+                AGUIDojoServerSerializerContext.Default.Options),
+            new ApprovalRequiredAIFunction(
+                AIFunctionFactory.Create(
+                    this._emailTool.SendEmailAsync,
+                    name: "send_email",
+                    description: "Send an email to a recipient. Requires user approval before sending.",
+                    AGUIDojoServerSerializerContext.Default.Options)),
+            AIFunctionFactory.Create(
+                this._documentTool.WriteDocumentAsync,
+                name: "write_document",
+                description: "Write or edit a document. Use markdown formatting. Always write the full document.",
+                AGUIDojoServerSerializerContext.Default.Options),
+            AIFunctionFactory.Create(
+                AgenticPlanningTools.CreatePlan,
+                name: "create_plan",
+                description: "Create a plan with multiple steps for task execution.",
+                AGUIDojoServerSerializerContext.Default.Options),
+            AIFunctionFactory.Create(
+                AgenticPlanningTools.UpdatePlanStepAsync,
+                name: "update_plan_step",
+                description: "Update a step in an existing plan with new description or status.",
+                AGUIDojoServerSerializerContext.Default.Options),
+            AIFunctionFactory.Create(
                 ChartTool.ShowChartAsync,
                 name: "show_chart",
-                description: "Show data as a chart visualization. Use this when the user asks for trends, comparisons, distributions, or visual data representations.",
-                AGUIDojoServerSerializerContext.Default.Options)])
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for dynamic form generative UI demonstrations.
-    /// </summary>
-    /// <remarks>
-    /// The agent uses the <c>show_form</c> tool to return form definitions that the
-    /// client's <c>DynamicFormDisplay</c> component renders as interactive form UI.
-    /// This demonstrates the tool-based generative UI pattern where tool results
-    /// are rendered as custom Blazor components via <c>ToolComponentRegistry</c>.
-    /// </remarks>
-    /// <returns>An <see cref="AIAgent"/> configured with the dynamic form tool, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateDynamicForm()
-    {
-        return this._chatClient.AsIChatClient().AsAIAgent(
-            instructions: """
-                You are a helpful assistant that can generate dynamic forms for user input.
-                When the user asks you to create a form, collect information, or gather user input,
-                use the show_form tool to display an interactive form.
-                
-                IMPORTANT:
-                - Always use the show_form tool when the user asks for a form or data collection
-                - Choose the appropriate form type based on what the user is asking about
-                - After showing the form, provide a brief explanation of the form fields
-                
-                Format your user-facing text response as in markdown.
-                """,
-            name: "DynamicFormAgent",
-            description: "An agent that demonstrates dynamic form generative UI by displaying interactive forms.",
-            tools: [AIFunctionFactory.Create(
-                DynamicFormTool.ShowFormAsync,
-                name: "show_form",
-                description: "Show a dynamic form for user input. Use this when the user needs to fill out structured information like contact details, feedback, registrations, or orders.",
-                AGUIDojoServerSerializerContext.Default.Options)])
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
-    }
-
-    /// <summary>
-    /// Creates an agent for data grid generative UI demonstrations.
-    /// </summary>
-    /// <remarks>
-    /// The agent uses the <c>show_data_grid</c> tool to return tabular data that the
-    /// client's <c>DataGridDisplay</c> component renders as a rich table UI.
-    /// This demonstrates the tool-based generative UI pattern where tool results
-    /// are rendered as custom Blazor components via <c>ToolComponentRegistry</c>.
-    /// </remarks>
-    /// <returns>An <see cref="AIAgent"/> configured with the data grid tool, wrapped with OpenTelemetry instrumentation.</returns>
-    public AIAgent CreateDataGrid()
-    {
-        return this._chatClient.AsIChatClient().AsAIAgent(
-            instructions: """
-                You are a helpful data assistant that can display structured data in rich table views.
-                When the user asks to see data, comparisons, lists, inventories, or any tabular information,
-                use the show_data_grid tool to display it visually.
-                
-                IMPORTANT:
-                - Always use the show_data_grid tool when the user asks for structured data
-                - Choose the appropriate topic based on what the user is asking about
-                - You can specify maxRows to control how much data to show
-                - After showing the data grid, provide a brief summary of what was displayed
-                
-                Format your user-facing text response as in markdown.
-                """,
-            name: "DataGridAgent",
-            description: "An agent that demonstrates data grid generative UI by displaying tabular data.",
-            tools: [AIFunctionFactory.Create(
+                description: "Show data as a chart (bar, line, pie, area). Use for trends, comparisons, distributions.",
+                AGUIDojoServerSerializerContext.Default.Options),
+            AIFunctionFactory.Create(
                 DataGridTool.ShowDataGridAsync,
                 name: "show_data_grid",
-                description: "Show tabular data in a rich data grid. Use this when the user asks for structured data, comparisons, lists, or tables.",
-                AGUIDojoServerSerializerContext.Default.Options)])
-            .AsBuilder()
-            .UseOpenTelemetry(SourceName)
-            .Build();
+                description: "Show structured data in a rich table view. Use for lists, inventories, tabular data.",
+                AGUIDojoServerSerializerContext.Default.Options),
+            AIFunctionFactory.Create(
+                DynamicFormTool.ShowFormAsync,
+                name: "show_form",
+                description: "Show a dynamic form for user input. Use for registrations, feedback, orders.",
+                AGUIDojoServerSerializerContext.Default.Options)
+        ];
     }
+#pragma warning restore MEAI001
 }

@@ -3,12 +3,13 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using AGUIDojoServer;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
 namespace AGUIDojoServer.PredictiveStateUpdates;
 
-[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by ChatClientAgentFactory.CreatePredictiveStateUpdates")]
+[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by ChatClientAgentFactory.CreateUnifiedAgent")]
 internal sealed class PredictiveStateUpdatesAgent : DelegatingAIAgent
 {
     private readonly JsonSerializerOptions _jsonSerializerOptions;
@@ -31,6 +32,18 @@ internal sealed class PredictiveStateUpdatesAgent : DelegatingAIAgent
         AgentRunOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (options is ChatClientAgentRunOptions { ChatOptions.AdditionalProperties: { } properties } &&
+            properties.TryGetValue("ag_ui_shared_state_phase", out var phase) &&
+            string.Equals(phase?.ToString(), "state_update", StringComparison.Ordinal))
+        {
+            await foreach (var update in this.InnerAgent.RunStreamingAsync(messages, session, options, cancellationToken).ConfigureAwait(false))
+            {
+                yield return update;
+            }
+
+            yield break;
+        }
+
         // Track the last emitted document state to avoid duplicates
         string? lastEmittedDocument = null;
 
@@ -76,8 +89,12 @@ internal sealed class PredictiveStateUpdatesAgent : DelegatingAIAgent
                     // Prepare predictive state update as DataContent
                     var stateUpdate = new DocumentState { Document = chunk };
                     byte[] stateBytes = JsonSerializer.SerializeToUtf8Bytes(
-                        stateUpdate,
-                        this._jsonSerializerOptions.GetTypeInfo(typeof(DocumentState)));
+                        new TypedDataEnvelope<DocumentState>
+                        {
+                            Type = TypedDataEnvelopeTypes.DocumentPreview,
+                            Data = stateUpdate,
+                        },
+                        AGUIDojoServerSerializerContext.Default.DocumentEnvelope);
 
                     yield return new AgentResponseUpdate(
                         new ChatResponseUpdate(role: ChatRole.Assistant, [new DataContent(stateBytes, "application/json")])
