@@ -376,6 +376,24 @@ h1:focus {
     }
 
 /* --------------------------------------------------------------------------
+ * Screen Reader Only Utility
+ * --------------------------------------------------------------------------
+ * Visually hidden but accessible to screen readers. Used for ARIA
+ * announcements and skip-navigation text.
+ * -------------------------------------------------------------------------- */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* --------------------------------------------------------------------------
  * Layout Utilities
  * -------------------------------------------------------------------------- */
 .page-width {

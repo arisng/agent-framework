@@ -3,7 +3,7 @@
 
 @using System.Text.Json
 @using AGUIDojoClient.Models
-<div class="approval-card-wrapper">
+<div class="approval-card-wrapper" role="alertdialog" aria-label="Approval required for tool execution">
     <BbCard Class="approval-queue-card">
         <BbCardHeader>
             <div class="approval-header-row">
@@ -54,14 +54,16 @@
                 <BbButton Variant="ButtonVariant.Outline"
                         Class="approval-btn-reject"
                         OnClick="@HandleReject"
-                        Disabled="@_isProcessing">
+                        Disabled="@_isProcessing"
+                        AriaLabel="Reject tool execution">
                     <LucideIcon Name="x" Size="16" />
                     Reject
                 </BbButton>
                 <BbButton Variant="ButtonVariant.Default"
                         Class="approval-btn-approve"
                         OnClick="@HandleApprove"
-                        Disabled="@_isProcessing">
+                        Disabled="@_isProcessing"
+                        AriaLabel="Approve tool execution">
                     <LucideIcon Name="check" Size="16" />
                     Approve
                 </BbButton>

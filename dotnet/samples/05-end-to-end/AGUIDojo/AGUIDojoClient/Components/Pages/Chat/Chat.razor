@@ -18,7 +18,7 @@
             OnSessionDeleted="@HandleSessionDeletedAsync" />
 
 <BbSidebarInset>
-    <header class="sidebar-inset-header">
+    <header class="sidebar-inset-header" role="banner">
         <BbSidebarTrigger />
         <BbSeparator Orientation="SeparatorOrientation.Vertical" Class="h-6" />
 
@@ -47,6 +47,7 @@
         }
     </header>
 
+    <main id="main-content" role="main">
     <DualPaneLayout @ref="_dualPane">
         <ContextPaneContent>
             <ContextPane>
@@ -78,6 +79,7 @@
             </CanvasPane>
         </CanvasPaneContent>
     </DualPaneLayout>
+    </main>
 </BbSidebarInset>
 
 @code {

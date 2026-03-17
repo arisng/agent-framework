@@ -1,0 +1,22 @@
+@* Invisible element that announces status changes to screen readers *@
+<div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+    @_announcement
+</div>
+
+@code {
+    private string _announcement = "";
+
+    public void Announce(string message)
+    {
+        _announcement = message;
+        StateHasChanged();
+        _ = Task.Delay(1000).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _announcement = "";
+                StateHasChanged();
+            });
+        }, TaskScheduler.Default);
+    }
+}

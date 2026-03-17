@@ -1,5 +1,25 @@
 /* MainLayout — minimal styles since SidebarProvider handles layout */
 
+/* Skip Navigation Link — visible only on focus for keyboard users */
+.skip-nav {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 9999;
+    padding: 0.5rem 1rem;
+    background: var(--background);
+    color: var(--foreground);
+    border: 2px solid var(--primary);
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    text-decoration: none;
+}
+
+.skip-nav:focus {
+    left: 0.5rem;
+    top: 0.5rem;
+}
+
 #blazor-error-ui {
     color-scheme: light only;
     background: lightyellow;

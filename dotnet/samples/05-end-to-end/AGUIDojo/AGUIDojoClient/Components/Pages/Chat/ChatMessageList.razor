@@ -27,7 +27,7 @@
 @inject IState<SessionManagerState> SessionStore
 
 <div class="message-list-container">
-    <chat-messages class="message-list" in-progress="@(InProgressMessage is not null)">
+    <chat-messages class="message-list" role="log" aria-live="polite" aria-atomic="false" aria-relevant="additions" aria-label="Chat conversation" in-progress="@(InProgressMessage is not null)">
         @if (_shouldVirtualize)
         {
             @* Virtualize reduces DOM element count for conversations exceeding the threshold.
@@ -87,7 +87,7 @@
         }
         else if (IsEmpty)
         {
-            <div class="no-messages">@NoMessagesContent</div>
+            <div class="no-messages" role="status">@NoMessagesContent</div>
         }
 
         @* Render PlanProgress inline in message-list when a plan exists (state-based component) *@
@@ -101,7 +101,7 @@
         @* Approval card — renders inline at bottom of message list *@
         @if (PendingApproval is not null)
         {
-            <div class="approval-message">
+            <div class="approval-message" aria-live="assertive" role="alert">
                 @if (IsMobile)
                 {
                     <SwipeApproval FunctionName="@PendingApproval.FunctionName"

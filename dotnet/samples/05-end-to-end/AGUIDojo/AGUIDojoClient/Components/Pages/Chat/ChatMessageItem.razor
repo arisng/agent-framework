@@ -9,7 +9,7 @@
 
 @if (Message.Role == ChatRole.User)
 {
-    <div class="user-message">
+    <div class="user-message" role="article" aria-label="You said">
         @Message.Text
     </div>
 }
@@ -38,7 +38,7 @@ else if (Message.Role == ChatRole.Assistant)
             var renderInfo = GetVisualComponentRenderInfo(resultContent);
             if (renderInfo is not null)
             {
-                <div class="visual-tool-result">
+                <div class="visual-tool-result" aria-label="Tool result">
                     <DynamicComponent Type="renderInfo.Value.ComponentType" 
                                       Parameters="@(new Dictionary<string, object?> { { renderInfo.Value.ParameterName, renderInfo.Value.ParsedData } })" />
                 </div>
@@ -49,7 +49,7 @@ else if (Message.Role == ChatRole.Assistant)
     @* Render final assistant message(s) after visual components *@
     @foreach (var tc in textContents)
     {
-        <div class="assistant-message">
+        <div class="assistant-message" role="article" aria-label="@(Message.AuthorName ?? "Assistant") said">
             <div>
                 @if (!string.IsNullOrEmpty(Message.AuthorName))
                 {
