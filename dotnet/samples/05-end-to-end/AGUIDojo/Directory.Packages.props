@@ -14,4 +14,10 @@
     <!-- MY CUSTOMIZATION POINT: The AppHost SDK provides this package implicitly, so AGUIDojo must remove the central package entry to avoid NU1009 -->
     <PackageVersion Remove="Aspire.Hosting.AppHost" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Packages used by AGUIDojo tests that are not defined in the root central package versions. -->
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+  </ItemGroup>
 </Project>
