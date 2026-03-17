@@ -1,0 +1,114 @@
+@*
+    Copyright (c) Microsoft Corporation. All rights reserved.
+    Licensed under the MIT License.
+*@
+
+@using BlazorBlueprint.Components.Avatar
+@using BlazorBlueprint.Icons.Lucide.Components
+
+@* Renders a context-specific avatar for the agent based on AuthorName *@
+
+<div class="agent-avatar-wrapper" style="@GetAccentColorStyle()">
+    <Avatar Class="agent-avatar">
+        <AvatarFallback Class="agent-avatar-fallback">
+            @GetFallbackText()
+        </AvatarFallback>
+    </Avatar>
+    <div class="agent-avatar-icon">
+        <LucideIcon Name="@GetIconName()" Size="12" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The name of the agent author. Used to determine avatar icon and color.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required string AuthorName { get; set; }
+
+    /// <summary>
+    /// Categorizes known agent types for icon and color mapping.
+    /// </summary>
+    private enum AgentCategory
+    {
+        Chat,
+        Tool,
+        Approval,
+        Planning,
+        ToolUI,
+        SharedState,
+        Predictive,
+        Unknown
+    }
+
+    /// <summary>
+    /// Maps the <see cref="AuthorName"/> to an <see cref="AgentCategory"/>.
+    /// </summary>
+    private AgentCategory GetAgentCategory()
+    {
+        return AuthorName switch
+        {
+            "AgenticChat" => AgentCategory.Chat,
+            "BackendToolRenderer" => AgentCategory.Tool,
+            "HumanInTheLoopAgent" => AgentCategory.Approval,
+            "AgenticUIAgent" => AgentCategory.Planning,
+            "ToolBasedGenerativeUIAgent" => AgentCategory.ToolUI,
+            "SharedStateAgent" => AgentCategory.SharedState,
+            "PredictiveStateUpdatesAgent" => AgentCategory.Predictive,
+            _ => AgentCategory.Unknown
+        };
+    }
+
+    /// <summary>
+    /// Gets the Lucide icon name for the current agent category.
+    /// </summary>
+    private string GetIconName()
+    {
+        return GetAgentCategory() switch
+        {
+            AgentCategory.Chat => "message-circle",
+            AgentCategory.Tool => "wrench",
+            AgentCategory.Approval => "shield",
+            AgentCategory.Planning => "calendar",
+            AgentCategory.ToolUI => "paintbrush",
+            AgentCategory.SharedState => "share-2",
+            AgentCategory.Predictive => "sparkles",
+            _ => "bot"
+        };
+    }
+
+    /// <summary>
+    /// Gets the first 2 characters of the <see cref="AuthorName"/> for the avatar fallback.
+    /// </summary>
+    private string GetFallbackText()
+    {
+        if (string.IsNullOrEmpty(AuthorName))
+        {
+            return "AI";
+        }
+
+        return AuthorName.Length >= 2
+            ? AuthorName[..2].ToUpperInvariant()
+            : AuthorName.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Returns an inline CSS variable style string for the agent-specific accent color.
+    /// </summary>
+    private string GetAccentColorStyle()
+    {
+        var (bg, fg, badge) = GetAgentCategory() switch
+        {
+            AgentCategory.Chat => ("210 100% 95%", "210 100% 40%", "210 100% 50%"),
+            AgentCategory.Tool => ("142 76% 93%", "142 76% 30%", "142 76% 36%"),
+            AgentCategory.Approval => ("38 92% 93%", "38 92% 35%", "38 92% 50%"),
+            AgentCategory.Planning => ("262 83% 95%", "262 83% 40%", "262 83% 58%"),
+            AgentCategory.ToolUI => ("280 70% 94%", "280 70% 38%", "280 70% 50%"),
+            AgentCategory.SharedState => ("199 89% 93%", "199 89% 32%", "199 89% 48%"),
+            AgentCategory.Predictive => ("330 80% 94%", "330 80% 38%", "330 80% 55%"),
+            _ => ("250 50% 95%", "250 50% 40%", "250 50% 50%")
+        };
+
+        return $"--agent-bg: {bg}; --agent-fg: {fg}; --agent-badge: {badge};";
+    }
+}

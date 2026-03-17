@@ -1,0 +1,260 @@
+/* Copyright (c) Microsoft. All rights reserved. */
+/* MY CUSTOMIZATION POINT: CanvasPane scoped styles — with BB Tabs infrastructure */
+
+.canvas-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* MY CUSTOMIZATION POINT: Compact plan indicator bar at top of CanvasPane */
+.canvas-pane__plan-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border, #e4e4e7);
+    background: var(--muted, #f4f4f5);
+    flex-shrink: 0;
+}
+
+.canvas-pane__plan-info {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-shrink: 0;
+}
+
+.canvas-pane__plan-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--foreground, #18181b);
+}
+
+.canvas-pane__plan-count {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted-foreground, #a1a1aa);
+}
+
+::deep .canvas-pane__plan-progress {
+    flex: 1;
+    min-width: 60px;
+    height: 6px;
+}
+
+::deep .canvas-pane__plan-btn {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    gap: 0.25rem;
+}
+
+/* ==========================================================================
+   BB Tabs — canvas-pane tabbed artifact infrastructure
+   ========================================================================== */
+
+/* MY CUSTOMIZATION POINT: BB Tabs container — fills remaining vertical space */
+::deep .canvas-pane__tabs {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0; /* Enable width shrinking */
+    max-width: 100%; /* Enforce width constraint */
+    overflow: hidden;
+}
+
+/* ISS-606/607/608: BB Tabs renders an intermediate <div> wrapper (no class)
+   between the outermost Tabs div and the TabsList/TabsContent children.
+   This wrapper must participate in the flex height chain. */
+::deep .canvas-pane__tabs > div {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0; /* Enable width shrinking */
+    max-width: 100%; /* Enforce width constraint */
+}
+
+/* MY CUSTOMIZATION POINT: Tabs list — horizontal scrolling strip at top of canvas pane */
+::deep .canvas-pane__tabs-list {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border, #e4e4e7);
+    background: var(--muted, #f4f4f5);
+    padding: 0 0.5rem;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+/* MY CUSTOMIZATION POINT: Individual tab trigger styling */
+::deep .canvas-pane__tab-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--muted-foreground, #a1a1aa);
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+}
+
+::deep .canvas-pane__tab-trigger:hover {
+    color: var(--foreground, #18181b);
+}
+
+::deep .canvas-pane__tab-trigger[data-state="active"] {
+    color: var(--foreground, #18181b);
+    border-bottom-color: var(--primary, #18181b);
+    font-weight: 600;
+}
+
+/* MY CUSTOMIZATION POINT: Tab content panel — scrollable content area.
+   Must be a flex column container so .canvas-pane__scroll can use flex: 1.
+   Override BB's default mt-2 margin which wastes vertical space. */
+::deep .canvas-pane__tab-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%; /* Explicit width */
+    max-width: 100%; /* Enforce width constraint */
+    overflow: hidden;
+    margin-top: 0;
+}
+
+/* Hide inactive tab content panels (ForceMount keeps them in DOM).
+   BB uses the HTML hidden attribute, but also apply display:none for safety. */
+::deep .canvas-pane__tab-content[hidden] {
+    display: none !important;
+}
+
+::deep .canvas-pane__tab-content[data-state="inactive"] {
+    display: none !important;
+}
+
+/* ==========================================================================
+   Scroll container — independent scroll per tab
+   ========================================================================== */
+
+/* Scroll container — independent scroll per tab.
+   flex: 1 + min-height: 0 gives bounded height from the flex column parent.
+   overflow-y: auto enables vertical scrolling when content exceeds bounds. */
+.canvas-pane__scroll {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%; /* Enforce width constraint */
+    overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal overflow */
+    overscroll-behavior: contain;
+    container-type: inline-size;
+    container-name: canvas-scroll; /* Named container for robust querying */
+}
+
+/* ==========================================================================
+   Empty state
+   ========================================================================== */
+
+.canvas-pane__empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 300px;
+    padding: 2rem;
+}
+
+::deep .canvas-pane__empty-card {
+    max-width: 400px;
+    width: 100%;
+    border-style: dashed;
+}
+
+::deep .canvas-pane__empty-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    gap: 0.75rem;
+}
+
+::deep .canvas-pane__empty-icon {
+    color: var(--muted-foreground, #a1a1aa);
+    opacity: 0.6;
+    margin-bottom: 0.5rem;
+}
+
+.canvas-pane__empty-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--foreground, #18181b);
+    margin: 0;
+}
+
+.canvas-pane__empty-description {
+    font-size: 0.875rem;
+    color: var(--muted-foreground, #a1a1aa);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* DataGrid tab rendered by DataGridDisplay component — no placeholder needed */
+
+/* ==========================================================================
+   Monaco diff editor container in CanvasPane
+   ========================================================================== */
+
+.canvas-pane__monaco-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 400px;
+    height: 100%;
+    padding: 0.75rem;
+    gap: 0.5rem;
+}
+
+.canvas-pane__monaco-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    color: var(--foreground, #18181b);
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.canvas-pane__monaco-title {
+    flex: 1;
+}
+
+::deep .canvas-pane__monaco-badge {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+::deep .canvas-pane__monaco-badge.streaming {
+    background: hsl(var(--accent, 210 40% 96.1%));
+    color: hsl(var(--accent-foreground, 222.2 47.4% 11.2%));
+}
+
+::deep .canvas-pane__monaco-badge.finalized {
+    background: hsl(142 76% 36% / 0.15);
+    color: hsl(142 76% 36%);
+}
+
+.canvas-pane__monaco-editor {
+    flex: 1;
+    min-height: 300px;
+    border-radius: var(--radius, 0.5rem);
+    overflow: hidden;
+}

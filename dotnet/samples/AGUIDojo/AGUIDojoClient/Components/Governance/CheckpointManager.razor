@@ -1,0 +1,146 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — CheckpointManager: Time-travel UI showing state checkpoint timeline *@
+
+@using AGUIDojoClient.Models
+@using BlazorBlueprint.Components.Badge
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Components.Separator
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<Card Class="checkpoint-manager-card">
+    <CardHeader>
+        <CardTitle>
+            <LucideIcon Name="history" Size="16" Class="checkpoint-manager-icon" />
+            Checkpoints
+        </CardTitle>
+        <CardDescription>Revert to a previous state</CardDescription>
+    </CardHeader>
+    <CardContent>
+        @if (_orderedCheckpoints.Count == 0)
+        {
+            <div class="checkpoint-manager-empty">
+                <LucideIcon Name="archive" Size="32" Class="checkpoint-manager-empty-icon" />
+                <p>No checkpoints yet</p>
+                <p class="checkpoint-manager-empty-hint">Checkpoints are created automatically before state changes.</p>
+            </div>
+        }
+        else
+        {
+            <div class="checkpoint-manager-timeline">
+                @for (var i = 0; i < _orderedCheckpoints.Count; i++)
+                {
+                    var checkpoint = _orderedCheckpoints[i];
+                    var isLatest = i == 0;
+
+                    <div class="checkpoint-manager-item">
+                        <div class="checkpoint-manager-item-marker">
+                            <div class="checkpoint-manager-dot @(isLatest ? "checkpoint-manager-dot-latest" : "")"></div>
+                            @if (i < _orderedCheckpoints.Count - 1)
+                            {
+                                <div class="checkpoint-manager-line"></div>
+                            }
+                        </div>
+                        <div class="checkpoint-manager-item-content">
+                            <div class="checkpoint-manager-item-header">
+                                <span class="checkpoint-manager-label">@checkpoint.Label</span>
+                                @if (isLatest)
+                                {
+                                    <Badge Variant="BadgeVariant.Secondary">Latest</Badge>
+                                }
+                            </div>
+                            <div class="checkpoint-manager-item-meta">
+                                <span class="checkpoint-manager-time">
+                                    <LucideIcon Name="clock" Size="12" />
+                                    @FormatRelativeTime(checkpoint.Timestamp)
+                                </span>
+                                <span class="checkpoint-manager-messages">
+                                    <LucideIcon Name="message-square" Size="12" />
+                                    @checkpoint.MessageCount msgs
+                                </span>
+                            </div>
+                            @if (!isLatest)
+                            {
+                                <Button Variant="ButtonVariant.Outline"
+                                        Size="ButtonSize.Small"
+                                        Class="checkpoint-manager-revert-btn"
+                                        OnClick="@(() => HandleRevert(checkpoint.Id))">
+                                    <LucideIcon Name="undo-2" Size="14" />
+                                    Revert
+                                </Button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (i < _orderedCheckpoints.Count - 1)
+                    {
+                        <Separator Class="checkpoint-manager-separator" />
+                    }
+                }
+            </div>
+        }
+    </CardContent>
+</Card>
+
+@code {
+    /// <summary>
+    /// The list of checkpoints to display. Shown in reverse chronological order (newest first).
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<Checkpoint> Checkpoints { get; set; } = [];
+
+    /// <summary>
+    /// Callback invoked when the user clicks "Revert" on a checkpoint.
+    /// Receives the checkpoint ID to revert to.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnRevert { get; set; }
+
+    private List<Checkpoint> _orderedCheckpoints = [];
+
+    protected override void OnParametersSet()
+    {
+        // Order by timestamp descending (newest first) for timeline display
+        _orderedCheckpoints = Checkpoints
+            .OrderByDescending(c => c.Timestamp)
+            .ToList();
+    }
+
+    private async Task HandleRevert(string checkpointId)
+    {
+        if (OnRevert.HasDelegate)
+        {
+            await OnRevert.InvokeAsync(checkpointId);
+        }
+    }
+
+    private static string FormatRelativeTime(DateTime timestamp)
+    {
+        var elapsed = DateTime.UtcNow - timestamp;
+
+        if (elapsed.TotalSeconds < 5)
+        {
+            return "just now";
+        }
+
+        if (elapsed.TotalSeconds < 60)
+        {
+            return $"{(int)elapsed.TotalSeconds}s ago";
+        }
+
+        if (elapsed.TotalMinutes < 60)
+        {
+            var mins = (int)elapsed.TotalMinutes;
+            return mins == 1 ? "1 min ago" : $"{mins} min ago";
+        }
+
+        if (elapsed.TotalHours < 24)
+        {
+            var hours = (int)elapsed.TotalHours;
+            return hours == 1 ? "1 hour ago" : $"{hours} hours ago";
+        }
+
+        var days = (int)elapsed.TotalDays;
+        return days == 1 ? "1 day ago" : $"{days} days ago";
+    }
+}

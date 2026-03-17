@@ -1,0 +1,57 @@
+.message-list-container {
+    padding: 0.75rem 1rem;
+    flex: 1;
+    /* Enable scrolling for the message list, allowing ChatInput to stay sticky at bottom */
+    overflow-y: auto;
+    overflow-x: hidden; /* ISS-601: Prevent horizontal scroll in message list */
+    overscroll-behavior: contain;
+    min-height: 0;
+    min-width: 0; /* ISS-601: Allow flex child to shrink below content width */
+    display: flex;
+    flex-direction: column;
+}
+
+.message-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    flex: 1;
+    min-width: 0; /* ISS-601: Allow flex child to shrink below content width */
+}
+
+/* Removed: @media max-width: 52rem — context-pane is already width-constrained by ResizablePanel in dual-pane mode */
+
+.no-messages {
+    text-align: center;
+    font-size: 1.25rem;
+    color: hsl(var(--muted-foreground));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+}
+
+chat-messages > ::deep div:last-of-type {
+    /* Adds some vertical buffer to so that suggestions don't overlap the output when they appear */
+    margin-bottom: 2rem;
+}
+
+/* Plan Progress Message - inline state-based component rendering in message-list */
+.plan-progress-message {
+    margin: 0.75rem 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+
+    .plan-progress-message > * {
+        width: 100%;
+    }
+
+/* Approval Message - inline approval card rendered at the same level as assistant messages */
+.approval-message {
+    margin: 0.75rem 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+}

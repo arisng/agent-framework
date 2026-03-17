@@ -1,0 +1,210 @@
+/* Copyright (c) Microsoft. All rights reserved. */
+
+.approval-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: hsl(var(--background) / 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.approval-dialog {
+    background: hsl(var(--surface-2));
+    border-radius: 16px;
+    box-shadow: 0 20px 60px hsl(var(--foreground) / 0.2), 0 0 1px hsl(var(--border)) inset;
+    max-width: 480px;
+    width: 90%;
+    overflow: hidden;
+    animation: slideUp 0.3s ease-out;
+    border: 1px solid hsl(var(--border));
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.approval-dialog-header {
+    background: hsl(var(--accent-amber));
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.approval-icon {
+    width: 32px;
+    height: 32px;
+    background: hsl(var(--background) / 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.approval-icon svg {
+    width: 20px;
+    height: 20px;
+    color: hsl(var(--background));
+}
+
+.approval-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: hsl(var(--background));
+    text-shadow: 0 1px 2px hsl(var(--foreground) / 0.2);
+}
+
+.approval-dialog-content {
+    padding: 24px;
+}
+
+.approval-message {
+    font-size: 15px;
+    color: hsl(var(--text-primary));
+    line-height: 1.5;
+    margin-bottom: 20px;
+}
+
+.approval-details {
+    background: hsl(var(--surface-3));
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid hsl(var(--border));
+}
+
+.approval-detail-item {
+    margin-bottom: 12px;
+}
+
+.approval-detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.detail-label {
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.detail-value {
+    font-size: 14px;
+    color: hsl(var(--accent-cyan));
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 500;
+}
+
+.detail-arguments {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.argument-item {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    background: hsl(var(--surface-1));
+    border-radius: 8px;
+}
+
+.argument-name {
+    color: hsl(var(--text-secondary));
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+}
+
+.argument-value {
+    color: hsl(var(--alert-success));
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+}
+
+.approval-dialog-actions {
+    display: flex;
+    gap: 12px;
+    padding: 20px 24px;
+    background: hsl(var(--surface-1));
+    border-top: 1px solid hsl(var(--border));
+}
+
+.approval-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.approval-button svg {
+    width: 18px;
+    height: 18px;
+}
+
+.approval-button.approve {
+    background: hsl(var(--alert-success));
+    color: hsl(var(--background));
+    box-shadow: 0 4px 12px hsl(var(--alert-success) / 0.3);
+}
+
+.approval-button.approve:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px hsl(var(--alert-success) / 0.4);
+}
+
+.approval-button.approve:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.approval-button.reject {
+    background: hsl(var(--alert-danger));
+    color: hsl(var(--background));
+    box-shadow: 0 4px 12px hsl(var(--alert-danger) / 0.3);
+}
+
+.approval-button.reject:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px hsl(var(--alert-danger) / 0.4);
+}
+
+.approval-button.reject:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.approval-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}

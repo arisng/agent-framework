@@ -1,0 +1,297 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* Dual-pane layout container for 2026 Agentic UX *@
+@* Uses BlazorBlueprint ResizablePanelGroup for desktop (≥768px) and
+   MobileLayout with bottom drawer for mobile (<768px). ViewportService
+   detects viewport width and triggers layout switch at the breakpoint.
+   Accepts RenderFragment parameters for each pane's content.
+   Persists splitter position to localStorage via JS interop (desktop only). *@
+@using BlazorBlueprint.Components.Resizable
+@using BlazorBlueprint.Components.Button
+@using AGUIDojoClient.Store.ArtifactState
+@* Inject ViewportService for responsive layout switching *@
+@inject ViewportService ViewportService
+@inject IJSRuntime JSRuntime
+@* Inject ArtifactState to detect interactive artifacts *@
+@inject IState<ArtifactState> ArtifactStore
+@* Inherit FluxorComponent for automatic state change subscriptions *@
+@inherits Fluxor.Blazor.Web.Components.FluxorComponent
+@implements IAsyncDisposable
+
+@* Responsive layout switch — mobile (<768px) vs desktop (≥768px) *@
+@* Wait for ViewportService initialization and layout persistence
+   read before rendering to avoid mounting MobileLayout's Drawer JS interop on desktop
+   and immediately disposing it, which causes a Blazor circuit error.
+   ViewportWidth defaults to 0 (IsMobile=true) before init. *@
+@if (!_viewportInitialized)
+{
+    @* Show nothing (or a brief loading flash) until viewport is detected *@
+}
+else if (ViewportService.IsMobile)
+{
+    @* Mobile layout — single-column with bottom drawer for artifacts *@
+    <MobileLayout ContextPaneContent="@ContextPaneContent"
+                  CanvasPaneContent="@CanvasPaneContent"
+                  @bind-IsDrawerOpen="_mobileDrawerOpen" />
+}
+else
+{
+    <div class="dual-pane-root" @ref="_panelGroupRef">
+
+        @* Conditional dual-pane vs single-pane layout based on artifact + user toggle *@
+        @if (ShowCanvasPane)
+        {
+            @* Dual-pane layout: context-pane + canvas-pane *@
+            <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
+                @* Context Pane — chat, suggestions, approval UI *@
+                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="30" Class="context-panel" Collapsible="false">
+                    @if (ContextPaneContent is not null)
+                    {
+                        @ContextPaneContent
+                    }
+                </ResizablePanel>
+
+                <ResizableHandle WithHandle="false" Class="dual-pane-handle" />
+
+                @* Canvas Pane — artifacts, plan progress, editors, previews *@
+                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="30" Class="canvas-panel" Collapsible="true">
+                    @if (CanvasPaneContent is not null)
+                    {
+                        @CanvasPaneContent
+                    }
+                </ResizablePanel>
+            </ResizablePanelGroup>
+        }
+        else
+        {
+            @* Single-pane layout: context-pane only (canvas-pane hidden or no artifact) *@
+            <div class="single-pane-layout">
+                @if (ContextPaneContent is not null)
+                {
+                    @ContextPaneContent
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    // Mobile drawer open state
+    private bool _mobileDrawerOpen;
+
+    // Track ViewportService initialization to prevent
+    // rendering MobileLayout's Drawer JS interop on desktop before switching.
+    private bool _viewportInitialized;
+
+    // User-controlled canvas pane hidden state.
+    // When true, the canvas pane is hidden and context pane takes full width.
+    // Persisted to localStorage via layoutPersistence.js interop.
+    public bool IsCanvasPaneHidden => _canvasPaneHidden;
+    private bool _canvasPaneHidden;
+
+    // Layout persistence state.
+    // Splitter position is saved/restored via layoutPersistence.js interop.
+    // Falls back to DefaultSize="40"/"60" if no persisted value exists.
+    private IJSObjectReference? _layoutModule;
+    private int _contextPanelSize = 40;
+    private int _canvasPanelSize = 60;
+    private bool _persistenceInitialized;
+    private ElementReference _panelGroupRef;
+
+    /// <summary>
+    /// Content rendered in the Context Pane (left side on desktop, main view on mobile) —
+    /// typically chat, input, suggestions, and approval UI.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ContextPaneContent { get; set; }
+
+    /// <summary>
+    /// Content rendered in the Canvas Pane (right side on desktop, bottom drawer on mobile) —
+    /// typically artifacts, plan progress, editors, and previews.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? CanvasPaneContent { get; set; }
+
+    /// <summary>
+    /// Gets whether an interactive shared artifact is currently active.
+    /// When <see langword="true"/>, the canvas-pane is visible in desktop layout.
+    /// When <see langword="false"/>, the layout switches to single-pane (context-pane only).
+    /// </summary>
+    private bool HasInteractiveArtifact => ArtifactStore.Value.HasInteractiveArtifact;
+
+    /// <summary>
+    /// Gets whether the canvas pane should be visible.
+    /// Requires both an interactive artifact AND the user has not manually hidden the pane.
+    /// </summary>
+    private bool ShowCanvasPane => HasInteractiveArtifact && !_canvasPaneHidden;
+
+    // Initialize ViewportService, read persisted layout,
+    // subscribe to viewport changes, and set up layout persistence observer.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ViewportService.InitializeAsync();
+            ViewportService.OnViewportChanged += OnViewportChanged;
+
+            // Read persisted splitter position and canvas hidden state on desktop only.
+            // Mobile viewport ignores persisted values.
+            if (!ViewportService.IsMobile)
+            {
+                await ReadPersistedLayoutAsync();
+                await ReadPersistedCanvasHiddenAsync();
+            }
+
+            // Mark initialized and re-render with correct layout.
+            _viewportInitialized = true;
+            StateHasChanged();
+            return;
+        }
+
+        // Initialize persistence observer after panels render.
+        // This runs on the second render (after _viewportInitialized triggers re-render)
+        // so that the ResizablePanelGroup DOM elements exist for the MutationObserver.
+        if (_viewportInitialized && !_persistenceInitialized && !ViewportService.IsMobile)
+        {
+            _persistenceInitialized = true;
+            await InitLayoutPersistenceAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reads the persisted canvas-pane hidden state from localStorage via JS interop.
+    /// Defaults to <c>false</c> (visible) if no persisted value exists.
+    /// </summary>
+    private async Task ReadPersistedCanvasHiddenAsync()
+    {
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./js/layoutPersistence.js");
+            }
+
+            _canvasPaneHidden = await _layoutModule.InvokeAsync<bool>("loadCanvasPaneHidden");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — keep default (visible).
+        }
+    }
+
+    /// <summary>
+    /// Toggles the canvas pane hidden state and persists to localStorage.
+    /// </summary>
+    public async Task ToggleCanvasPane()
+    {
+        _canvasPaneHidden = !_canvasPaneHidden;
+
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./js/layoutPersistence.js");
+            }
+
+            await _layoutModule.InvokeVoidAsync("saveCanvasPaneHidden", _canvasPaneHidden);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — state is still toggled in memory.
+        }
+
+        // Re-initialize persistence observer when restoring dual-pane
+        // because the ResizablePanelGroup DOM was destroyed and recreated.
+        if (!_canvasPaneHidden)
+        {
+            _persistenceInitialized = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads the persisted splitter position from localStorage via JS interop.
+    /// Falls back to <c>DefaultSize="40"/"60"</c> if no persisted value exists.
+    /// </summary>
+    private async Task ReadPersistedLayoutAsync()
+    {
+        try
+        {
+            _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import", "./js/layoutPersistence.js");
+
+            var persisted = await _layoutModule.InvokeAsync<LayoutData?>("getPersistedLayout");
+
+            if (persisted is not null)
+            {
+                _contextPanelSize = (int)Math.Round(persisted.ContextSize);
+                _canvasPanelSize = (int)Math.Round(persisted.CanvasSize);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — use default sizes.
+        }
+    }
+
+    /// <summary>
+    /// Starts the MutationObserver on the panel group to detect and persist
+    /// splitter position changes with a 500ms debounce.
+    /// </summary>
+    private async Task InitLayoutPersistenceAsync()
+    {
+        try
+        {
+            if (_layoutModule is null)
+            {
+                _layoutModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import", "./js/layoutPersistence.js");
+            }
+
+            await _layoutModule.InvokeVoidAsync("initLayoutPersistence", _panelGroupRef);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected — persistence is not critical.
+        }
+    }
+
+    // Re-render when viewport crosses mobile breakpoint
+    private void OnViewportChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    // Cleanup ViewportService event subscription and layout persistence
+    public new async ValueTask DisposeAsync()
+    {
+        ViewportService.OnViewportChanged -= OnViewportChanged;
+
+        if (_layoutModule is not null)
+        {
+            try
+            {
+                await _layoutModule.InvokeVoidAsync("dispose");
+                await _layoutModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected — JS cleanup is no longer possible.
+            }
+        }
+
+        await base.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Deserialization target for persisted layout data from localStorage.
+    /// </summary>
+    private sealed record LayoutData
+    {
+        /// <summary>Gets the persisted context pane size as a percentage (0–100).</summary>
+        public double ContextSize { get; init; }
+
+        /// <summary>Gets the persisted canvas pane size as a percentage (0–100).</summary>
+        public double CanvasSize { get; init; }
+    }
+}

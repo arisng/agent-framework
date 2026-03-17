@@ -1,0 +1,60 @@
+/* MY CUSTOMIZATION POINT: Dual-pane layout styles for 2026 Agentic UX */
+
+/* Root container fills the available height (SidebarInset provides width constraint) */
+.dual-pane-root {
+    position: relative;
+    height: calc(100svh - 3rem); /* Viewport-based: bypasses ancestor height chain */
+    width: 100%;
+    overflow: hidden;
+}
+
+/* ResizablePanelGroup container */
+.dual-pane-root ::deep .dual-pane-group {
+    height: 100%;
+    width: 100%;
+}
+
+/* Context Pane (left) — chat and negotiation area */
+/* ISS-005: min-width enforces a hard pixel floor so the pane cannot be
+   dragged below a readable width. */
+.dual-pane-root ::deep .context-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+    min-width: 300px !important;
+    /* ISS-601: Override default min-width: auto so flex children can shrink below content size */
+    contain: inline-size;
+}
+
+/* Canvas Pane (right) — artifact and work product area */
+/* ISS-005: min-width enforces a hard pixel floor so the pane cannot be
+   dragged below a readable width. */
+.dual-pane-root ::deep .canvas-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    min-width: 300px !important;
+}
+
+/* Resizable handle styling */
+.dual-pane-root ::deep .dual-pane-handle {
+    background-color: var(--border, #e5e7eb);
+    transition: background-color 0.15s ease;
+}
+
+.dual-pane-root ::deep .dual-pane-handle:hover {
+    background-color: var(--primary, #3b82f6);
+}
+
+/* MY CUSTOMIZATION POINT: Single-pane layout when no interactive artifacts are active */
+.dual-pane-root .single-pane-layout {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+

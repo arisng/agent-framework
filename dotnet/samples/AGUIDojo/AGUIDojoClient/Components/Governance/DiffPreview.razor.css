@@ -1,0 +1,88 @@
+/* MY CUSTOMIZATION POINT — DiffPreview scoped styles */
+
+/* Wrapper div provides scoped containment around the BB Card root
+   (Card's root element doesn't receive the Blazor scope attribute b-XXXX,
+   so .diff-preview-card rules would be dead code without this wrapper) */
+.diff-preview-wrapper {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.diff-preview-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.5rem;
+    min-height: 120px;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.diff-preview-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow: hidden;
+    min-width: 0;
+    contain: inline-size;
+}
+
+.diff-preview-column-header {
+    display: flex;
+    align-items: center;
+    padding-bottom: 0.25rem;
+}
+
+.diff-preview-scroll {
+    max-height: 300px;
+    width: 100%;
+    border: none;
+    border-radius: var(--radius);
+    background: color-mix(in oklch, var(--muted) 50%, transparent);
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.diff-preview-content {
+    margin: 0;
+    padding: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.diff-line-unchanged {
+    display: block;
+    color: hsl(var(--foreground));
+}
+
+.diff-line-added {
+    display: block;
+    background-color: hsl(142 76% 36% / 0.15);
+    color: hsl(142 76% 36%);
+}
+
+.diff-line-removed {
+    display: block;
+    background-color: hsl(0 84% 60% / 0.15);
+    color: hsl(0 84% 60%);
+}
+
+/* Responsive: stack columns vertically when canvas-pane is narrow */
+@container (max-width: 500px) {
+    .diff-preview-columns {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+
+    ::deep .diff-preview-separator {
+        display: none;
+    }
+}

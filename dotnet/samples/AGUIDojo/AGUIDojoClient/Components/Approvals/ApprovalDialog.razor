@@ -1,0 +1,119 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+
+@using System.Text.Json
+@using AGUIDojoClient.Services
+
+<div class="approval-dialog-overlay">
+    <div class="approval-dialog">
+        <div class="approval-dialog-header">
+            <div class="approval-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+                </svg>
+            </div>
+            <div class="approval-title">Approval Required</div>
+        </div>
+        
+        <div class="approval-dialog-content">
+            <div class="approval-message">@Approval.Message</div>
+            
+            <div class="approval-details">
+                <div class="approval-detail-item">
+                    <span class="detail-label">Function:</span>
+                    <span class="detail-value">@Approval.FunctionName</span>
+                </div>
+                
+                @if (Approval.FunctionArguments.HasValue && Approval.FunctionArguments.Value.ValueKind != JsonValueKind.Null)
+                {
+                    <div class="approval-detail-item">
+                        <span class="detail-label">Arguments:</span>
+                        <div class="detail-arguments">
+                            @foreach (var property in Approval.FunctionArguments.Value.EnumerateObject())
+                            {
+                                <div class="argument-item">
+                                    <span class="argument-name">@property.Name:</span>
+                                    <span class="argument-value">@FormatArgumentValue(property.Value)</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+        
+        <div class="approval-dialog-actions">
+            <button class="approval-button reject" @onclick="OnReject" disabled="@IsProcessing">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+                Reject
+            </button>
+            <button class="approval-button approve" @onclick="OnApprove" disabled="@IsProcessing">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                Approve
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The pending approval to display.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required PendingApproval Approval { get; set; }
+
+    /// <summary>
+    /// Callback when the user approves the request.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required EventCallback<string> OnApproved { get; set; }
+
+    /// <summary>
+    /// Callback when the user rejects the request.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required EventCallback<string> OnRejected { get; set; }
+
+    private bool IsProcessing { get; set; }
+
+    private async Task OnApprove()
+    {
+        if (IsProcessing)
+        {
+            return;
+        }
+
+        IsProcessing = true;
+        await OnApproved.InvokeAsync(Approval.ApprovalId);
+    }
+
+    private async Task OnReject()
+    {
+        if (IsProcessing)
+        {
+            return;
+        }
+
+        IsProcessing = true;
+        await OnRejected.InvokeAsync(Approval.ApprovalId);
+    }
+
+    /// <summary>
+    /// Formats a JSON value for display.
+    /// </summary>
+    private static string FormatArgumentValue(JsonElement value)
+    {
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? "(null)",
+            JsonValueKind.Number => value.ToString(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null => "(null)",
+            _ => value.ToString()
+        };
+    }
+}

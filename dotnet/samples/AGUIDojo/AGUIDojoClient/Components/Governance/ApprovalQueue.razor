@@ -1,0 +1,157 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT — ApprovalQueue: Inline approval card styled as a message peer with Claude theme *@
+
+@using System.Text.Json
+@using AGUIDojoClient.Models
+@using BlazorBlueprint.Components.Card
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Separator
+@using BlazorBlueprint.Components.Badge
+@using BlazorBlueprint.Icons.Lucide.Components
+
+<div class="approval-card-wrapper">
+    <Card Class="approval-queue-card">
+        <CardHeader>
+            <div class="approval-header-row">
+                <div class="approval-icon-title">
+                    <div class="approval-icon">
+                        <LucideIcon Name="shield-alert" Size="20" />
+                    </div>
+                    <div class="approval-title-group">
+                        <CardTitle Class="approval-title">Approval Required</CardTitle>
+                        <CardDescription Class="approval-subtitle">
+                            The agent wants to execute a tool and needs your permission.
+                        </CardDescription>
+                    </div>
+                </div>
+                <RiskBadge Level="@RiskLevel" />
+            </div>
+        </CardHeader>
+        <CardContent>
+            <div class="approval-function-section">
+                <span class="approval-section-label">Function</span>
+                <code class="approval-function-name">@FunctionName</code>
+            </div>
+
+            @if (Arguments is not null && Arguments.Count > 0)
+            {
+                <Separator Class="approval-separator" />
+
+                <details class="approval-arguments-details" @onclick:stopPropagation>
+                    <summary class="approval-arguments-summary">
+                        <LucideIcon Name="chevron-right" Size="14" Class="approval-chevron" />
+                        <span class="approval-section-label">Arguments</span>
+                        <Badge Variant="BadgeVariant.Secondary" Class="approval-arg-count">@Arguments.Count</Badge>
+                    </summary>
+                    <div class="approval-arguments-body">
+                        @foreach (var arg in Arguments)
+                        {
+                            <div class="approval-argument-item">
+                                <span class="approval-argument-name">@arg.Key</span>
+                                <span class="approval-argument-value">@FormatArgumentValue(arg.Value)</span>
+                            </div>
+                        }
+                    </div>
+                </details>
+            }
+        </CardContent>
+        <CardFooter>
+            <div class="approval-actions">
+                <Button Variant="ButtonVariant.Outline"
+                        Class="approval-btn-reject"
+                        OnClick="@HandleReject"
+                        Disabled="@_isProcessing">
+                    <LucideIcon Name="x" Size="16" />
+                    Reject
+                </Button>
+                <Button Variant="ButtonVariant.Default"
+                        Class="approval-btn-approve"
+                        OnClick="@HandleApprove"
+                        Disabled="@_isProcessing">
+                    <LucideIcon Name="check" Size="16" />
+                    Approve
+                </Button>
+            </div>
+        </CardFooter>
+    </Card>
+</div>
+
+@code {
+    /// <summary>
+    /// The name of the function/tool the agent wants to execute.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required string FunctionName { get; set; }
+
+    /// <summary>
+    /// The arguments the agent intends to pass to the function.
+    /// </summary>
+    [Parameter]
+    public IDictionary<string, object?>? Arguments { get; set; }
+
+    /// <summary>
+    /// The assessed risk level for this action.
+    /// </summary>
+    [Parameter]
+    public RiskLevel RiskLevel { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user makes a decision.
+    /// True = approved, False = rejected.
+    /// CRITICAL: The parent Chat.razor preserves TaskCompletionSource blocking
+    /// semantic — this component only replaces the modal UI, not the protocol flow.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required EventCallback<bool> OnDecision { get; set; }
+
+    private bool _isProcessing;
+
+    private async Task HandleApprove()
+    {
+        if (_isProcessing)
+        {
+            return;
+        }
+
+        _isProcessing = true;
+        await OnDecision.InvokeAsync(true);
+    }
+
+    private async Task HandleReject()
+    {
+        if (_isProcessing)
+        {
+            return;
+        }
+
+        _isProcessing = true;
+        await OnDecision.InvokeAsync(false);
+    }
+
+    /// <summary>
+    /// Formats an argument value for display.
+    /// Handles JSON elements, nulls, and other types.
+    /// </summary>
+    private static string FormatArgumentValue(object? value)
+    {
+        if (value is null)
+        {
+            return "(null)";
+        }
+
+        if (value is JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind switch
+            {
+                JsonValueKind.String => jsonElement.GetString() ?? "(null)",
+                JsonValueKind.Number => jsonElement.ToString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Null => "(null)",
+                _ => jsonElement.ToString()
+            };
+        }
+
+        return value.ToString() ?? "(null)";
+    }
+}

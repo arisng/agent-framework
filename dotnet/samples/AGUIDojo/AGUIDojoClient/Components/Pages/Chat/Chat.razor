@@ -1,0 +1,270 @@
+@page "/"
+@using AGUIDojoClient.Helpers
+@using AGUIDojoClient.Store.AgentState
+@using AGUIDojoClient.Store.ArtifactState
+@using AGUIDojoClient.Store.ChatState
+@using AGUIDojoClient.Store.PlanState
+@using BlazorBlueprint.Components.Button
+@using BlazorBlueprint.Components.Collapsible
+@using BlazorBlueprint.Components.Separator
+@inject IAGUIChatClientFactory ClientFactory
+@inject IAgentStreamingService StreamingService
+@inject IObservabilityService ObservabilityService
+@inject IRiskAssessmentService RiskAssessmentService
+@inject ICheckpointService CheckpointService
+@inject IStateManager StateManager
+@inject ViewportService ViewportService
+@inject IDispatcher Dispatcher
+@inject IState<PlanState> PlanStore
+@inject IState<AgentState> AgentStore
+@inject IState<ArtifactState> ArtifactStore
+@inject IState<ChatState> ChatStore
+@implements IDisposable
+
+<PageTitle>AG-UI Dojo Chat</PageTitle>
+
+@* Sidebar — vertical navigation with endpoints, new chat, theme toggle *@
+<ChatHeader OnNewChat="@ResetConversationAsync"
+            AvailableEndpoints="@ClientFactory.AvailableEndpoints"
+            SelectedEndpointPath="@AgentStore.Value.SelectedEndpointPath"
+            OnEndpointChanged="@OnEndpointChangedAsync" />
+
+@* SidebarInset — main content area pushed by the sidebar *@
+<SidebarInset>
+    @* Compact header bar with sidebar toggle trigger *@
+    <header class="sidebar-inset-header">
+        <SidebarTrigger />
+        <Separator Orientation="SeparatorOrientation.Vertical" Class="h-6" />
+        <span class="inset-header-title">@GetCurrentEndpointDisplayName()</span>
+
+        @if (ArtifactStore.Value.HasInteractiveArtifact)
+        {
+            <Button Variant="ButtonVariant.Ghost"
+                    Size="ButtonSize.IconSmall"
+                    Class="canvas-toggle-btn ml-auto"
+                    OnClick="@(() => _dualPane?.ToggleCanvasPane() ?? Task.CompletedTask)"
+                    AriaLabel="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "Show canvas pane" : "Hide canvas pane")">
+                <LucideIcon Name="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "panel-right-open" : "panel-right-close")" Size="16" />
+            </Button>
+        }
+    </header>
+
+    @* Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
+    <DualPaneLayout @ref="_dualPane">
+        <ContextPaneContent>
+            <ContextPane>
+                <ChatMessageList Messages="@ChatStore.Value.Messages"
+                                InProgressMessage="@ChatStore.Value.CurrentResponseMessage"
+                                PendingApproval="@ChatStore.Value.PendingApproval"
+                                OnApprovalDecision="@OnApprovalDecision"
+                                RiskLevel="@(ChatStore.Value.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName) : RiskLevel.Low)"
+                                IsMobile="@ViewportService.IsMobile">
+                    <NoMessagesContent>
+                        <div>Ask the assistant a question to start a conversation.</div>
+                    </NoMessagesContent>
+                </ChatMessageList>
+                <div class="chat-container">
+                    <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
+                    <ChatInput OnSend="@AddUserMessageAsync"
+                            IsAgentRunning="@AgentStore.Value.IsRunning"
+                            OnPanic="@HandlePanicAsync"
+                            @ref="@chatInput" />
+                </div>
+            </ContextPane>
+        </ContextPaneContent>
+        <CanvasPaneContent>
+            <CanvasPane>
+                @* All artifact content is now rendered by CanvasPane's BB Tabs
+                infrastructure from IState<ArtifactState> — DiffPreview, RecipeEditor, DocumentPreview,
+                and DataGrid tabs are dynamically shown/hidden based on ArtifactState.VisibleTabs.
+                See CanvasPane.razor for tab implementation details. *@
+            </CanvasPane>
+        </CanvasPaneContent>
+    </DualPaneLayout>
+</SidebarInset>
+
+@code {
+    private const string SystemPrompt = @"
+        You are a helpful assistant.
+        ";
+
+    private const int ThrottleDelayMs = 100; // Throttle StateHasChanged to prevent render thrashing
+
+    private DualPaneLayout? _dualPane;
+    private ChatInput? chatInput;
+    private ChatSuggestions? chatSuggestions;
+    private IChatClient? activeChatClient;
+    private DateTime lastStateChangeTime = DateTime.MinValue;
+    private bool pendingStateChange = false;
+    private System.Timers.Timer? throttleTimer;
+
+    /// <summary>
+    /// Gets whether the currently selected endpoint is the Shared State endpoint.
+    /// </summary>
+    private bool IsSharedStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets whether the currently selected endpoint is the Predictive State Updates endpoint.
+    /// </summary>
+    private bool IsPredictiveStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets the display name for the currently selected endpoint, shown in the inset header bar.
+    /// </summary>
+    private string GetCurrentEndpointDisplayName()
+    {
+        return ClientFactory.AvailableEndpoints
+            .FirstOrDefault(e => string.Equals(e.Path, AgentStore.Value.SelectedEndpointPath, StringComparison.OrdinalIgnoreCase))
+            ?.DisplayName ?? "AG-UI Dojo";
+    }
+
+    protected override void OnInitialized()
+    {
+        Dispatcher.Dispatch(new ChatActions.AddMessageAction(new(ChatRole.System, SystemPrompt)));
+        activeChatClient = ClientFactory.CreateClient(AgentStore.Value.SelectedEndpointPath);
+
+        // Register UI callbacks for the streaming service
+        StreamingService.SetUiCallbacks(ThrottledStateHasChanged, () => InvokeAsync(StateHasChanged));
+
+        // Initialize state manager for Shared State feature
+        StreamingService.InitializeEndpointState(AgentStore.Value.SelectedEndpointPath);
+
+        // Initialize throttle timer for debounced UI updates
+        throttleTimer = new System.Timers.Timer(ThrottleDelayMs);
+        throttleTimer.AutoReset = false;
+        throttleTimer.Elapsed += OnThrottleElapsed;
+
+        // Subscribe to Fluxor state changes with throttled rendering
+        // (NOT FluxorComponent — preserves ThrottledStateHasChanged for SSE streaming)
+        PlanStore.StateChanged += OnFluxorStateChanged;
+        AgentStore.StateChanged += OnFluxorStateChanged;
+        ArtifactStore.StateChanged += OnFluxorStateChanged;
+        ChatStore.StateChanged += OnFluxorStateChanged;
+    }
+
+    /// <summary>
+    /// Handles Fluxor state changes by triggering throttled UI updates.
+    /// Uses a single handler for all stores instead of FluxorComponent
+    /// to preserve ThrottledStateHasChanged debounce for SSE streaming.
+    /// </summary>
+    private void OnFluxorStateChanged(object? sender, EventArgs e) => ThrottledStateHasChanged();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ViewportService.InitializeAsync();
+            ViewportService.OnViewportChanged += OnViewportChanged;
+        }
+    }
+
+    private void OnViewportChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    /// <summary>
+    /// Throttled StateHasChanged to prevent render thrashing during rapid streaming updates.
+    /// </summary>
+    private void ThrottledStateHasChanged()
+    {
+        DateTime now = DateTime.UtcNow;
+        if ((now - lastStateChangeTime).TotalMilliseconds >= ThrottleDelayMs)
+        {
+            lastStateChangeTime = now;
+            InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            pendingStateChange = true;
+            throttleTimer?.Stop();
+            throttleTimer?.Start();
+        }
+    }
+
+    private void OnThrottleElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        if (pendingStateChange)
+        {
+            pendingStateChange = false;
+            lastStateChangeTime = DateTime.UtcNow;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Handles endpoint selection change by creating a new client and resetting the conversation.
+    /// </summary>
+    private async Task OnEndpointChangedAsync(string newEndpointPath)
+    {
+        if (string.Equals(AgentStore.Value.SelectedEndpointPath, newEndpointPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Dispatcher.Dispatch(new AgentActions.SetEndpointAction(newEndpointPath));
+        activeChatClient = ClientFactory.CreateClient(newEndpointPath);
+        await ResetConversationAsync();
+        StreamingService.InitializeEndpointState(newEndpointPath);
+    }
+
+    private async Task AddUserMessageAsync(ChatMessage userMessage)
+    {
+        StreamingService.CancelAnyCurrentResponse();
+
+        // For shared state endpoint, add state DataContent to the user message
+        if (IsSharedStateEndpoint && StateManager.HasActiveState)
+        {
+            DataContent stateContent = StateManager.CreateStateContent();
+            userMessage.Contents.Add(stateContent);
+        }
+
+        Dispatcher.Dispatch(new ChatActions.AddMessageAction(userMessage));
+        chatSuggestions?.Clear();
+        await chatInput!.FocusAsync();
+
+        await StreamingService.ProcessAgentResponseAsync(activeChatClient!);
+        chatSuggestions?.Update(ChatStore.Value.Messages);
+    }
+
+    /// <summary>
+    /// Handles the user's approval/rejection decision from the approval UI.
+    /// Delegates to <see cref="IAgentStreamingService.ResolveApproval"/> to unblock the streaming loop.
+    /// </summary>
+    private void OnApprovalDecision(bool approved) => StreamingService.ResolveApproval(approved);
+
+    /// <summary>
+    /// Handles the emergency stop action. Delegates to the streaming service
+    /// and refocuses the chat input.
+    /// </summary>
+    private async Task HandlePanicAsync()
+    {
+        StreamingService.HandlePanic(AgentStore.Value.SelectedEndpointPath);
+        await chatInput!.FocusAsync();
+    }
+
+    /// <summary>
+    /// Handles reverting to a specific checkpoint from the CheckpointManager timeline.
+    /// Delegates to the streaming service and refocuses the chat input.
+    /// </summary>
+    private async Task HandleCheckpointRevertAsync(string checkpointId)
+    {
+        StreamingService.HandleCheckpointRevert(checkpointId, AgentStore.Value.SelectedEndpointPath);
+        await chatInput!.FocusAsync();
+    }
+
+    private async Task ResetConversationAsync()
+    {
+        StreamingService.ResetConversation(SystemPrompt, AgentStore.Value.SelectedEndpointPath);
+        chatSuggestions?.Clear();
+        await chatInput!.FocusAsync();
+    }
+
+    public void Dispose()
+    {
+        ViewportService.OnViewportChanged -= OnViewportChanged;
+        PlanStore.StateChanged -= OnFluxorStateChanged;
+        AgentStore.StateChanged -= OnFluxorStateChanged;
+        ArtifactStore.StateChanged -= OnFluxorStateChanged;
+        ChatStore.StateChanged -= OnFluxorStateChanged;
+        throttleTimer?.Stop();
+        throttleTimer?.Dispose();
+    }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Solution xmlns="http://schemas.microsoft.com/vs/2022/solution">
+  <Project Path="AGUIDojoClient/AGUIDojoClient.csproj" />
+  <Project Path="AGUIDojoServer/AGUIDojoServer.csproj" />
+  <Project Path="AGUIDojoServer.Tests/AGUIDojoServer.Tests.csproj" />
+  <Project Path="AGUIDojo.AppHost/AGUIDojo.AppHost.csproj" />
+</Solution>

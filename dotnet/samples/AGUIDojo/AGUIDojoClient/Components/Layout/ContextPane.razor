@@ -1,0 +1,15 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+@* MY CUSTOMIZATION POINT: ContextPane wrapper component for chat/negotiation sidebar *@
+
+<div class="context-pane">
+    @* Wrapper uses flex column to enable Sticky Footer (ChatInput) and scrolling MessageList *@
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>
+    /// Content to render inside the context pane (chat messages, input, suggestions, approvals).
+    /// </summary>
+    [Parameter]
+    public RenderFragment ChildContent { get; set; } = default!;
+}

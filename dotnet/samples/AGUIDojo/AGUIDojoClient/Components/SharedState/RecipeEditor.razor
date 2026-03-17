@@ -1,0 +1,247 @@
+@* Copyright (c) Microsoft. All rights reserved. *@
+
+@using AGUIDojoClient.Models
+
+<div class="recipe-editor-wrapper">
+    <Card Class="recipe-editor-card">
+        <CardHeader Class="pb-3">
+            <CardTitle Class="text-lg">🍳 Recipe Editor</CardTitle>
+            <CardDescription>Customize your recipe preferences, then ask the assistant to generate a recipe!</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <div class="recipe-editor-content">
+            @* Recipe Title *@
+        <div class="recipe-field">
+            <Label For="recipe-title" Class="text-sm font-medium">Recipe Title (Optional)</Label>
+            <Input Id="recipe-title"
+                   Type="InputType.Text"
+                   Placeholder="e.g., Italian Pasta Dish"
+                   Value="@Recipe.Title"
+                   ValueChanged="@OnTitleInputChanged"
+                   Class="w-full" />
+        </div>
+
+        <Separator />
+
+        @* Skill Level & Cooking Time *@
+        <div class="recipe-selects-row">
+            <div class="recipe-field">
+                <Label Class="text-sm font-medium">Skill Level</Label>
+                <Select TValue="string"
+                        Value="@Recipe.SkillLevel"
+                        ValueChanged="@OnSkillLevelSelected"
+                        DisplayTextSelector="@(v => v ?? "Beginner")">
+                    <SelectTrigger>
+                        <SelectValue Placeholder="Select skill level..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem TValue="string" Value="@("Beginner")" Text="Beginner">Beginner</SelectItem>
+                        <SelectItem TValue="string" Value="@("Intermediate")" Text="Intermediate">Intermediate</SelectItem>
+                        <SelectItem TValue="string" Value="@("Advanced")" Text="Advanced">Advanced</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div class="recipe-field">
+                <Label Class="text-sm font-medium">Cooking Time</Label>
+                <Select TValue="string"
+                        Value="@Recipe.CookingTime"
+                        ValueChanged="@OnCookingTimeSelected"
+                        DisplayTextSelector="@(v => v ?? "30 minutes")">
+                    <SelectTrigger>
+                        <SelectValue Placeholder="Select cooking time..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem TValue="string" Value="@("15 minutes")" Text="15 minutes">15 minutes</SelectItem>
+                        <SelectItem TValue="string" Value="@("30 minutes")" Text="30 minutes">30 minutes</SelectItem>
+                        <SelectItem TValue="string" Value="@("45 minutes")" Text="45 minutes">45 minutes</SelectItem>
+                        <SelectItem TValue="string" Value="@("1 hour")" Text="1 hour">1 hour</SelectItem>
+                        <SelectItem TValue="string" Value="@("1.5 hours")" Text="1.5 hours">1.5 hours</SelectItem>
+                        <SelectItem TValue="string" Value="@("2+ hours")" Text="2+ hours">2+ hours</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+        </div>
+
+        <Separator />
+
+        @* Special Preferences *@
+        <div class="recipe-field">
+            <Label Class="text-sm font-medium">Special Preferences</Label>
+            <ToggleGroup TValue="string"
+                         Type="ToggleGroupType.Multiple"
+                         Values="@_selectedPreferences"
+                         ValuesChanged="@((List<string> values) => OnPreferencesChanged(values))"
+                         Variant="ToggleVariant.Outline"
+                         Class="recipe-toggle-group">
+                @foreach (var pref in _availablePreferences)
+                {
+                    <ToggleGroupItem Value="@pref" Class="recipe-toggle-item">@pref</ToggleGroupItem>
+                }
+            </ToggleGroup>
+        </div>
+
+        <Separator />
+
+        @* Ingredients *@
+        <div class="recipe-field">
+            <Label Class="text-sm font-medium">Ingredients</Label>
+            <div class="recipe-ingredients-list">
+                @for (int i = 0; i < Recipe.Ingredients.Count; i++)
+                {
+                    var index = i;
+                    var ingredient = Recipe.Ingredients[i];
+                    <div class="recipe-ingredient-row">
+                        <Badge Variant="BadgeVariant.Secondary" Class="recipe-ingredient-icon">@ingredient.GetSafeIcon()</Badge>
+                        <Input Type="InputType.Text"
+                               Value="@ingredient.Name"
+                               ValueChanged="@(val => OnIngredientNameChanged(index, val))"
+                               Placeholder="Ingredient name"
+                               Class="recipe-ingredient-name" />
+                        <Input Type="InputType.Text"
+                               Value="@ingredient.Amount"
+                               ValueChanged="@(val => OnIngredientAmountChanged(index, val))"
+                               Placeholder="Amount"
+                               Class="recipe-ingredient-amount" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Icon"
+                                OnClick="@(() => RemoveIngredient(index))"
+                                Class="recipe-remove-btn">
+                            <LucideIcon Name="x" Size="14" />
+                        </Button>
+                    </div>
+                }
+            </div>
+            <Button Variant="ButtonVariant.Outline"
+                    Size="ButtonSize.Small"
+                    OnClick="AddIngredient"
+                    Class="recipe-add-btn">
+                <LucideIcon Name="plus" Size="14" Class="mr-1" />
+                Add Ingredient
+            </Button>
+        </div>
+
+        @if (Recipe.Instructions.Count > 0)
+        {
+            <Separator />
+
+            @* Instructions (read-only) *@
+            <div class="recipe-field">
+                <Label Class="text-sm font-medium">Instructions</Label>
+                <div class="recipe-instructions-list">
+                    @for (int i = 0; i < Recipe.Instructions.Count; i++)
+                    {
+                        <div class="recipe-instruction-step">
+                            <Badge Variant="BadgeVariant.Default" Class="recipe-step-badge">@(i + 1)</Badge>
+                            <span class="recipe-step-text">@Recipe.Instructions[i]</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        </div>
+    </CardContent>
+    </Card>
+</div>
+
+@code {
+    private static readonly string[] _availablePreferences =
+    [
+        "Vegetarian",
+        "Vegan",
+        "Gluten-Free",
+        "Dairy-Free",
+        "Low-Carb",
+        "Spicy",
+        "Kid-Friendly",
+        "Quick & Easy"
+    ];
+
+    private List<string> _selectedPreferences = new();
+
+    /// <summary>
+    /// The recipe being edited.
+    /// </summary>
+    [Parameter]
+    public Recipe Recipe { get; set; } = new();
+
+    /// <summary>
+    /// Callback when the recipe is modified.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Recipe> RecipeChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Sync from the Recipe model's List<string>
+        _selectedPreferences = new List<string>(Recipe.SpecialPreferences);
+    }
+
+    private async Task OnPreferencesChanged(List<string> values)
+    {
+        _selectedPreferences = values;
+        Recipe.SpecialPreferences = new List<string>(values);
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnTitleInputChanged(string? value)
+    {
+        Recipe.Title = value ?? string.Empty;
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnSkillLevelSelected(string? value)
+    {
+        Recipe.SkillLevel = value ?? "Beginner";
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnCookingTimeSelected(string? value)
+    {
+        Recipe.CookingTime = value ?? "30 minutes";
+        await NotifyRecipeChanged();
+    }
+
+    private async Task OnIngredientNameChanged(int index, string? name)
+    {
+        if (index >= 0 && index < Recipe.Ingredients.Count)
+        {
+            Recipe.Ingredients[index].Name = name ?? string.Empty;
+            await NotifyRecipeChanged();
+        }
+    }
+
+    private async Task OnIngredientAmountChanged(int index, string? amount)
+    {
+        if (index >= 0 && index < Recipe.Ingredients.Count)
+        {
+            Recipe.Ingredients[index].Amount = amount ?? string.Empty;
+            await NotifyRecipeChanged();
+        }
+    }
+
+    private async Task AddIngredient()
+    {
+        Recipe.Ingredients.Add(new Ingredient
+        {
+            Icon = "🥗",
+            Name = string.Empty,
+            Amount = string.Empty
+        });
+        await NotifyRecipeChanged();
+    }
+
+    private async Task RemoveIngredient(int index)
+    {
+        if (index >= 0 && index < Recipe.Ingredients.Count)
+        {
+            Recipe.Ingredients.RemoveAt(index);
+            await NotifyRecipeChanged();
+        }
+    }
+
+    private async Task NotifyRecipeChanged()
+    {
+        await RecipeChanged.InvokeAsync(Recipe);
+    }
+}

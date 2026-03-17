@@ -1,0 +1,36 @@
+/* ==========================================================================
+ * ChatHeader (Sidebar) Component — Claude Design System
+ * ==========================================================================
+ * Minimal scoped styles for the sidebar branding section.
+ * Primary styling comes from BlazorBlueprint Sidebar components and
+ * Claude theme sidebar CSS variables (--sidebar, --sidebar-foreground, etc.).
+ * ========================================================================== */
+
+/* Sidebar brand — app identity in SidebarHeader */
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.25rem 0;
+}
+
+.sidebar-brand-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius, 0.5rem);
+    background: var(--sidebar-primary, oklch(0.6171 0.1375 39.0427));
+    color: var(--sidebar-primary-foreground, #fff);
+    flex-shrink: 0;
+}
+
+.sidebar-brand-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--sidebar-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

@@ -1,0 +1,226 @@
+@using System.Runtime.CompilerServices
+@using System.Linq
+@using AGUIDojoClient.Services
+@using System.Text.Json
+
+@inject IMarkdownService MarkdownService
+@inject IToolComponentRegistry ToolRegistry
+@* MY CUSTOMIZATION POINT: Inject ObservabilityService to pass ReasoningSteps to AssistantThought *@
+@inject IObservabilityService ObservabilityService
+
+@if (Message.Role == ChatRole.User)
+{
+    <div class="user-message">
+        @Message.Text
+    </div>
+}
+else if (Message.Role == ChatRole.Assistant)
+{
+    @* Separate content into thoughts, visual components, and text messages *@
+    var sortedContents = SortContentsForDisplay(Message.Contents).ToList();
+    
+    @* Separate visual components (should render in message-list) from non-visual thoughts (should go to AssistantThought) *@
+    var visualContents = sortedContents.Where(IsVisualComponent).ToList();
+    var thoughtContents = sortedContents.Where(c => c is not TextContent && !IsVisualComponent(c)).ToList();
+    var textContents = sortedContents.OfType<TextContent>().Where(tc => tc.Text?.Length > 0).ToList();
+
+    @* Render collapsible thought block if there are any non-visual thought contents *@
+    @if (thoughtContents.Count > 0 && thoughtContents.Any(c => c is FunctionCallContent or ErrorContent))
+    {
+        @* MY CUSTOMIZATION POINT: Pass ReasoningSteps for tool call timing display *@
+        <AssistantThought ThoughtContents="@thoughtContents" AllContents="@Message.Contents" InProgress="@InProgress"
+                          ReasoningSteps="@ObservabilityService.GetSteps()" />
+    }
+
+    @* Render visual components in message-list (not in AssistantThought) *@
+    @foreach (var visualContent in visualContents)
+    {
+        if (visualContent is FunctionResultContent resultContent)
+        {
+            var renderInfo = GetVisualComponentRenderInfo(resultContent);
+            if (renderInfo is not null)
+            {
+                <div class="visual-tool-result">
+                    <DynamicComponent Type="renderInfo.Value.ComponentType" 
+                                      Parameters="@(new Dictionary<string, object?> { { renderInfo.Value.ParameterName, renderInfo.Value.ParsedData } })" />
+                </div>
+            }
+        }
+    }
+
+    @* Render final assistant message(s) after visual components *@
+    @foreach (var tc in textContents)
+    {
+        <div class="assistant-message">
+            <div>
+                @if (!string.IsNullOrEmpty(Message.AuthorName))
+                {
+                    <AgentAvatar AuthorName="@Message.AuthorName" />
+                }
+                else
+                {
+                    <div class="assistant-message-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+                        </svg>
+                    </div>
+                }
+            </div>
+            <div class="assistant-message-header">@(Message.AuthorName ?? "Assistant")</div>
+            <div class="assistant-message-text markdown-content">
+                <div>@((MarkupString)MarkdownService.ToHtml(tc.Text!))</div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private static readonly ConditionalWeakTable<ChatMessage, ChatMessageItem> SubscribersLookup = new();
+
+    /// <summary>
+    /// The chat message to display.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required ChatMessage Message { get; set; }
+
+    /// <summary>
+    /// Whether the message is currently being streamed (in progress).
+    /// </summary>
+    [Parameter]
+    public bool InProgress { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        SubscribersLookup.AddOrUpdate(Message, this);
+    }
+
+    /// <summary>
+    /// Notifies the component instance that a given message has changed.
+    /// </summary>
+    /// <param name="source">The source chat message that changed.</param>
+    public static void NotifyChanged(ChatMessage source)
+    {
+        if (SubscribersLookup.TryGetValue(source, out ChatMessageItem? subscriber))
+        {
+            subscriber.StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Sorts AIContent items for display by type priority.
+    /// Priority order: FunctionCallContent (1) → FunctionResultContent (2) → DataContent (3) → TextContent (4) → ErrorContent (5).
+    /// This ensures tool results appear before assistant messages in the UI, regardless of streaming arrival order.
+    /// </summary>
+    /// <param name="contents">The contents to sort.</param>
+    /// <returns>The contents sorted by type priority for correct display order.</returns>
+    private static IEnumerable<AIContent> SortContentsForDisplay(IEnumerable<AIContent> contents)
+    {
+        return contents.OrderBy(GetContentPriority);
+    }
+
+    /// <summary>
+    /// Gets the display priority for an AIContent item.
+    /// Lower numbers display first.
+    /// </summary>
+    /// <param name="content">The content to get priority for.</param>
+    /// <returns>A priority value for sorting (lower = earlier in display).</returns>
+    private static int GetContentPriority(AIContent content)
+    {
+        return content switch
+        {
+            FunctionCallContent => 1,      // Tool calls first
+            FunctionResultContent => 2,    // Tool results second
+            DataContent => 3,              // Data content (state snapshots, deltas) third
+            TextContent => 4,              // Text/assistant messages fourth
+            ErrorContent => 5,             // Errors last
+            _ => 99                         // Unknown types at the end
+        };
+    }
+
+    /// <summary>
+    /// Checks if an AIContent item should be rendered as a visual component in the message-list.
+    /// </summary>
+    /// <param name="content">The content to check.</param>
+    /// <returns>True if the content should render as a visual component; otherwise, false.</returns>
+    private bool IsVisualComponent(AIContent content)
+    {
+        if (content is not FunctionResultContent resultContent)
+        {
+            return false;
+        }
+
+        // Find the matching FunctionCallContent by CallId to get the actual tool name
+        var toolName = GetToolNameFromCallId(resultContent.CallId);
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return false;
+        }
+
+        // Check if tool has a visual component registered with MessageList location
+        if (ToolRegistry.TryGetMetadata(toolName, out ToolMetadata? metadata))
+        {
+            return metadata?.RenderLocation == RenderLocation.MessageList && metadata.IsVisual;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gets rendering information for a visual component.
+    /// </summary>
+    /// <param name="resultContent">The function result content.</param>
+    /// <returns>Rendering information including component type, parameter name, and parsed data; or null if not available.</returns>
+    private (Type ComponentType, string ParameterName, object? ParsedData)? GetVisualComponentRenderInfo(FunctionResultContent resultContent)
+    {
+        // Find the matching FunctionCallContent by CallId to get the actual tool name
+        var toolName = GetToolNameFromCallId(resultContent.CallId);
+
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return null;
+        }
+
+        // Get component type and parameter name from registry
+        if (!ToolRegistry.TryGetComponent(toolName, out Type? componentType) || componentType is null)
+        {
+            return null;
+        }
+
+        if (!ToolRegistry.TryGetParameterName(toolName, out string? parameterName) || string.IsNullOrWhiteSpace(parameterName))
+        {
+            return null;
+        }
+
+        // Parse result data using the same tool-name→data-type mapping as AssistantThought.
+        // We must deserialize to the DATA type (e.g. WeatherInfo), NOT the COMPONENT type (e.g. WeatherDisplay).
+        object? parsedData = AssistantThought.TryParseToolResult(toolName, resultContent);
+        if (parsedData is null)
+        {
+            return null;
+        }
+
+        return (componentType, parameterName, parsedData);
+    }
+
+    /// <summary>
+    /// Finds the tool name for a FunctionResultContent by looking up the matching FunctionCallContent in the message.
+    /// </summary>
+    private string? GetToolNameFromCallId(string? callId)
+    {
+        if (callId is null)
+        {
+            return null;
+        }
+
+        foreach (AIContent content in Message.Contents)
+        {
+            if (content is FunctionCallContent fcc && fcc.CallId == callId)
+            {
+                return fcc.Name;
+            }
+        }
+
+        return null;
+    }
+}
