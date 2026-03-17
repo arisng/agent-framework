@@ -11,10 +11,10 @@ public class BasicTests
     public void SimpleTest_ShouldPass()
     {
         // Arrange
-        int expected = 2;
+        const int expected = 2;
 
         // Act
-        int result = 1 + 1;
+        const int result = 1 + 1;
 
         // Assert
         Assert.Equal(expected, result);
