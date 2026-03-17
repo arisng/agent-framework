@@ -40,9 +40,6 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
             yield break;
         }
 
-        // Try to parse incoming state to determine if it's a Recipe or generic state
-        bool isRecipeState = IsRecipeState(state);
-
         var firstRunOptions = new ChatClientAgentRunOptions
         {
             ChatOptions = chatRunOptions.ChatOptions.Clone(),
@@ -51,19 +48,10 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
             ChatClientFactory = chatRunOptions.ChatClientFactory,
         };
 
-        // Only configure RecipeResponse JSON schema if current state is recipe-like
-        // For other state types, use the generic JSON format
-        if (isRecipeState)
-        {
-            firstRunOptions.ChatOptions.ResponseFormat = ChatResponseFormat.ForJsonSchema<RecipeResponse>(
-                schemaName: "RecipeResponse",
-                schemaDescription: "A response containing a recipe with title, skill level, cooking time, preferences, ingredients, and instructions");
-        }
-        else
-        {
-            // For non-recipe state, use generic JSON object format
-            firstRunOptions.ChatOptions.ResponseFormat = ChatResponseFormat.Json;
-        }
+        // Configure JSON schema response format for structured state output
+        firstRunOptions.ChatOptions.ResponseFormat = ChatResponseFormat.ForJsonSchema<RecipeResponse>(
+            schemaName: "RecipeResponse",
+            schemaDescription: "A response containing a recipe with title, skill level, cooking time, preferences, ingredients, and instructions");
 
         ChatMessage stateUpdateMessage = new(
             ChatRole.System,
@@ -76,8 +64,6 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
         var firstRunMessages = messages.Append(stateUpdateMessage);
 
         var allUpdates = new List<AgentResponseUpdate>();
-
-        // Run first agent invocation to get updated state
         await foreach (var update in this.InnerAgent.RunStreamingAsync(firstRunMessages, session, firstRunOptions, cancellationToken).ConfigureAwait(false))
         {
             allUpdates.Add(update);
@@ -92,7 +78,6 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
 
         var response = allUpdates.ToAgentResponse();
 
-        //if (response.TryDeserialize(this._jsonSerializerOptions, out JsonElement stateSnapshot))
         if (TryDeserialize(response.Text, this._jsonSerializerOptions, out JsonElement stateSnapshot))
         {
             byte[] stateBytes = JsonSerializer.SerializeToUtf8Bytes(
@@ -105,16 +90,9 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
         }
         else
         {
-            // Deserialization failed - provide feedback but continue
-            System.Diagnostics.Debug.WriteLine("SharedStateAgent: Failed to deserialize state snapshot");
-            yield return new AgentResponseUpdate
-            {
-                Contents = [new TextContent("Unable to process state update. Please provide recipe information (ingredients, instructions, etc.) to update the recipe.")]
-            };
             yield break;
         }
 
-        // Run second agent invocation to get summary
         var secondRunMessages = messages.Concat(response.Messages).Append(
             new ChatMessage(
                 ChatRole.System,
@@ -145,28 +123,5 @@ internal sealed class SharedStateAgent : DelegatingAIAgent
             structuredOutput = default!;
             return false;
         }
-    }
-
-    /// <summary>
-    /// Determines if the given state JSON represents a Recipe object.
-    /// Returns true if the state has recipe-specific properties like "ingredients", "title", etc.
-    /// </summary>
-    private static bool IsRecipeState(JsonElement state)
-    {
-        try
-        {
-            // Check for recipe-specific properties
-            if (state.ValueKind == JsonValueKind.Object)
-            {
-                return state.TryGetProperty("recipe", out JsonElement recipeProp) ||
-                       (state.TryGetProperty("ingredients", out _) && state.TryGetProperty("title", out _));
-            }
-        }
-        catch
-        {
-            // If we can't parse it, assume it's not a recipe
-        }
-
-        return false;
     }
 }
