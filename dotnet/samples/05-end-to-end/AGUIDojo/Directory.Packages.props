@@ -11,5 +11,15 @@
 
   <ItemGroup>
     <PackageVersion Remove="Aspire.Hosting.AppHost" />
+
+    <!-- BlazorBlueprint UI -->
+    <PackageVersion Include="BlazorBlueprint.Components" Version="3.5.2" />
+    <PackageVersion Include="BlazorBlueprint.Icons.Lucide" Version="2.0.0" />
+    <!-- BlazorMonaco -->
+    <PackageVersion Include="BlazorMonaco" Version="3.4.0" />
+    <!-- Fluxor -->
+    <PackageVersion Include="Fluxor.Blazor.Web" Version="6.9.0" />
+    <!-- Markdown -->
+    <PackageVersion Include="Markdig" Version="0.39.1" />
   </ItemGroup>
 </Project>
