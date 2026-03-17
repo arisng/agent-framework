@@ -2,9 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- MY CUSTOMIZATION POINT: Use singular TargetFramework for Aspire DCP compatibility -->
-    <TargetFramework>net10.0</TargetFramework>
-    <TargetFrameworks />
+    <!-- MY CUSTOMIZATION POINT: Use single-targeting for AGUIDojo (net10.0) -->
+    <TargetFrameworks>net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UserSecretsId>b9c3f1e1-2fb4-5g29-0e52-53e2b7g9gf21</UserSecretsId>
@@ -25,9 +24,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\Microsoft.Agents.AI.Hosting.AGUI.AspNetCore\Microsoft.Agents.AI.Hosting.AGUI.AspNetCore.csproj" />
-    <ProjectReference Include="..\..\..\src\Microsoft.Agents.AI.AGUI\Microsoft.Agents.AI.AGUI.csproj" />
-    <ProjectReference Include="..\..\..\src\Microsoft.Agents.AI.OpenAI\Microsoft.Agents.AI.OpenAI.csproj" />
+    <!-- Corrected relative paths after repository restructuring -->
+    <ProjectReference Include="..\..\..\..\src\Microsoft.Agents.AI.Hosting.AGUI.AspNetCore\Microsoft.Agents.AI.Hosting.AGUI.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Microsoft.Agents.AI.AGUI\Microsoft.Agents.AI.AGUI.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Microsoft.Agents.AI.OpenAI\Microsoft.Agents.AI.OpenAI.csproj" />
   </ItemGroup>
 
 </Project>
