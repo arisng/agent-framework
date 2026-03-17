@@ -3,17 +3,14 @@
     Licensed under the MIT License.
 *@
 
-@using BlazorBlueprint.Components.Avatar
-@using BlazorBlueprint.Icons.Lucide.Components
-
 @* Renders a context-specific avatar for the agent based on AuthorName *@
 
 <div class="agent-avatar-wrapper" style="@GetAccentColorStyle()">
-    <Avatar Class="agent-avatar">
-        <AvatarFallback Class="agent-avatar-fallback">
+    <BbAvatar Class="agent-avatar">
+        <BbAvatarFallback Class="agent-avatar-fallback">
             @GetFallbackText()
-        </AvatarFallback>
-    </Avatar>
+        </BbAvatarFallback>
+    </BbAvatar>
     <div class="agent-avatar-icon">
         <LucideIcon Name="@GetIconName()" Size="12" />
     </div>

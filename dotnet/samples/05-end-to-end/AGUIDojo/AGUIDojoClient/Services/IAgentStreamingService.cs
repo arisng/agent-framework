@@ -1,27 +1,21 @@
 // Copyright (c) Microsoft. All rights reserved.
 
+using AGUIDojoClient.Models;
 using Microsoft.Extensions.AI;
 
 namespace AGUIDojoClient.Services;
 
 /// <summary>
-/// Service interface for coordinating the AG-UI SSE streaming loop, governance actions,
-/// and conversation lifecycle. Encapsulates the core agent response processing logic
-/// extracted from <c>Chat.razor</c> to reduce component complexity.
+/// Service interface for coordinating AG-UI SSE streaming, governance actions,
+/// and session-scoped conversation lifecycle management.
 /// </summary>
-/// <remarks>
-/// This service is designed to be registered as <c>Scoped</c> (per Blazor circuit).
-/// It owns all streaming-related state: cancellation tokens, deduplication sets,
-/// approval <see cref="TaskCompletionSource{TResult}"/>, diff preview state, and
-/// <see cref="ChatOptions"/>.
-/// <para>
-/// UI callbacks (<c>throttledStateChanged</c>, <c>stateChanged</c>) are provided
-/// by the hosting component via <see cref="SetUiCallbacks"/> so the service can
-/// trigger Blazor re-renders without taking a dependency on <c>ComponentBase</c>.
-/// </para>
-/// </remarks>
 public interface IAgentStreamingService : IDisposable
 {
+    /// <summary>
+    /// Raised when the notification collection changes.
+    /// </summary>
+    event EventHandler? NotificationsChanged;
+
     /// <summary>
     /// Gets the diff preview "before" state, or <see langword="null"/> if no diff is active.
     /// Used by the <c>DiffPreview</c> governance component in the Canvas Pane.
@@ -46,72 +40,70 @@ public interface IAgentStreamingService : IDisposable
     ChatOptions ChatOptions { get; }
 
     /// <summary>
-    /// Registers the UI callback delegates used by the service to trigger
-    /// Blazor component re-renders. Must be called once during component initialization.
+    /// Gets the current session notifications in FIFO order.
     /// </summary>
-    /// <param name="throttledStateChanged">
-    /// A callback that triggers a throttled (debounced) <c>StateHasChanged</c> on the Blazor component.
-    /// Used during high-frequency SSE streaming events.
-    /// </param>
-    /// <param name="stateChanged">
-    /// A callback that triggers an immediate <c>StateHasChanged</c> on the Blazor component.
-    /// Used for critical UI updates such as approval dialogs.
-    /// </param>
-    void SetUiCallbacks(Action throttledStateChanged, Action stateChanged);
+    IReadOnlyList<SessionNotification> Notifications { get; }
 
     /// <summary>
-    /// Processes the agent response by streaming SSE events from the specified
-    /// <see cref="IChatClient"/>. Dispatches Fluxor actions for all state mutations.
-    /// Handles inline approval requests by dispatching <c>SetPendingApprovalAction</c>
-    /// and blocking until <see cref="ResolveApproval"/> is called.
+    /// Registers the UI callbacks used for re-rendering and background-to-circuit marshalling.
     /// </summary>
-    /// <param name="chatClient">The chat client to stream responses from.</param>
-    /// <returns>A task that completes when the full response (including approval loops) finishes.</returns>
-    Task ProcessAgentResponseAsync(IChatClient chatClient);
+    /// <param name="throttledStateChanged">Triggers a throttled render update.</param>
+    /// <param name="stateChanged">Triggers an immediate render update.</param>
+    /// <param name="invokeAsync">Marshals work onto the Blazor circuit synchronization context.</param>
+    void SetUiCallbacks(Action throttledStateChanged, Action stateChanged, Func<Func<Task>, Task> invokeAsync);
 
     /// <summary>
-    /// Resolves a pending approval request with the user's decision.
-    /// Called by the UI component when the user approves or rejects a tool call.
+    /// Gets a value indicating whether the specified session can start or queue another response.
     /// </summary>
-    /// <param name="approved"><see langword="true"/> if the user approved; <see langword="false"/> if rejected.</param>
-    void ResolveApproval(bool approved);
+    /// <param name="sessionId">The session identifier.</param>
+    /// <returns><see langword="true"/> when a response can start or be queued; otherwise, <see langword="false"/>.</returns>
+    bool CanQueueResponse(string sessionId);
 
     /// <summary>
-    /// Cancels any in-progress response streaming. If a partial response was being
-    /// streamed, it is added to the conversation history before cancellation.
-    /// Clears the running state and pending approvals.
+    /// Processes the next agent response for the specified session.
     /// </summary>
-    void CancelAnyCurrentResponse();
+    /// <param name="sessionId">The session identifier.</param>
+    /// <returns>A task that completes when the response finishes if it starts immediately.</returns>
+    Task ProcessAgentResponseAsync(string sessionId);
 
     /// <summary>
-    /// Resets all conversation state to initial values. Clears messages, plan,
-    /// artifacts, checkpoints, function call tracking, and diff preview state.
-    /// Re-adds the system prompt message.
+    /// Resolves a pending approval request for the specified session.
     /// </summary>
+    /// <param name="sessionId">The session identifier.</param>
+    /// <param name="approved"><see langword="true"/> to approve; otherwise, <see langword="false"/>.</param>
+    void ResolveApproval(string sessionId, bool approved);
+
+    /// <summary>
+    /// Cancels the in-flight or queued response for the specified session.
+    /// </summary>
+    /// <param name="sessionId">The session identifier.</param>
+    void CancelResponse(string sessionId);
+
+    /// <summary>
+    /// Resets the specified session back to its initial conversation state.
+    /// </summary>
+    /// <param name="sessionId">The session identifier.</param>
     /// <param name="systemPrompt">The system prompt message to re-add after clearing.</param>
-    /// <param name="selectedEndpointPath">The currently selected endpoint path for state manager initialization.</param>
-    void ResetConversation(string systemPrompt, string selectedEndpointPath);
+    void ResetConversation(string sessionId, string systemPrompt);
 
     /// <summary>
-    /// Handles the emergency stop (panic) action. Cancels the current response,
-    /// reverts to the latest checkpoint, and resets conversation context.
+    /// Handles the emergency stop action for the specified session.
     /// </summary>
-    /// <param name="selectedEndpointPath">The currently selected endpoint path.</param>
-    void HandlePanic(string selectedEndpointPath);
+    /// <param name="sessionId">The session identifier.</param>
+    void HandlePanic(string sessionId);
 
     /// <summary>
-    /// Handles reverting to a specific checkpoint. Cancels the current response,
-    /// restores state from the checkpoint, and resets conversation context.
+    /// Reverts the specified session to a checkpoint.
     /// </summary>
+    /// <param name="sessionId">The session identifier.</param>
     /// <param name="checkpointId">The checkpoint identifier to revert to.</param>
-    /// <param name="selectedEndpointPath">The currently selected endpoint path.</param>
-    void HandleCheckpointRevert(string checkpointId, string selectedEndpointPath);
+    void HandleCheckpointRevert(string sessionId, string checkpointId);
 
     /// <summary>
-    /// Initializes or clears endpoint-specific state (e.g., state manager for shared state endpoint).
+    /// Synchronizes session-scoped client artifacts for the specified session.
     /// </summary>
-    /// <param name="endpointPath">The endpoint path to initialize for.</param>
-    void InitializeEndpointState(string endpointPath);
+    /// <param name="sessionId">The session identifier.</param>
+    void SyncSessionState(string sessionId);
 
     /// <summary>
     /// Builds a dictionary of tool name → invocation count from the <see cref="IObservabilityService"/> steps.
@@ -119,4 +111,10 @@ public interface IAgentStreamingService : IDisposable
     /// </summary>
     /// <returns>A read-only dictionary of tool invocation counts, or <see langword="null"/> if no tools have been invoked.</returns>
     IReadOnlyDictionary<string, int>? GetToolInvocationSummary();
+
+    /// <summary>
+    /// Dismisses the specified notification.
+    /// </summary>
+    /// <param name="notificationId">The notification identifier.</param>
+    void DismissNotification(string notificationId);
 }

@@ -5,14 +5,12 @@
    detects viewport width and triggers layout switch at the breakpoint.
    Accepts RenderFragment parameters for each pane's content.
    Persists splitter position to localStorage via JS interop (desktop only). *@
-@using BlazorBlueprint.Components.Resizable
-@using BlazorBlueprint.Components.Button
-@using AGUIDojoClient.Store.ArtifactState
+@using AGUIDojoClient.Store.SessionManager
 @* Inject ViewportService for responsive layout switching *@
 @inject ViewportService ViewportService
 @inject IJSRuntime JSRuntime
-@* Inject ArtifactState to detect interactive artifacts *@
-@inject IState<ArtifactState> ArtifactStore
+@* Inject session state to detect interactive artifacts *@
+@inject IState<SessionManagerState> SessionStore
 @* Inherit FluxorComponent for automatic state change subscriptions *@
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @implements IAsyncDisposable
@@ -41,25 +39,25 @@ else
         @if (ShowCanvasPane)
         {
             @* Dual-pane layout: context-pane + canvas-pane *@
-            <ResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
+            <BbResizablePanelGroup Direction="ResizableDirection.Horizontal" Class="dual-pane-group">
                 @* Context Pane — chat, suggestions, approval UI *@
-                <ResizablePanel DefaultSize="@_contextPanelSize" MinSize="30" Class="context-panel" Collapsible="false">
+                <BbResizablePanel DefaultSize="@_contextPanelSize" MinSize="30" Class="context-panel" Collapsible="false">
                     @if (ContextPaneContent is not null)
                     {
                         @ContextPaneContent
                     }
-                </ResizablePanel>
+                </BbResizablePanel>
 
-                <ResizableHandle WithHandle="false" Class="dual-pane-handle" />
+                <BbResizableHandle WithHandle="false" Class="dual-pane-handle" />
 
                 @* Canvas Pane — artifacts, plan progress, editors, previews *@
-                <ResizablePanel DefaultSize="@_canvasPanelSize" MinSize="30" Class="canvas-panel" Collapsible="true">
+                <BbResizablePanel DefaultSize="@_canvasPanelSize" MinSize="30" Class="canvas-panel" Collapsible="true">
                     @if (CanvasPaneContent is not null)
                     {
                         @CanvasPaneContent
                     }
-                </ResizablePanel>
-            </ResizablePanelGroup>
+                </BbResizablePanel>
+            </BbResizablePanelGroup>
         }
         else
         {
@@ -116,7 +114,7 @@ else
     /// When <see langword="true"/>, the canvas-pane is visible in desktop layout.
     /// When <see langword="false"/>, the layout switches to single-pane (context-pane only).
     /// </summary>
-    private bool HasInteractiveArtifact => ArtifactStore.Value.HasInteractiveArtifact;
+    private bool HasInteractiveArtifact => SessionSelectors.GetActiveState(SessionStore.Value).HasInteractiveArtifact;
 
     /// <summary>
     /// Gets whether the canvas pane should be visible.

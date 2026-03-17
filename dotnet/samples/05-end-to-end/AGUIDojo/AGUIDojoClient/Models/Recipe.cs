@@ -6,7 +6,7 @@ namespace AGUIDojoClient.Models;
 
 /// <summary>
 /// Represents a recipe with ingredients and instructions.
-/// Used by the /shared_state endpoint for bidirectional state sync.
+/// Used for session-scoped recipe state in the unified chat experience.
 /// </summary>
 public sealed class Recipe
 {

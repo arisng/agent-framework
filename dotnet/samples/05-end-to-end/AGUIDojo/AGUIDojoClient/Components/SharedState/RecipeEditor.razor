@@ -3,17 +3,17 @@
 @using AGUIDojoClient.Models
 
 <div class="recipe-editor-wrapper">
-    <Card Class="recipe-editor-card">
-        <CardHeader Class="pb-3">
-            <CardTitle Class="text-lg">🍳 Recipe Editor</CardTitle>
-            <CardDescription>Customize your recipe preferences, then ask the assistant to generate a recipe!</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <BbCard Class="recipe-editor-card">
+        <BbCardHeader Class="pb-3">
+            <BbCardTitle Class="text-lg">🍳 Recipe Editor</BbCardTitle>
+            <BbCardDescription>Customize your recipe preferences, then ask the assistant to generate a recipe!</BbCardDescription>
+        </BbCardHeader>
+        <BbCardContent>
             <div class="recipe-editor-content">
             @* Recipe Title *@
         <div class="recipe-field">
-            <Label For="recipe-title" Class="text-sm font-medium">Recipe Title (Optional)</Label>
-            <Input Id="recipe-title"
+            <BbLabel For="recipe-title" Class="text-sm font-medium">Recipe Title (Optional)</BbLabel>
+            <BbInput Id="recipe-title"
                    Type="InputType.Text"
                    Placeholder="e.g., Italian Pasta Dish"
                    Value="@Recipe.Title"
@@ -21,54 +21,54 @@
                    Class="w-full" />
         </div>
 
-        <Separator />
+        <BbSeparator />
 
         @* Skill Level & Cooking Time *@
         <div class="recipe-selects-row">
             <div class="recipe-field">
-                <Label Class="text-sm font-medium">Skill Level</Label>
-                <Select TValue="string"
+                <BbLabel Class="text-sm font-medium">Skill Level</BbLabel>
+                <BbSelect TValue="string"
                         Value="@Recipe.SkillLevel"
                         ValueChanged="@OnSkillLevelSelected"
                         DisplayTextSelector="@(v => v ?? "Beginner")">
-                    <SelectTrigger>
-                        <SelectValue Placeholder="Select skill level..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem TValue="string" Value="@("Beginner")" Text="Beginner">Beginner</SelectItem>
-                        <SelectItem TValue="string" Value="@("Intermediate")" Text="Intermediate">Intermediate</SelectItem>
-                        <SelectItem TValue="string" Value="@("Advanced")" Text="Advanced">Advanced</SelectItem>
-                    </SelectContent>
-                </Select>
+                    <BbSelectTrigger>
+                        <BbSelectValue Placeholder="Select skill level..." />
+                    </BbSelectTrigger>
+                    <BbSelectContent>
+                        <BbSelectItem TValue="string" Value="@("Beginner")" Text="Beginner">Beginner</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("Intermediate")" Text="Intermediate">Intermediate</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("Advanced")" Text="Advanced">Advanced</BbSelectItem>
+                    </BbSelectContent>
+                </BbSelect>
             </div>
 
             <div class="recipe-field">
-                <Label Class="text-sm font-medium">Cooking Time</Label>
-                <Select TValue="string"
+                <BbLabel Class="text-sm font-medium">Cooking Time</BbLabel>
+                <BbSelect TValue="string"
                         Value="@Recipe.CookingTime"
                         ValueChanged="@OnCookingTimeSelected"
                         DisplayTextSelector="@(v => v ?? "30 minutes")">
-                    <SelectTrigger>
-                        <SelectValue Placeholder="Select cooking time..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem TValue="string" Value="@("15 minutes")" Text="15 minutes">15 minutes</SelectItem>
-                        <SelectItem TValue="string" Value="@("30 minutes")" Text="30 minutes">30 minutes</SelectItem>
-                        <SelectItem TValue="string" Value="@("45 minutes")" Text="45 minutes">45 minutes</SelectItem>
-                        <SelectItem TValue="string" Value="@("1 hour")" Text="1 hour">1 hour</SelectItem>
-                        <SelectItem TValue="string" Value="@("1.5 hours")" Text="1.5 hours">1.5 hours</SelectItem>
-                        <SelectItem TValue="string" Value="@("2+ hours")" Text="2+ hours">2+ hours</SelectItem>
-                    </SelectContent>
-                </Select>
+                    <BbSelectTrigger>
+                        <BbSelectValue Placeholder="Select cooking time..." />
+                    </BbSelectTrigger>
+                    <BbSelectContent>
+                        <BbSelectItem TValue="string" Value="@("15 minutes")" Text="15 minutes">15 minutes</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("30 minutes")" Text="30 minutes">30 minutes</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("45 minutes")" Text="45 minutes">45 minutes</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("1 hour")" Text="1 hour">1 hour</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("1.5 hours")" Text="1.5 hours">1.5 hours</BbSelectItem>
+                        <BbSelectItem TValue="string" Value="@("2+ hours")" Text="2+ hours">2+ hours</BbSelectItem>
+                    </BbSelectContent>
+                </BbSelect>
             </div>
         </div>
 
-        <Separator />
+        <BbSeparator />
 
         @* Special Preferences *@
         <div class="recipe-field">
-            <Label Class="text-sm font-medium">Special Preferences</Label>
-            <ToggleGroup TValue="string"
+            <BbLabel Class="text-sm font-medium">Special Preferences</BbLabel>
+            <BbToggleGroup TValue="string"
                          Type="ToggleGroupType.Multiple"
                          Values="@_selectedPreferences"
                          ValuesChanged="@((List<string> values) => OnPreferencesChanged(values))"
@@ -76,63 +76,63 @@
                          Class="recipe-toggle-group">
                 @foreach (var pref in _availablePreferences)
                 {
-                    <ToggleGroupItem Value="@pref" Class="recipe-toggle-item">@pref</ToggleGroupItem>
+                    <BbToggleGroupItem Value="@pref" Class="recipe-toggle-item">@pref</BbToggleGroupItem>
                 }
-            </ToggleGroup>
+            </BbToggleGroup>
         </div>
 
-        <Separator />
+        <BbSeparator />
 
         @* Ingredients *@
         <div class="recipe-field">
-            <Label Class="text-sm font-medium">Ingredients</Label>
+            <BbLabel Class="text-sm font-medium">Ingredients</BbLabel>
             <div class="recipe-ingredients-list">
                 @for (int i = 0; i < Recipe.Ingredients.Count; i++)
                 {
                     var index = i;
                     var ingredient = Recipe.Ingredients[i];
                     <div class="recipe-ingredient-row">
-                        <Badge Variant="BadgeVariant.Secondary" Class="recipe-ingredient-icon">@ingredient.GetSafeIcon()</Badge>
-                        <Input Type="InputType.Text"
+                        <BbBadge Variant="BadgeVariant.Secondary" Class="recipe-ingredient-icon">@ingredient.GetSafeIcon()</BbBadge>
+                        <BbInput Type="InputType.Text"
                                Value="@ingredient.Name"
                                ValueChanged="@(val => OnIngredientNameChanged(index, val))"
                                Placeholder="Ingredient name"
                                Class="recipe-ingredient-name" />
-                        <Input Type="InputType.Text"
+                        <BbInput Type="InputType.Text"
                                Value="@ingredient.Amount"
                                ValueChanged="@(val => OnIngredientAmountChanged(index, val))"
                                Placeholder="Amount"
                                Class="recipe-ingredient-amount" />
-                        <Button Variant="ButtonVariant.Ghost"
+                        <BbButton Variant="ButtonVariant.Ghost"
                                 Size="ButtonSize.Icon"
                                 OnClick="@(() => RemoveIngredient(index))"
                                 Class="recipe-remove-btn">
                             <LucideIcon Name="x" Size="14" />
-                        </Button>
+                        </BbButton>
                     </div>
                 }
             </div>
-            <Button Variant="ButtonVariant.Outline"
+            <BbButton Variant="ButtonVariant.Outline"
                     Size="ButtonSize.Small"
                     OnClick="AddIngredient"
                     Class="recipe-add-btn">
                 <LucideIcon Name="plus" Size="14" Class="mr-1" />
                 Add Ingredient
-            </Button>
+            </BbButton>
         </div>
 
         @if (Recipe.Instructions.Count > 0)
         {
-            <Separator />
+            <BbSeparator />
 
             @* Instructions (read-only) *@
             <div class="recipe-field">
-                <Label Class="text-sm font-medium">Instructions</Label>
+                <BbLabel Class="text-sm font-medium">Instructions</BbLabel>
                 <div class="recipe-instructions-list">
                     @for (int i = 0; i < Recipe.Instructions.Count; i++)
                     {
                         <div class="recipe-instruction-step">
-                            <Badge Variant="BadgeVariant.Default" Class="recipe-step-badge">@(i + 1)</Badge>
+                            <BbBadge Variant="BadgeVariant.Default" Class="recipe-step-badge">@(i + 1)</BbBadge>
                             <span class="recipe-step-text">@Recipe.Instructions[i]</span>
                         </div>
                     }
@@ -140,8 +140,8 @@
             </div>
         }
         </div>
-    </CardContent>
-    </Card>
+    </BbCardContent>
+    </BbCard>
 </div>
 
 @code {

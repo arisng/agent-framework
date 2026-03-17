@@ -1,0 +1,261 @@
+@using AGUIDojoClient.Store.SessionManager
+@inject IAgentStreamingService StreamingService
+@inject IDispatcher Dispatcher
+@implements IDisposable
+
+@if (VisibleNotifications.Count > 0)
+{
+    <div class="notification-toast-stack" aria-live="polite" aria-relevant="additions removals">
+        @foreach (SessionNotification notification in VisibleNotifications)
+        {
+            <section class="notification-toast @GetToastClass(notification)"
+                     @key="notification.Id"
+                     role="button"
+                     tabindex="0"
+                     @onclick="() => OpenNotification(notification)"
+                     @onkeydown="args => HandleKeyDown(args, notification)">
+                <div class="notification-toast-icon" aria-hidden="true">
+                    <LucideIcon Name="@GetIcon(notification.Type)" Size="18" />
+                </div>
+                <div class="notification-toast-body">
+                    <div class="notification-toast-header">
+                        <div class="notification-toast-title-row">
+                            <span class="notification-toast-title">@notification.Title</span>
+                            @if (notification.Type == NotificationType.ApprovalRequired)
+                            {
+                                <BbBadge Variant="BadgeVariant.Secondary" Class="notification-toast-badge">Approval needed</BbBadge>
+                            }
+                        </div>
+                        <button type="button"
+                                class="notification-toast-dismiss"
+                                aria-label="Dismiss notification"
+                                @onclick="() => DismissNotification(notification.Id)"
+                                @onclick:stopPropagation="true">
+                            <LucideIcon Name="x" Size="14" />
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(notification.Message))
+                    {
+                        <p class="notification-toast-message">@notification.Message</p>
+                    }
+
+                    <div class="notification-toast-footer">
+                        <span class="notification-toast-time">@FormatTimestamp(notification.Timestamp)</span>
+                        <span class="notification-toast-link">Open session</span>
+                    </div>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+<style>
+    .notification-toast-stack {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 70;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        width: min(24rem, calc(100vw - 2rem));
+        pointer-events: none;
+    }
+
+    .notification-toast {
+        pointer-events: auto;
+        display: flex;
+        gap: 0.875rem;
+        width: 100%;
+        padding: 0.875rem 1rem;
+        border-radius: 0.875rem;
+        border: 1px solid var(--notification-border);
+        border-left: 4px solid var(--notification-accent);
+        background: color-mix(in srgb, var(--notification-surface) 92%, white 8%);
+        color: inherit;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        outline: none;
+    }
+
+    .notification-toast:hover,
+    .notification-toast:focus-visible {
+        transform: translateY(-2px);
+        box-shadow: 0 22px 48px rgba(15, 23, 42, 0.22);
+    }
+
+    .notification-toast--success {
+        --notification-accent: #16a34a;
+        --notification-border: rgba(22, 163, 74, 0.28);
+        --notification-surface: #f0fdf4;
+    }
+
+    .notification-toast--warning {
+        --notification-accent: #d97706;
+        --notification-border: rgba(217, 119, 6, 0.28);
+        --notification-surface: #fffbeb;
+    }
+
+    .notification-toast--error {
+        --notification-accent: #dc2626;
+        --notification-border: rgba(220, 38, 38, 0.28);
+        --notification-surface: #fef2f2;
+    }
+
+    .dark .notification-toast--success {
+        --notification-border: rgba(74, 222, 128, 0.24);
+        --notification-surface: #052e16;
+    }
+
+    .dark .notification-toast--warning {
+        --notification-border: rgba(251, 191, 36, 0.24);
+        --notification-surface: #451a03;
+    }
+
+    .dark .notification-toast--error {
+        --notification-border: rgba(248, 113, 113, 0.24);
+        --notification-surface: #450a0a;
+    }
+
+    .notification-toast-icon {
+        margin-top: 0.125rem;
+        color: var(--notification-accent);
+        flex-shrink: 0;
+    }
+
+    .notification-toast-body {
+        min-width: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .notification-toast-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .notification-toast-title-row {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .notification-toast-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        line-height: 1.25rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .notification-toast-badge {
+        flex-shrink: 0;
+    }
+
+    .notification-toast-dismiss {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border: none;
+        border-radius: 9999px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .notification-toast-dismiss:hover {
+        background: rgba(148, 163, 184, 0.16);
+    }
+
+    .notification-toast-message {
+        margin: 0;
+        font-size: 0.875rem;
+        line-height: 1.3rem;
+        color: color-mix(in srgb, currentColor 76%, transparent 24%);
+    }
+
+    .notification-toast-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.75rem;
+        color: color-mix(in srgb, currentColor 68%, transparent 32%);
+    }
+
+    .notification-toast-link {
+        font-weight: 600;
+        color: var(--notification-accent);
+    }
+
+    @@media (max-width: 640px) {
+        .notification-toast-stack {
+            right: 0.75rem;
+            left: 0.75rem;
+            width: auto;
+            bottom: 0.75rem;
+        }
+    }
+</style>
+
+@code {
+    private const int MaxVisibleNotifications = 3;
+
+    private IReadOnlyList<SessionNotification> VisibleNotifications => StreamingService.Notifications.Take(MaxVisibleNotifications).ToArray();
+
+    protected override void OnInitialized()
+    {
+        StreamingService.NotificationsChanged += OnNotificationsChanged;
+    }
+
+    public void Dispose()
+    {
+        StreamingService.NotificationsChanged -= OnNotificationsChanged;
+    }
+
+    private void OnNotificationsChanged(object? sender, EventArgs args) => _ = InvokeAsync(StateHasChanged);
+
+    private void OpenNotification(SessionNotification notification)
+    {
+        Dispatcher.Dispatch(new SessionActions.SetActiveSessionAction(notification.SessionId));
+        StreamingService.DismissNotification(notification.Id);
+    }
+
+    private void DismissNotification(string notificationId) => StreamingService.DismissNotification(notificationId);
+
+    private void HandleKeyDown(KeyboardEventArgs args, SessionNotification notification)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            OpenNotification(notification);
+        }
+    }
+
+    private static string GetToastClass(SessionNotification notification) => notification.Type switch
+    {
+        NotificationType.ApprovalRequired => "notification-toast--warning",
+        NotificationType.SessionError => "notification-toast--error",
+        _ => "notification-toast--success",
+    };
+
+    private static string GetIcon(NotificationType type) => type switch
+    {
+        NotificationType.ApprovalRequired => "triangle-alert",
+        NotificationType.SessionError => "circle-x",
+        _ => "circle-check-big",
+    };
+
+    private static string FormatTimestamp(DateTimeOffset timestamp) => timestamp.ToLocalTime().ToString("HH:mm:ss");
+}

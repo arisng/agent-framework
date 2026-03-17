@@ -1,5 +1,5 @@
 /* Copyright (c) Microsoft. All rights reserved. */
-/* MY CUSTOMIZATION POINT: CanvasPane scoped styles — with BB Tabs infrastructure */
+/* CanvasPane scoped styles — with BB Tabs infrastructure */
 
 .canvas-pane {
     display: flex;
@@ -8,7 +8,7 @@
     overflow: hidden;
 }
 
-/* MY CUSTOMIZATION POINT: Compact plan indicator bar at top of CanvasPane */
+/* Compact plan indicator bar at top of CanvasPane */
 .canvas-pane__plan-indicator {
     display: flex;
     align-items: center;
@@ -54,7 +54,7 @@
    BB Tabs — canvas-pane tabbed artifact infrastructure
    ========================================================================== */
 
-/* MY CUSTOMIZATION POINT: BB Tabs container — fills remaining vertical space */
+/* BB Tabs container — fills remaining vertical space */
 ::deep .canvas-pane__tabs {
     display: flex;
     flex-direction: column;
@@ -77,7 +77,7 @@
     max-width: 100%; /* Enforce width constraint */
 }
 
-/* MY CUSTOMIZATION POINT: Tabs list — horizontal scrolling strip at top of canvas pane */
+/* Tabs list — horizontal scrolling strip at top of canvas pane */
 ::deep .canvas-pane__tabs-list {
     flex-shrink: 0;
     border-bottom: 1px solid var(--border, #e4e4e7);
@@ -89,7 +89,7 @@
     scrollbar-width: thin;
 }
 
-/* MY CUSTOMIZATION POINT: Individual tab trigger styling */
+/* Individual tab trigger styling */
 ::deep .canvas-pane__tab-trigger {
     display: inline-flex;
     align-items: center;
@@ -113,7 +113,7 @@
     font-weight: 600;
 }
 
-/* MY CUSTOMIZATION POINT: Tab content panel — scrollable content area.
+/* Tab content panel — scrollable content area.
    Must be a flex column container so .canvas-pane__scroll can use flex: 1.
    Override BB's default mt-2 margin which wastes vertical space. */
 ::deep .canvas-pane__tab-content {

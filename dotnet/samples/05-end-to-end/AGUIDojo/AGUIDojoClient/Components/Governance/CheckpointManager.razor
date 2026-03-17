@@ -1,22 +1,16 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT — CheckpointManager: Time-travel UI showing state checkpoint timeline *@
+@* CheckpointManager: Time-travel UI showing state checkpoint timeline *@
 
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Button
-@using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Components.Separator
-@using BlazorBlueprint.Icons.Lucide.Components
-
-<Card Class="checkpoint-manager-card">
-    <CardHeader>
-        <CardTitle>
+<BbCard Class="checkpoint-manager-card">
+    <BbCardHeader>
+        <BbCardTitle>
             <LucideIcon Name="history" Size="16" Class="checkpoint-manager-icon" />
             Checkpoints
-        </CardTitle>
-        <CardDescription>Revert to a previous state</CardDescription>
-    </CardHeader>
-    <CardContent>
+        </BbCardTitle>
+        <BbCardDescription>Revert to a previous state</BbCardDescription>
+    </BbCardHeader>
+    <BbCardContent>
         @if (_orderedCheckpoints.Count == 0)
         {
             <div class="checkpoint-manager-empty">
@@ -46,7 +40,7 @@
                                 <span class="checkpoint-manager-label">@checkpoint.Label</span>
                                 @if (isLatest)
                                 {
-                                    <Badge Variant="BadgeVariant.Secondary">Latest</Badge>
+                                    <BbBadge Variant="BadgeVariant.Secondary">Latest</BbBadge>
                                 }
                             </div>
                             <div class="checkpoint-manager-item-meta">
@@ -61,26 +55,26 @@
                             </div>
                             @if (!isLatest)
                             {
-                                <Button Variant="ButtonVariant.Outline"
+                                <BbButton Variant="ButtonVariant.Outline"
                                         Size="ButtonSize.Small"
                                         Class="checkpoint-manager-revert-btn"
                                         OnClick="@(() => HandleRevert(checkpoint.Id))">
                                     <LucideIcon Name="undo-2" Size="14" />
                                     Revert
-                                </Button>
+                                </BbButton>
                             }
                         </div>
                     </div>
 
                     @if (i < _orderedCheckpoints.Count - 1)
                     {
-                        <Separator Class="checkpoint-manager-separator" />
+                        <BbSeparator Class="checkpoint-manager-separator" />
                     }
                 }
             </div>
         }
-    </CardContent>
-</Card>
+    </BbCardContent>
+</BbCard>
 
 @code {
     /// <summary>

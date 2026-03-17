@@ -1,37 +1,31 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT: MemoryInspector — displays active agent context for observability *@
-@using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Separator
-@using BlazorBlueprint.Icons.Lucide.Components
-
-<Card Class="memory-inspector">
-    <CardHeader>
-        <CardTitle>
+<BbCard Class="memory-inspector">
+    <BbCardHeader>
+        <BbCardTitle>
             <LucideIcon Name="brain" Size="16" />
             Agent Context
-        </CardTitle>
-        <CardDescription>Active session state and memory</CardDescription>
-    </CardHeader>
-    <CardContent>
+        </BbCardTitle>
+        <BbCardDescription>Active session state and memory</BbCardDescription>
+    </BbCardHeader>
+    <BbCardContent>
         @* Session Info Section *@
         <div class="memory-section">
             <div class="memory-section-title">Session</div>
             <div class="memory-item">
                 <span class="memory-label">Conversation</span>
-                <Badge Variant="BadgeVariant.Outline">@(ConversationId ?? "N/A")</Badge>
+                <BbBadge Variant="BadgeVariant.Outline">@(ConversationId ?? "N/A")</BbBadge>
             </div>
             <div class="memory-item">
-                <span class="memory-label">Endpoint</span>
-                <Badge Variant="BadgeVariant.Secondary">@(SelectedEndpoint ?? "N/A")</Badge>
+                <span class="memory-label">Route</span>
+                <BbBadge Variant="BadgeVariant.Secondary">@(SessionRoute ?? "N/A")</BbBadge>
             </div>
             <div class="memory-item">
                 <span class="memory-label">Messages</span>
-                <Badge>@MessageCount</Badge>
+                <BbBadge>@MessageCount</BbBadge>
             </div>
         </div>
 
-        <Separator />
+        <BbSeparator />
 
         @* Active State Objects Section *@
         <div class="memory-section">
@@ -40,10 +34,10 @@
             {
                 <div class="memory-item">
                     <span class="memory-label">Plan Steps</span>
-                    <Badge Variant="BadgeVariant.Secondary">@PlanStepCount.Value total</Badge>
+                    <BbBadge Variant="BadgeVariant.Secondary">@PlanStepCount.Value total</BbBadge>
                     @if (PlanCompletedCount.HasValue)
                     {
-                        <Badge>@PlanCompletedCount.Value done</Badge>
+                        <BbBadge>@PlanCompletedCount.Value done</BbBadge>
                     }
                 </div>
             }
@@ -51,26 +45,26 @@
             {
                 <div class="memory-item">
                     <span class="memory-label">Recipe</span>
-                    <Badge Variant="BadgeVariant.Secondary">@RecipeName</Badge>
+                    <BbBadge Variant="BadgeVariant.Secondary">@RecipeName</BbBadge>
                 </div>
             }
             @if (DocumentLength.HasValue)
             {
                 <div class="memory-item">
                     <span class="memory-label">Document</span>
-                    <Badge Variant="BadgeVariant.Secondary">@DocumentLength.Value chars</Badge>
+                    <BbBadge Variant="BadgeVariant.Secondary">@DocumentLength.Value chars</BbBadge>
                 </div>
             }
             @if (!PlanStepCount.HasValue && RecipeName is null && !DocumentLength.HasValue)
             {
                 <div class="memory-item">
                     <span class="memory-label">No active state</span>
-                    <Badge Variant="BadgeVariant.Outline">N/A</Badge>
+                    <BbBadge Variant="BadgeVariant.Outline">N/A</BbBadge>
                 </div>
             }
         </div>
 
-        <Separator />
+        <BbSeparator />
 
         @* Tool Invocation Summary Section *@
         <div class="memory-section">
@@ -81,7 +75,7 @@
                 {
                     <div class="memory-item">
                         <span class="memory-label">@tool.Key</span>
-                        <Badge>@tool.Value</Badge>
+                        <BbBadge>@tool.Value</BbBadge>
                     </div>
                 }
             }
@@ -89,12 +83,12 @@
             {
                 <div class="memory-item">
                     <span class="memory-label">No tools called</span>
-                    <Badge Variant="BadgeVariant.Outline">N/A</Badge>
+                    <BbBadge Variant="BadgeVariant.Outline">N/A</BbBadge>
                 </div>
             }
         </div>
-    </CardContent>
-</Card>
+    </BbCardContent>
+</BbCard>
 
 @code {
     /// <summary>
@@ -104,10 +98,10 @@
     public string? ConversationId { get; set; }
 
     /// <summary>
-    /// The currently selected AG-UI endpoint path.
+    /// The current AG-UI route for the active session.
     /// </summary>
     [Parameter]
-    public string? SelectedEndpoint { get; set; }
+    public string? SessionRoute { get; set; }
 
     /// <summary>
     /// The total number of messages in the conversation.
@@ -128,13 +122,13 @@
     public int? PlanCompletedCount { get; set; }
 
     /// <summary>
-    /// The name of the active recipe, if using the Shared State endpoint.
+    /// The name of the active recipe, if the session currently has recipe state.
     /// </summary>
     [Parameter]
     public string? RecipeName { get; set; }
 
     /// <summary>
-    /// The character length of the current document, if using the Predictive State endpoint.
+    /// The character length of the current document, if a document preview is active.
     /// </summary>
     [Parameter]
     public int? DocumentLength { get; set; }

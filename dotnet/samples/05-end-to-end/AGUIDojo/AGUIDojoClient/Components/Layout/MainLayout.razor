@@ -1,22 +1,17 @@
 @inherits LayoutComponentBase
-@* MY CUSTOMIZATION POINT: BlazorBlueprint Primitives namespace for PortalHost *@
 @using BlazorBlueprint.Primitives.Services
 
-@* MY CUSTOMIZATION POINT: Fluxor StoreInitializer — required for Fluxor state management.
-   Must be rendered once in the layout so stores are initialized before any component reads state. *@
 <Fluxor.Blazor.Web.StoreInitializer />
 
-@* MY CUSTOMIZATION POINT: SidebarProvider wraps entire layout for BlazorBlueprint Sidebar support.
-   DefaultOpen starts the sidebar expanded. *@
-<SidebarProvider DefaultOpen="true">
+<BbSidebarProvider DefaultOpen="true">
     @Body
-</SidebarProvider>
+</BbSidebarProvider>
 
-@* MY CUSTOMIZATION POINT: Command Palette — global Ctrl+K / Cmd+K quick-action dialog *@
 <CommandPalette />
+<NotificationToast />
 
-@* MY CUSTOMIZATION POINT: BlazorBlueprint PortalHost — required for overlay components (Dialog, Sheet, Drawer, Tooltip, Popover, Select, Combobox) *@
-<PortalHost />
+<BbContainerPortalHost />
+<BbOverlayPortalHost />
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

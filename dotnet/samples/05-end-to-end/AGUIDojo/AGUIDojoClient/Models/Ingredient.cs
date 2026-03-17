@@ -7,7 +7,7 @@ namespace AGUIDojoClient.Models;
 
 /// <summary>
 /// Represents an ingredient in a recipe.
-/// Used by the /shared_state endpoint for recipe state management.
+/// Used for session-scoped recipe state in the unified chat experience.
 /// </summary>
 public sealed class Ingredient
 {

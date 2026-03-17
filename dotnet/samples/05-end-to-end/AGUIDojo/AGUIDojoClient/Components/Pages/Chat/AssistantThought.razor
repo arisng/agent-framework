@@ -2,17 +2,11 @@
 @using AGUIDojoClient.Services
 @using AGUIDojoClient.Models
 @using AGUIDojoClient.Shared
-@using BlazorBlueprint.Components.Accordion
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Collapsible
-@using BlazorBlueprint.Components.Spinner
-@using BlazorBlueprint.Icons.Lucide.Components
-
 @inject IToolComponentRegistry ToolRegistry
 
 <div class="assistant-thought @(IsExpanded ? "expanded" : "collapsed")">
-    <Collapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
-        <CollapsibleTrigger>
+    <BbCollapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
+        <BbCollapsibleTrigger>
             <div class="thought-toggle" aria-expanded="@IsExpanded">
                 <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
                 <LucideIcon Name="@(IsExpanded ? "chevron-up" : "chevron-down")" Size="14" Class="thought-chevron-icon" />
@@ -27,42 +21,42 @@
                     }
                 </span>
             </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
+        </BbCollapsibleTrigger>
+        <BbCollapsibleContent>
             <div class="thought-content">
                 @{
                     var toolCallCycles = GetToolCallCycles();
                     var nonToolContents = GetNonToolCallContents();
                 }
 
-                @* MY CUSTOMIZATION POINT: BlazorBlueprint Accordion for individual tool call cycles *@
+                @* BlazorBlueprint Accordion for individual tool call cycles *@
                 @if (toolCallCycles.Count > 0)
                 {
-                    <Accordion Type="BlazorBlueprint.Primitives.Accordion.AccordionType.Multiple" Class="thought-accordion">
+                    <BbAccordion Type="BlazorBlueprint.Primitives.AccordionType.Multiple" Class="thought-accordion">
                         @foreach (var cycle in toolCallCycles)
                         {
-                            <AccordionItem Value="@cycle.CallId" Class="thought-accordion-item">
-                                <AccordionTrigger Class="thought-accordion-trigger">
+                            <BbAccordionItem Value="@cycle.CallId" Class="thought-accordion-item">
+                                <BbAccordionTrigger Class="thought-accordion-trigger">
                                     <div class="accordion-trigger-content">
                                         <LucideIcon Name="wrench" Size="14" Class="tool-icon-lucide" />
                                         <span class="tool-call-name">@cycle.Call.Name</span>
                                         @if (cycle.IsRunning)
                                         {
-                                            <Badge Variant="BadgeVariant.Secondary" Class="tool-status-badge">
-                                                <Spinner Size="SpinnerSize.Small" /> Running
-                                            </Badge>
+                                            <BbBadge Variant="BadgeVariant.Secondary" Class="tool-status-badge">
+                                                <BbSpinner Size="SpinnerSize.Small" /> Running
+                                            </BbBadge>
                                         }
                                         else if (cycle.IsRejected)
                                         {
-                                            <Badge Variant="BadgeVariant.Destructive" Class="tool-status-badge">
+                                            <BbBadge Variant="BadgeVariant.Destructive" Class="tool-status-badge">
                                                 <LucideIcon Name="circle-x" Size="12" /> Rejected
-                                            </Badge>
+                                            </BbBadge>
                                         }
                                         else if (cycle.HasResult)
                                         {
-                                            <Badge Class="tool-status-badge">
+                                            <BbBadge Class="tool-status-badge">
                                                 <LucideIcon Name="circle-check" Size="12" /> Completed
-                                            </Badge>
+                                            </BbBadge>
                                             @if (cycle.Duration is not null)
                                             {
                                                 <span class="tool-duration">@FormatDuration(cycle.Duration.Value)</span>
@@ -71,13 +65,13 @@
                                         else
                                         {
                                             @* Defense-in-depth: agent completed but no FRC received *@
-                                            <Badge Class="tool-status-badge">
+                                            <BbBadge Class="tool-status-badge">
                                                 <LucideIcon Name="circle-check" Size="12" /> Completed
-                                            </Badge>
+                                            </BbBadge>
                                         }
                                     </div>
-                                </AccordionTrigger>
-                                <AccordionContent Class="thought-accordion-content">
+                                </BbAccordionTrigger>
+                                <BbAccordionContent Class="thought-accordion-content">
                                     @* Tool Call Arguments *@
                                     @if (cycle.Call.Arguments is { Count: > 0 })
                                     {
@@ -172,7 +166,7 @@
                                     else if (cycle.IsRunning)
                                     {
                                         <div class="tool-result-section tool-result-section-pending">
-                                            <Spinner Size="SpinnerSize.Small" />
+                                            <BbSpinner Size="SpinnerSize.Small" />
                                             <span class="tool-waiting-text">Waiting for result...</span>
                                         </div>
                                     }
@@ -185,10 +179,10 @@
                                             </div>
                                         </div>
                                     }
-                                </AccordionContent>
-                            </AccordionItem>
+                                </BbAccordionContent>
+                            </BbAccordionItem>
                         }
-                    </Accordion>
+                    </BbAccordion>
                 }
 
                 @* Non-tool-call items: DataContent, ErrorContent *@
@@ -258,8 +252,8 @@
                     }
                 }
             </div>
-        </CollapsibleContent>
-    </Collapsible>
+        </BbCollapsibleContent>
+    </BbCollapsible>
 </div>
 
 @code {
@@ -282,7 +276,7 @@
     [Parameter]
     public bool InProgress { get; set; }
 
-    // MY CUSTOMIZATION POINT: Optional reasoning steps for timing display from ObservabilityService
+    // Optional reasoning steps for timing display from ObservabilityService
     /// <summary>
     /// Optional reasoning steps from ObservabilityService for timing display.
     /// When provided, each tool call accordion item shows execution duration.
@@ -348,7 +342,7 @@
         return ThoughtContents.Count();
     }
 
-    // MY CUSTOMIZATION POINT: Tool call cycle grouping for Accordion of Thought
+    // Tool call cycle grouping for Accordion of Thought
 
     /// <summary>
     /// Groups FunctionCallContent with their matching FunctionResultContent into tool call cycles.
@@ -722,7 +716,7 @@
         return null;
     }
 
-    // MY CUSTOMIZATION POINT: Record for grouping FunctionCallContent + FunctionResultContent into accordion items
+    // Record for grouping FunctionCallContent + FunctionResultContent into accordion items
 
     /// <summary>
     /// Represents a grouped tool call cycle: a FunctionCallContent paired with its matching FunctionResultContent.

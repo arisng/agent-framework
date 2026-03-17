@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft. All rights reserved.
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using AGUIDojoClient.Helpers;
 using AGUIDojoClient.Models;
 using AGUIDojoClient.Shared;
-using AGUIDojoClient.Store.AgentState;
-using AGUIDojoClient.Store.ArtifactState;
-using AGUIDojoClient.Store.ChatState;
-using AGUIDojoClient.Store.PlanState;
+using AGUIDojoClient.Store.SessionManager;
 using Fluxor;
 using Microsoft.Extensions.AI;
 
@@ -15,415 +15,244 @@ namespace AGUIDojoClient.Services;
 
 /// <summary>
 /// Coordinates the AG-UI SSE streaming loop, governance actions, and conversation lifecycle.
-/// Owns all streaming-related state: cancellation tokens, deduplication sets,
-/// approval <see cref="TaskCompletionSource{TResult}"/>, diff preview state, and
-/// <see cref="ChatOptions"/>.
 /// </summary>
-/// <remarks>
-/// Registered as <c>Scoped</c> (per Blazor circuit). Dispatches Fluxor actions for
-/// all state mutations. Uses UI callbacks (<c>throttledStateChanged</c>,
-/// <c>stateChanged</c>) to trigger Blazor re-renders without coupling to
-/// <c>ComponentBase</c>.
-/// <para>
-/// Extracted from <c>Chat.razor</c> (task-27) to reduce component complexity from
-/// ~720 lines to ≤300 lines while preserving all 7 AG-UI protocol features.
-/// </para>
-/// </remarks>
 public sealed class AgentStreamingService : IAgentStreamingService
 {
+    private const int MaxConcurrentStreams = 3;
+    private const int MaxQueuedStreams = 5;
+
     private readonly IDispatcher _dispatcher;
-    private readonly IState<PlanState> _planStore;
-    private readonly IState<AgentState> _agentStore;
-    private readonly IState<ArtifactState> _artifactStore;
-    private readonly IState<ChatState> _chatStore;
+    private readonly IState<SessionManagerState> _sessionStore;
     private readonly IApprovalHandler _approvalHandler;
     private readonly IJsonPatchApplier _jsonPatchApplier;
     private readonly IStateManager _stateManager;
     private readonly IObservabilityService _observabilityService;
     private readonly ICheckpointService _checkpointService;
-
-    private readonly ChatOptions _chatOptions = new();
-    private readonly HashSet<string> _seenFunctionCallIds = new();
-    private readonly HashSet<string> _seenFunctionResultCallIds = new();
-    private readonly Dictionary<string, string> _functionCallIdToToolName = new();
-
-    private CancellationTokenSource? _currentResponseCancellation;
-    private ChatMessage? _streamingMessage;
-    private TaskCompletionSource<bool>? _approvalTaskSource;
-
-    private object? _lastDiffBefore;
-    private object? _lastDiffAfter;
-    private string _lastDiffTitle = "State Diff";
+    private readonly IAGUIChatClientFactory _chatClientFactory;
+    private readonly ConcurrentDictionary<string, SessionStreamingContext> _sessionContexts = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _notificationDismissals = new();
+    private readonly object _streamGate = new();
+    private readonly object _notificationGate = new();
+    private readonly Queue<QueuedStreamRequest> _queuedRequests = [];
+    private readonly List<SessionNotification> _notifications = [];
+    private readonly HashSet<string> _runningSessions = [];
 
     private Action? _throttledStateChanged;
     private Action? _stateChanged;
+    private Func<Func<Task>, Task>? _invokeAsync;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentStreamingService"/> class.
     /// </summary>
     public AgentStreamingService(
         IDispatcher dispatcher,
-        IState<PlanState> planStore,
-        IState<AgentState> agentStore,
-        IState<ArtifactState> artifactStore,
-        IState<ChatState> chatStore,
+        IState<SessionManagerState> sessionStore,
         IApprovalHandler approvalHandler,
         IJsonPatchApplier jsonPatchApplier,
         IStateManager stateManager,
         IObservabilityService observabilityService,
-        ICheckpointService checkpointService)
+        ICheckpointService checkpointService,
+        IAGUIChatClientFactory chatClientFactory)
     {
         _dispatcher = dispatcher;
-        _planStore = planStore;
-        _agentStore = agentStore;
-        _artifactStore = artifactStore;
-        _chatStore = chatStore;
+        _sessionStore = sessionStore;
         _approvalHandler = approvalHandler;
         _jsonPatchApplier = jsonPatchApplier;
         _stateManager = stateManager;
         _observabilityService = observabilityService;
         _checkpointService = checkpointService;
+        _chatClientFactory = chatClientFactory;
+        _sessionStore.StateChanged += OnSessionStoreChanged;
     }
 
     /// <inheritdoc />
-    public object? LastDiffBefore => _lastDiffBefore;
+    public object? LastDiffBefore => GetActiveContext().LastDiffBefore;
 
     /// <inheritdoc />
-    public object? LastDiffAfter => _lastDiffAfter;
+    public object? LastDiffAfter => GetActiveContext().LastDiffAfter;
 
     /// <inheritdoc />
-    public string LastDiffTitle => _lastDiffTitle;
+    public string LastDiffTitle => GetActiveContext().LastDiffTitle;
 
     /// <inheritdoc />
-    public ChatOptions ChatOptions => _chatOptions;
-
-    /// <summary>
-    /// Gets whether the currently selected endpoint is the Shared State endpoint.
-    /// </summary>
-    private bool IsSharedStateEndpoint =>
-        _agentStore.Value.SelectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Gets whether the currently selected endpoint is the Predictive State Updates endpoint.
-    /// </summary>
-    private bool IsPredictiveStateEndpoint =>
-        _agentStore.Value.SelectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
+    public ChatOptions ChatOptions => GetActiveContext().ChatOptions;
 
     /// <inheritdoc />
-    public void SetUiCallbacks(Action throttledStateChanged, Action stateChanged)
+    public IReadOnlyList<SessionNotification> Notifications
+    {
+        get
+        {
+            lock (_notificationGate)
+            {
+                return _notifications.ToArray();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public event EventHandler? NotificationsChanged;
+
+    /// <inheritdoc />
+    public void SetUiCallbacks(Action throttledStateChanged, Action stateChanged, Func<Func<Task>, Task> invokeAsync)
     {
         _throttledStateChanged = throttledStateChanged;
         _stateChanged = stateChanged;
+        _invokeAsync = invokeAsync;
     }
 
     /// <inheritdoc />
-    public async Task ProcessAgentResponseAsync(IChatClient chatClient)
+    public bool CanQueueResponse(string sessionId)
     {
-        bool hasApprovalResponses;
-
-        do
+        SessionStreamingContext context = GetOrCreateContext(sessionId);
+        lock (_streamGate)
         {
-            hasApprovalResponses = false;
-            List<FunctionResultContent> approvalResponses = [];
-
-            // Stream and display a new response from the IChatClient
-            var responseText = new TextContent("");
-            _streamingMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
-            _dispatcher.Dispatch(new ChatActions.UpdateResponseMessageAction(_streamingMessage));
-            _stateChanged?.Invoke();
-            _currentResponseCancellation = new();
-            _dispatcher.Dispatch(new AgentActions.SetRunningAction(true));
-
-            try
-            {
-                await foreach (var update in chatClient.GetStreamingResponseAsync(
-                    _chatStore.Value.Messages.Skip(_chatStore.Value.StatefulMessageCount), _chatOptions, _currentResponseCancellation.Token))
-                {
-                    // Check for approval requests and Plan state updates in the update
-                    foreach (var content in update.Contents)
-                    {
-                        if (content is FunctionCallContent fcc && _approvalHandler.TryExtractApprovalRequest(fcc, out var approval) && approval is not null)
-                        {
-                            // Show approval dialog and wait for user decision
-                            _dispatcher.Dispatch(new ChatActions.SetPendingApprovalAction(approval));
-                            _approvalTaskSource = new TaskCompletionSource<bool>();
-                            _stateChanged?.Invoke();
-
-                            bool approved = await _approvalTaskSource.Task;
-
-                            // Create approval response
-                            var response = _approvalHandler.CreateApprovalResponse(approval.ApprovalId, approved);
-                            approvalResponses.Add(response);
-
-                            // Add approval/rejection response to streaming message for immediate display
-                            // This ensures the tool call cycle shows "Completed"/"Rejected" instead of "Running"
-                            if (_streamingMessage is not null)
-                            {
-                                _streamingMessage.Contents.Add(response);
-                            }
-
-                            _dispatcher.Dispatch(new ChatActions.SetPendingApprovalAction(null));
-                            _approvalTaskSource = null;
-                            _stateChanged?.Invoke();
-                        }
-                        // Handle Plan state snapshots (Agentic Generative UI)
-                        else if (content is DataContent dc && ChatHelpers.IsPlanStateSnapshot(dc))
-                        {
-                            Plan? plan = ChatHelpers.TryParsePlanSnapshot(dc);
-                            if (plan is not null)
-                            {
-                                _checkpointService.CreateCheckpoint("Before plan update", _planStore.Value.Plan, IsSharedStateEndpoint ? _stateManager.CurrentRecipe : null, _artifactStore.Value.CurrentDocumentState, _chatStore.Value.Messages.Count);
-                                _lastDiffBefore = _planStore.Value.Plan;
-                                _dispatcher.Dispatch(new PlanActions.SetPlanAction(plan));
-                                _lastDiffAfter = plan;
-                                _lastDiffTitle = "Plan State Change";
-                                _dispatcher.Dispatch(new SetDiffPreviewArtifactAction(_lastDiffBefore, plan, "Plan State Change"));
-                                _stateChanged?.Invoke();
-                            }
-                        }
-                        // Handle Plan state deltas (JSON Patch for step updates)
-                        else if (content is DataContent patchDc && ChatHelpers.IsPlanStateDelta(patchDc))
-                        {
-                            if (_planStore.Value.Plan is not null)
-                            {
-                                List<JsonPatchOperation>? operations = ChatHelpers.TryParsePatchOperations(patchDc);
-                                if (operations is not null)
-                                {
-                                    _checkpointService.CreateCheckpoint("Before plan step update", _planStore.Value.Plan, IsSharedStateEndpoint ? _stateManager.CurrentRecipe : null, _artifactStore.Value.CurrentDocumentState, _chatStore.Value.Messages.Count);
-                                    _jsonPatchApplier.ApplyPatch(_planStore.Value.Plan, operations);
-                                    _dispatcher.Dispatch(new PlanActions.ApplyPlanDeltaAction(operations));
-                                    _stateChanged?.Invoke();
-                                }
-                            }
-                        }
-                        // Handle Recipe state snapshots (Shared State feature)
-                        else if (content is DataContent recipeDc && IsSharedStateEndpoint && _stateManager.TryExtractRecipeSnapshot(recipeDc, out Recipe? recipe) && recipe is not null)
-                        {
-                            _checkpointService.CreateCheckpoint("Before recipe update", _planStore.Value.Plan, _stateManager.CurrentRecipe, _artifactStore.Value.CurrentDocumentState, _chatStore.Value.Messages.Count);
-                            _lastDiffBefore = _stateManager.CurrentRecipe;
-                            _stateManager.UpdateFromServerSnapshot(recipe);
-                            _dispatcher.Dispatch(new SetRecipeAction(recipe));
-                            _lastDiffAfter = _stateManager.CurrentRecipe;
-                            _lastDiffTitle = "Recipe State Change";
-                            _dispatcher.Dispatch(new SetDiffPreviewArtifactAction(_lastDiffBefore, _stateManager.CurrentRecipe, "Recipe State Change"));
-                            _stateChanged?.Invoke();
-                        }
-                        // Handle Document state snapshots (Predictive State Updates feature)
-                        else if (content is DataContent docDc && IsPredictiveStateEndpoint && ChatHelpers.TryExtractDocumentSnapshot(docDc, out DocumentState? docState) && docState is not null)
-                        {
-                            if (_artifactStore.Value.CurrentDocumentState is null)
-                            {
-                                _checkpointService.CreateCheckpoint("Before document update", _planStore.Value.Plan, null, _artifactStore.Value.CurrentDocumentState, _chatStore.Value.Messages.Count);
-                            }
-                            _dispatcher.Dispatch(new SetDocumentAction(docState));
-                            _dispatcher.Dispatch(new SetDocumentPreviewAction(true));
-                            _throttledStateChanged?.Invoke();
-                        }
-                    }
-
-                    // Consolidate content: only add non-duplicate FunctionCallContent and skip redundant DataContent
-                    foreach (AIContent content in update.Contents)
-                    {
-                        if (content is TextContent)
-                        {
-                            continue;
-                        }
-
-                        if (content is FunctionCallContent fcc)
-                        {
-                            if (fcc.CallId is not null && !_seenFunctionCallIds.Contains(fcc.CallId))
-                            {
-                                _seenFunctionCallIds.Add(fcc.CallId);
-                                _streamingMessage?.Contents.Add(content);
-                                _observabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
-
-                                // Track tool name by CallId for artifact dispatch when FRC arrives
-                                if (fcc.Name is not null)
-                                {
-                                    _functionCallIdToToolName[fcc.CallId] = fcc.Name;
-                                }
-                            }
-                        }
-                        else if (content is DataContent dc)
-                        {
-                            ChatHelpers.ConsolidateDataContent(_streamingMessage!, dc);
-                        }
-                        else if (content is FunctionResultContent frc)
-                        {
-                            if (frc.CallId is not null && !_seenFunctionResultCallIds.Contains(frc.CallId))
-                            {
-                                _seenFunctionResultCallIds.Add(frc.CallId);
-                                _streamingMessage?.Contents.Add(content);
-                                _observabilityService.CompleteToolCall(frc.CallId, frc.Result);
-
-                                // Dispatch DataGrid artifact when show_data_grid tool result arrives
-                                TryDispatchDataGridArtifact(frc);
-                            }
-                            else if (frc.CallId is null)
-                            {
-                                _streamingMessage?.Contents.Add(content);
-                            }
-                        }
-                        else
-                        {
-                            _streamingMessage?.Contents.Add(content);
-                        }
-                    }
-
-                    responseText.Text += update.Text;
-                    _chatOptions.ConversationId = update.ConversationId;
-                    _dispatcher.Dispatch(new ChatActions.SetConversationIdAction(update.ConversationId));
-
-                    if (update.AuthorName is not null)
-                    {
-                        _dispatcher.Dispatch(new AgentActions.SetAuthorNameAction(update.AuthorName));
-                        _streamingMessage!.AuthorName = update.AuthorName;
-                    }
-
-                    _throttledStateChanged?.Invoke();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // User cancelled the operation
-            }
-            catch (HttpRequestException ex)
-            {
-                responseText.Text = $"Error: {ex.Message}";
-                Components.Pages.Chat.ChatMessageItem.NotifyChanged(_streamingMessage);
-            }
-            catch (Exception ex)
-            {
-                responseText.Text = $"An unexpected error occurred: {ex.Message}";
-                Components.Pages.Chat.ChatMessageItem.NotifyChanged(_streamingMessage);
-            }
-
-            _dispatcher.Dispatch(new AgentActions.SetRunningAction(false));
-
-            // Store the final response in the conversation via Fluxor dispatch
-            _dispatcher.Dispatch(new ChatActions.AddMessageAction(_streamingMessage!));
-            _streamingMessage = null;
-            _dispatcher.Dispatch(new ChatActions.UpdateResponseMessageAction(null));
-
-            // If there were approval responses, add them as a tool message and continue
-            if (approvalResponses.Count > 0)
-            {
-                bool hasAnyRejection = approvalResponses.Any(r => ChatHelpers.IsRejectionResponse(r));
-
-                foreach (var response in approvalResponses)
-                {
-                    _dispatcher.Dispatch(new ChatActions.AddMessageAction(new ChatMessage(ChatRole.Tool, [response])));
-                }
-
-                if (hasAnyRejection)
-                {
-                    hasApprovalResponses = false;
-                    _chatOptions.ConversationId = null;
-                    _dispatcher.Dispatch(new ChatActions.SetConversationIdAction(null));
-                    _dispatcher.Dispatch(new ChatActions.SetStatefulCountAction(_chatStore.Value.Messages.Count));
-                }
-                else
-                {
-                    hasApprovalResponses = true;
-                }
-            }
-            else
-            {
-                // Only update statefulMessageCount when there are no pending approval workflows
-                _dispatcher.Dispatch(new ChatActions.SetStatefulCountAction(
-                    _chatStore.Value.ConversationId is not null ? _chatStore.Value.Messages.Count : 0));
-            }
-
-            // Mark document as finalized when streaming completes (for Predictive State Updates)
-            if (IsPredictiveStateEndpoint && _artifactStore.Value.CurrentDocumentState is not null)
-            {
-                _dispatcher.Dispatch(new SetDocumentPreviewAction(false));
-                _stateChanged?.Invoke();
-            }
-        } while (hasApprovalResponses);
+            return _runningSessions.Contains(sessionId)
+                || context.IsQueued
+                || _runningSessions.Count < MaxConcurrentStreams
+                || _queuedRequests.Count < MaxQueuedStreams;
+        }
     }
 
     /// <inheritdoc />
-    public void ResolveApproval(bool approved)
+    public Task ProcessAgentResponseAsync(string sessionId)
     {
-        _approvalTaskSource?.TrySetResult(approved);
-    }
-
-    /// <inheritdoc />
-    public void CancelAnyCurrentResponse()
-    {
-        // If a response was cancelled while streaming, include it in the conversation so it's not lost
-        if (_streamingMessage is not null)
+        if (!TryGetSession(sessionId, out SessionEntry entry))
         {
-            _dispatcher.Dispatch(new ChatActions.AddMessageAction(_streamingMessage));
+            return Task.CompletedTask;
         }
 
-        _currentResponseCancellation?.Cancel();
-        _dispatcher.Dispatch(new AgentActions.SetRunningAction(false));
-        _streamingMessage = null;
-        _dispatcher.Dispatch(new ChatActions.UpdateResponseMessageAction(null));
-        _dispatcher.Dispatch(new ChatActions.SetPendingApprovalAction(null));
-        _approvalTaskSource?.TrySetCanceled();
-        _approvalTaskSource = null;
-        _approvalHandler.ClearPendingApprovals();
+        SessionStreamingContext context = GetOrCreateContext(sessionId);
+        lock (_streamGate)
+        {
+            if (_runningSessions.Contains(sessionId) && context.ActiveResponseTask is not null)
+            {
+                return context.ActiveResponseTask;
+            }
+
+            if (context.IsQueued)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_runningSessions.Count >= MaxConcurrentStreams)
+            {
+                if (_queuedRequests.Count >= MaxQueuedStreams)
+                {
+                    throw new InvalidOperationException("The session streaming queue is full.");
+                }
+
+                context.IsQueued = true;
+                _queuedRequests.Enqueue(new QueuedStreamRequest(sessionId));
+                return Task.CompletedTask;
+            }
+
+            return StartSessionStream(entry.Metadata.Id, context);
+        }
     }
 
     /// <inheritdoc />
-    public void ResetConversation(string systemPrompt, string selectedEndpointPath)
+    public void ResolveApproval(string sessionId, bool approved)
     {
-        CancelAnyCurrentResponse();
-        _dispatcher.Dispatch(new ChatActions.ClearMessagesAction());
-        _dispatcher.Dispatch(new ChatActions.AddMessageAction(new(ChatRole.System, systemPrompt)));
-        _chatOptions.ConversationId = null;
-        _dispatcher.Dispatch(new PlanActions.ClearPlanAction());
-        _dispatcher.Dispatch(new AgentActions.SetAuthorNameAction(null));
-        _dispatcher.Dispatch(new ClearArtifactsAction());
-        _seenFunctionCallIds.Clear();
-        _seenFunctionResultCallIds.Clear();
-        _functionCallIdToToolName.Clear();
-        _approvalHandler.ClearPendingApprovals();
-        _checkpointService.Clear();
-        _lastDiffBefore = null;
-        _lastDiffAfter = null;
+        if (_sessionContexts.TryGetValue(sessionId, out SessionStreamingContext? context))
+        {
+            context.ApprovalTaskSource?.TrySetResult(approved);
+        }
 
-        InitializeEndpointState(selectedEndpointPath);
+        DismissNotifications(notification =>
+            notification.Type == NotificationType.ApprovalRequired
+            && string.Equals(notification.SessionId, sessionId, StringComparison.Ordinal));
     }
 
     /// <inheritdoc />
-    public void HandlePanic(string selectedEndpointPath)
+    public void CancelResponse(string sessionId)
     {
-        CancelAnyCurrentResponse();
-        var checkpoint = _checkpointService.GetLatestCheckpoint();
+        DismissNotifications(notification => string.Equals(notification.SessionId, sessionId, StringComparison.Ordinal));
+        _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, null));
+        _approvalHandler.ClearPendingApprovals(sessionId);
+
+        if (!_sessionContexts.TryGetValue(sessionId, out SessionStreamingContext? context))
+        {
+            return;
+        }
+
+        lock (_streamGate)
+        {
+            _runningSessions.Remove(sessionId);
+            RemoveQueuedRequests(sessionId);
+            context.IsQueued = false;
+        }
+
+        if (context.StreamingMessage is not null)
+        {
+            _dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, context.StreamingMessage));
+        }
+
+        context.StreamingMessage = null;
+        context.ResponseCancellation?.Cancel();
+        context.ResponseCancellation?.Dispose();
+        context.ResponseCancellation = null;
+        context.ActiveResponseTask = null;
+
+        _dispatcher.Dispatch(new SessionActions.SetRunningAction(sessionId, false));
+        _dispatcher.Dispatch(new SessionActions.UpdateResponseMessageAction(sessionId, null));
+        context.ApprovalTaskSource?.TrySetCanceled();
+        context.ApprovalTaskSource = null;
+    }
+
+    /// <inheritdoc />
+    public void ResetConversation(string sessionId, string systemPrompt)
+    {
+        CancelResponse(sessionId);
+        _dispatcher.Dispatch(new SessionActions.ClearMessagesAction(sessionId));
+        _dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, new ChatMessage(ChatRole.System, systemPrompt)));
+        _dispatcher.Dispatch(new SessionActions.ClearPlanAction(sessionId));
+        _dispatcher.Dispatch(new SessionActions.SetAuthorNameAction(sessionId, null));
+        _dispatcher.Dispatch(new SessionActions.ClearArtifactsAction(sessionId));
+        _approvalHandler.ClearPendingApprovals(sessionId);
+        _checkpointService.Clear(sessionId);
+
+        SessionStreamingContext context = GetOrCreateContext(sessionId);
+        context.ResetConversationState();
+
+        SyncSessionState(sessionId);
+    }
+
+    /// <inheritdoc />
+    public void HandlePanic(string sessionId)
+    {
+        CancelResponse(sessionId);
+        Checkpoint? checkpoint = _checkpointService.GetLatestCheckpoint(sessionId);
         if (checkpoint is not null)
         {
-            RestoreFromCheckpoint(checkpoint, selectedEndpointPath);
+            RestoreFromCheckpoint(sessionId, checkpoint);
         }
 
-        ResetConversationContext();
+        ResetConversationContext(sessionId);
         _stateChanged?.Invoke();
     }
 
     /// <inheritdoc />
-    public void HandleCheckpointRevert(string checkpointId, string selectedEndpointPath)
+    public void HandleCheckpointRevert(string sessionId, string checkpointId)
     {
-        CancelAnyCurrentResponse();
-        var checkpoint = _checkpointService.RevertToCheckpoint(checkpointId);
+        CancelResponse(sessionId);
+        Checkpoint? checkpoint = _checkpointService.RevertToCheckpoint(sessionId, checkpointId);
         if (checkpoint is null)
         {
             return;
         }
 
-        RestoreFromCheckpoint(checkpoint, selectedEndpointPath);
-        ResetConversationContext();
+        RestoreFromCheckpoint(sessionId, checkpoint);
+        ResetConversationContext(sessionId);
         _stateChanged?.Invoke();
     }
 
     /// <inheritdoc />
-    public void InitializeEndpointState(string endpointPath)
+    public void SyncSessionState(string sessionId)
     {
-        if (endpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase))
+        Recipe? recipe = GetSessionState(sessionId).CurrentRecipe;
+        if (recipe is not null)
         {
-            _stateManager.Initialize();
+            _stateManager.UpdateFromServerSnapshot(recipe);
         }
         else
         {
@@ -434,7 +263,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     /// <inheritdoc />
     public IReadOnlyDictionary<string, int>? GetToolInvocationSummary()
     {
-        var steps = _observabilityService.GetSteps();
+        IReadOnlyList<ReasoningStep> steps = _observabilityService.GetSteps();
         if (steps.Count == 0)
         {
             return null;
@@ -445,94 +274,612 @@ public sealed class AgentStreamingService : IAgentStreamingService
             .ToDictionary(g => g.Key, g => g.Count());
     }
 
-    /// <summary>
-    /// Restores all Fluxor state stores from a checkpoint snapshot.
-    /// Shared by <see cref="HandlePanic"/> and <see cref="HandleCheckpointRevert"/> for DRY checkpoint restoration.
-    /// </summary>
-    /// <param name="checkpoint">The checkpoint to restore from.</param>
-    /// <param name="selectedEndpointPath">The currently selected endpoint path.</param>
-    private void RestoreFromCheckpoint(Checkpoint checkpoint, string selectedEndpointPath)
+    /// <inheritdoc />
+    public void DismissNotification(string notificationId)
     {
-        // Restore plan state
+        if (string.IsNullOrWhiteSpace(notificationId))
+        {
+            return;
+        }
+
+        bool removed;
+        lock (_notificationGate)
+        {
+            removed = _notifications.RemoveAll(notification => string.Equals(notification.Id, notificationId, StringComparison.Ordinal)) > 0;
+        }
+
+        CancelNotificationDismissal(notificationId);
+
+        if (removed)
+        {
+            _ = RaiseNotificationsChangedAsync();
+        }
+    }
+
+    private SessionStreamingContext GetActiveContext() => GetOrCreateContext(SessionSelectors.GetActiveSessionId(_sessionStore.Value));
+
+    private SessionStreamingContext GetOrCreateContext(string sessionId) => _sessionContexts.GetOrAdd(sessionId, _ => new SessionStreamingContext());
+
+    private void OnSessionStoreChanged(object? sender, EventArgs e)
+    {
+        HashSet<string> liveSessionIds = _sessionStore.Value.Sessions.Keys.ToHashSet(StringComparer.Ordinal);
+        foreach ((string sessionId, _) in _sessionContexts)
+        {
+            if (!liveSessionIds.Contains(sessionId))
+            {
+                RemoveSessionContext(sessionId);
+            }
+        }
+    }
+
+    private void RemoveSessionContext(string sessionId)
+    {
+        lock (_streamGate)
+        {
+            _runningSessions.Remove(sessionId);
+            RemoveQueuedRequests(sessionId);
+        }
+
+        DismissNotifications(notification => string.Equals(notification.SessionId, sessionId, StringComparison.Ordinal));
+
+        if (_sessionContexts.TryRemove(sessionId, out SessionStreamingContext? context))
+        {
+            context.Dispose();
+        }
+    }
+
+    private void RemoveQueuedRequests(string sessionId)
+    {
+        if (_queuedRequests.Count == 0)
+        {
+            return;
+        }
+
+        List<QueuedStreamRequest> remaining = [];
+        while (_queuedRequests.Count > 0)
+        {
+            QueuedStreamRequest request = _queuedRequests.Dequeue();
+            if (!string.Equals(request.SessionId, sessionId, StringComparison.Ordinal))
+            {
+                remaining.Add(request);
+            }
+        }
+
+        foreach (QueuedStreamRequest request in remaining)
+        {
+            _queuedRequests.Enqueue(request);
+        }
+    }
+
+    private Task StartSessionStream(string sessionId, SessionStreamingContext context)
+    {
+        context.IsQueued = false;
+        _runningSessions.Add(sessionId);
+        Task streamTask = RunSessionResponseAsync(sessionId, context);
+        context.ActiveResponseTask = streamTask;
+        return streamTask;
+    }
+
+    private async Task RunSessionResponseAsync(string sessionId, SessionStreamingContext context)
+    {
+        bool shouldPromoteQueuedStream = false;
+
+        try
+        {
+            if (!TryGetSession(sessionId, out _))
+            {
+                return;
+            }
+
+            IChatClient chatClient = _chatClientFactory.CreateClient();
+            context.ChatOptions.ConversationId = GetSessionState(sessionId).ConversationId;
+            bool hasApprovalResponses;
+
+            do
+            {
+                hasApprovalResponses = false;
+                bool encounteredError = false;
+                bool wasCancelled = false;
+                string? errorNotificationMessage = null;
+                List<FunctionResultContent> approvalResponses = [];
+                bool sawDocumentPreview = false;
+
+                var responseText = new TextContent(string.Empty);
+                var streamingMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
+                context.StreamingMessage = streamingMessage;
+                _dispatcher.Dispatch(new SessionActions.UpdateResponseMessageAction(sessionId, streamingMessage));
+                _stateChanged?.Invoke();
+
+                var responseCancellation = new CancellationTokenSource();
+                context.ResponseCancellation = responseCancellation;
+                _dispatcher.Dispatch(new SessionActions.SetRunningAction(sessionId, true));
+
+                try
+                {
+                    SessionState session = GetSessionState(sessionId);
+                    await foreach (var update in chatClient.GetStreamingResponseAsync(
+                        session.Messages.Skip(session.StatefulMessageCount),
+                        context.ChatOptions,
+                        responseCancellation.Token))
+                    {
+                        foreach (AIContent content in update.Contents)
+                        {
+                            if (content is FunctionCallContent fcc && _approvalHandler.TryExtractApprovalRequest(fcc, out PendingApproval? approval) && approval is not null)
+                            {
+                                approval.SessionId = sessionId;
+                                _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, approval));
+                                NotifyBackgroundApprovalRequired(sessionId, approval);
+                                context.ApprovalTaskSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                                _stateChanged?.Invoke();
+
+                                bool approved = await context.ApprovalTaskSource.Task;
+                                var response = _approvalHandler.CreateApprovalResponse(sessionId, approval.ApprovalId, approved);
+                                approvalResponses.Add(response);
+                                streamingMessage.Contents.Add(response);
+
+                                _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, null));
+                                context.ApprovalTaskSource = null;
+                                DismissNotification(approval.ApprovalId);
+                                _stateChanged?.Invoke();
+                            }
+                            else if (content is DataContent dataContent && TryHandleDataContent(sessionId, context, dataContent, ref sawDocumentPreview))
+                            {
+                            }
+                        }
+
+                        foreach (AIContent content in update.Contents)
+                        {
+                            if (content is TextContent)
+                            {
+                                continue;
+                            }
+
+                            if (content is FunctionCallContent fcc)
+                            {
+                                if (fcc.CallId is not null && context.SeenFunctionCallIds.Add(fcc.CallId))
+                                {
+                                    streamingMessage.Contents.Add(content);
+                                    _observabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
+
+                                    if (fcc.Name is not null)
+                                    {
+                                        context.FunctionCallIdToToolName[fcc.CallId] = fcc.Name;
+                                    }
+                                }
+                            }
+                            else if (content is DataContent dc)
+                            {
+                                ChatHelpers.ConsolidateDataContent(streamingMessage, dc);
+                            }
+                            else if (content is FunctionResultContent frc)
+                            {
+                                if (frc.CallId is not null && context.SeenFunctionResultCallIds.Add(frc.CallId))
+                                {
+                                    streamingMessage.Contents.Add(content);
+                                    _observabilityService.CompleteToolCall(frc.CallId, frc.Result);
+                                    TryDispatchDataGridArtifact(sessionId, context, frc);
+                                }
+                                else if (frc.CallId is null)
+                                {
+                                    streamingMessage.Contents.Add(content);
+                                }
+                            }
+                            else
+                            {
+                                streamingMessage.Contents.Add(content);
+                            }
+                        }
+
+                        responseText.Text += update.Text;
+                        context.ChatOptions.ConversationId = update.ConversationId;
+                        _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, update.ConversationId));
+
+                        if (update.AuthorName is not null)
+                        {
+                            _dispatcher.Dispatch(new SessionActions.SetAuthorNameAction(sessionId, update.AuthorName));
+                            streamingMessage.AuthorName = update.AuthorName;
+                        }
+
+                        _throttledStateChanged?.Invoke();
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    wasCancelled = true;
+                }
+                catch (HttpRequestException ex)
+                {
+                    encounteredError = true;
+                    errorNotificationMessage = ex.Message;
+                    responseText.Text = $"Error: {ex.Message}";
+                    Components.Pages.Chat.ChatMessageItem.NotifyChanged(streamingMessage);
+                }
+                catch (Exception ex)
+                {
+                    encounteredError = true;
+                    errorNotificationMessage = ex.Message;
+                    responseText.Text = $"An unexpected error occurred: {ex.Message}";
+                    Components.Pages.Chat.ChatMessageItem.NotifyChanged(streamingMessage);
+                }
+                finally
+                {
+                    if (ReferenceEquals(context.ResponseCancellation, responseCancellation))
+                    {
+                        context.ResponseCancellation?.Dispose();
+                        context.ResponseCancellation = null;
+                    }
+                }
+
+                if (ReferenceEquals(context.StreamingMessage, streamingMessage))
+                {
+                    _dispatcher.Dispatch(new SessionActions.SetRunningAction(sessionId, false));
+                    _dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, streamingMessage));
+                    context.StreamingMessage = null;
+                    _dispatcher.Dispatch(new SessionActions.UpdateResponseMessageAction(sessionId, null));
+
+                    if (encounteredError)
+                    {
+                        _dispatcher.Dispatch(new SessionActions.SetSessionStatusAction(sessionId, SessionStatus.Error));
+                        NotifyBackgroundError(sessionId, errorNotificationMessage);
+                    }
+                }
+
+                if (approvalResponses.Count > 0)
+                {
+                    bool hasAnyRejection = approvalResponses.Any(ChatHelpers.IsRejectionResponse);
+
+                    foreach (FunctionResultContent response in approvalResponses)
+                    {
+                        _dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, new ChatMessage(ChatRole.Tool, [response])));
+                    }
+
+                    if (hasAnyRejection)
+                    {
+                        hasApprovalResponses = false;
+                        context.ChatOptions.ConversationId = null;
+                        _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, null));
+                        _dispatcher.Dispatch(new SessionActions.SetStatefulCountAction(sessionId, GetSessionState(sessionId).Messages.Count));
+                    }
+                    else
+                    {
+                        hasApprovalResponses = true;
+                    }
+                }
+                else if (!encounteredError)
+                {
+                    SessionState session = GetSessionState(sessionId);
+                    _dispatcher.Dispatch(new SessionActions.SetStatefulCountAction(
+                        sessionId,
+                        session.ConversationId is not null ? session.Messages.Count : 0));
+                }
+
+                if (sawDocumentPreview && GetSessionState(sessionId).CurrentDocumentState is not null)
+                {
+                    _dispatcher.Dispatch(new SessionActions.SetDocumentPreviewAction(sessionId, false));
+                    _stateChanged?.Invoke();
+                }
+
+                if (!wasCancelled && !encounteredError && !hasApprovalResponses)
+                {
+                    NotifyBackgroundCompletion(sessionId);
+                }
+            }
+            while (hasApprovalResponses);
+        }
+        finally
+        {
+            lock (_streamGate)
+            {
+                _runningSessions.Remove(sessionId);
+                if (_sessionContexts.TryGetValue(sessionId, out SessionStreamingContext? currentContext)
+                    && ReferenceEquals(currentContext, context))
+                {
+                    context.ActiveResponseTask = null;
+                }
+
+                shouldPromoteQueuedStream = _queuedRequests.Count > 0;
+            }
+
+            if (shouldPromoteQueuedStream)
+            {
+                await StartQueuedStreamsAsync();
+            }
+        }
+    }
+
+    private async Task StartQueuedStreamsAsync()
+    {
+        while (true)
+        {
+            QueuedStreamRequest? request = null;
+            SessionStreamingContext? context = null;
+
+            lock (_streamGate)
+            {
+                if (_runningSessions.Count >= MaxConcurrentStreams)
+                {
+                    return;
+                }
+
+                while (_queuedRequests.Count > 0)
+                {
+                    QueuedStreamRequest next = _queuedRequests.Dequeue();
+                    if (!TryGetSession(next.SessionId, out _))
+                    {
+                        _sessionContexts.TryRemove(next.SessionId, out _);
+                        continue;
+                    }
+
+                    context = GetOrCreateContext(next.SessionId);
+                    context.IsQueued = false;
+                    request = next;
+                    break;
+                }
+            }
+
+            if (request is null || context is null)
+            {
+                return;
+            }
+
+            await InvokeOnUiAsync(() =>
+            {
+                lock (_streamGate)
+                {
+                    if (_runningSessions.Count >= MaxConcurrentStreams)
+                    {
+                        context.IsQueued = true;
+                        _queuedRequests.Enqueue(request);
+                        return Task.CompletedTask;
+                    }
+
+                    _ = StartSessionStream(request.SessionId, context);
+                }
+
+                return Task.CompletedTask;
+            });
+        }
+    }
+
+    private Task InvokeOnUiAsync(Func<Task> callback) => _invokeAsync is null ? callback() : _invokeAsync(callback);
+
+    private bool IsBackgroundSession(string sessionId) =>
+        !string.Equals(SessionSelectors.GetActiveSessionId(_sessionStore.Value), sessionId, StringComparison.Ordinal);
+
+    private bool TryGetSession(string sessionId, out SessionEntry entry) => SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out entry);
+
+    private SessionState GetSessionState(string sessionId) => SessionSelectors.GetSessionStateOrDefault(_sessionStore.Value, sessionId);
+
+    private void RestoreFromCheckpoint(string sessionId, Checkpoint checkpoint)
+    {
         if (checkpoint.PlanSnapshot is not null)
         {
-            var restoredPlan = JsonSerializer.Deserialize<Plan>(checkpoint.PlanSnapshot, JsonDefaults.Options);
+            Plan? restoredPlan = JsonSerializer.Deserialize<Plan>(checkpoint.PlanSnapshot, JsonDefaults.Options);
             if (restoredPlan is not null)
             {
-                _dispatcher.Dispatch(new PlanActions.SetPlanAction(restoredPlan));
+                _dispatcher.Dispatch(new SessionActions.SetPlanAction(sessionId, restoredPlan));
             }
             else
             {
-                _dispatcher.Dispatch(new PlanActions.ClearPlanAction());
+                _dispatcher.Dispatch(new SessionActions.ClearPlanAction(sessionId));
             }
         }
         else
         {
-            _dispatcher.Dispatch(new PlanActions.ClearPlanAction());
+            _dispatcher.Dispatch(new SessionActions.ClearPlanAction(sessionId));
         }
 
-        // Restore recipe state
-        bool isSharedState = selectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
-        if (checkpoint.RecipeSnapshot is not null && isSharedState)
+        _dispatcher.Dispatch(new SessionActions.ClearArtifactsAction(sessionId));
+
+        if (checkpoint.RecipeSnapshot is not null)
         {
-            var recipe = JsonSerializer.Deserialize<Recipe>(checkpoint.RecipeSnapshot, JsonDefaults.Options);
+            Recipe? recipe = JsonSerializer.Deserialize<Recipe>(checkpoint.RecipeSnapshot, JsonDefaults.Options);
             if (recipe is not null)
             {
-                _stateManager.UpdateFromServerSnapshot(recipe);
-                _dispatcher.Dispatch(new SetRecipeAction(recipe));
+                _dispatcher.Dispatch(new SessionActions.SetRecipeAction(sessionId, recipe));
             }
         }
 
-        // Restore document state
-        bool isPredictiveState = selectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
-        if (checkpoint.DocumentSnapshot is not null && isPredictiveState)
+        if (checkpoint.DocumentSnapshot is not null)
         {
-            var restoredDoc = JsonSerializer.Deserialize<DocumentState>(checkpoint.DocumentSnapshot, JsonDefaults.Options);
+            DocumentState? restoredDoc = JsonSerializer.Deserialize<DocumentState>(checkpoint.DocumentSnapshot, JsonDefaults.Options);
             if (restoredDoc is not null)
             {
-                _dispatcher.Dispatch(new SetDocumentAction(restoredDoc));
+                _dispatcher.Dispatch(new SessionActions.SetDocumentAction(sessionId, restoredDoc));
             }
-            _dispatcher.Dispatch(new SetDocumentPreviewAction(false));
-        }
-        else if (isPredictiveState)
-        {
-            _dispatcher.Dispatch(new ClearArtifactsAction());
+
+            _dispatcher.Dispatch(new SessionActions.SetDocumentPreviewAction(sessionId, false));
         }
 
-        // Trim messages to checkpoint boundary via Fluxor dispatch
-        if (checkpoint.MessageCount < _chatStore.Value.Messages.Count)
+        if (checkpoint.MessageCount < GetSessionState(sessionId).Messages.Count)
         {
-            _dispatcher.Dispatch(new ChatActions.TrimMessagesAction(checkpoint.MessageCount));
+            _dispatcher.Dispatch(new SessionActions.TrimMessagesAction(sessionId, checkpoint.MessageCount));
+        }
+
+        if (string.Equals(SessionSelectors.GetActiveSessionId(_sessionStore.Value), sessionId, StringComparison.Ordinal))
+        {
+            SyncSessionState(sessionId);
         }
     }
 
-    /// <summary>
-    /// Resets conversation context after a checkpoint restore or panic action.
-    /// Clears the conversation ID, syncs stateful message count, and clears diff state.
-    /// </summary>
-    private void ResetConversationContext()
+    private void ResetConversationContext(string sessionId)
     {
-        _chatOptions.ConversationId = null;
-        _dispatcher.Dispatch(new ChatActions.SetConversationIdAction(null));
-        _dispatcher.Dispatch(new ChatActions.SetStatefulCountAction(_chatStore.Value.Messages.Count));
-        _lastDiffBefore = null;
-        _lastDiffAfter = null;
+        SessionStreamingContext context = GetOrCreateContext(sessionId);
+        context.ChatOptions.ConversationId = null;
+        _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, null));
+        _dispatcher.Dispatch(new SessionActions.SetStatefulCountAction(sessionId, GetSessionState(sessionId).Messages.Count));
+        context.LastDiffBefore = null;
+        context.LastDiffAfter = null;
+        context.LastDiffTitle = "State Diff";
     }
 
-    /// <summary>
-    /// Attempts to dispatch a <see cref="SetDataGridArtifactAction"/> when a <c>show_data_grid</c> tool result arrives.
-    /// Looks up the tool name from the CallId-to-ToolName mapping, then parses the FRC result as <see cref="DataGridResult"/>.
-    /// </summary>
-    /// <param name="frc">The <see cref="FunctionResultContent"/> to inspect.</param>
-    private void TryDispatchDataGridArtifact(FunctionResultContent frc)
+    private bool TryHandleDataContent(string sessionId, SessionStreamingContext context, DataContent dataContent, ref bool sawDocumentPreview)
+    {
+        if (ChatHelpers.IsPlanStateDelta(dataContent))
+        {
+            SessionState session = GetSessionState(sessionId);
+            if (session.Plan is not null)
+            {
+                List<JsonPatchOperation>? operations = ChatHelpers.TryParsePatchOperations(dataContent);
+                if (operations is not null)
+                {
+                    _checkpointService.CreateCheckpoint(
+                        sessionId,
+                        "Before plan step update",
+                        session.Plan,
+                        GetRecipeCheckpointSnapshot(sessionId),
+                        session.CurrentDocumentState,
+                        session.Messages.Count);
+                    _jsonPatchApplier.ApplyPatch(session.Plan, operations);
+                    _dispatcher.Dispatch(new SessionActions.ApplyPlanDeltaAction(sessionId, operations));
+                    _stateChanged?.Invoke();
+                }
+            }
+
+            return true;
+        }
+
+        if (ChatHelpers.TryGetTypedEnvelopePayload(dataContent, out string? contentType, out JsonElement payload))
+        {
+            switch (contentType)
+            {
+                case ChatHelpers.PlanSnapshotType:
+                    Plan? typedPlan = JsonSerializer.Deserialize<Plan>(payload.GetRawText(), JsonDefaults.Options);
+                    if (typedPlan is not null)
+                    {
+                        ApplyPlanSnapshot(sessionId, context, typedPlan);
+                    }
+
+                    return true;
+
+                case ChatHelpers.RecipeSnapshotType:
+                    if (TryExtractRecipeFromPayload(payload, out Recipe? typedRecipe) && typedRecipe is not null)
+                    {
+                        ApplyRecipeSnapshot(sessionId, context, typedRecipe);
+                    }
+
+                    return true;
+
+                case ChatHelpers.DocumentPreviewType:
+                    DocumentState? typedDocument = JsonSerializer.Deserialize<DocumentState>(payload.GetRawText(), JsonDefaults.Options);
+                    if (typedDocument is not null)
+                    {
+                        ApplyDocumentSnapshot(sessionId, typedDocument);
+                        sawDocumentPreview = true;
+                    }
+
+                    return true;
+
+                default:
+                    Debug.WriteLine($"AgentStreamingService: Unrecognized DataContent $type '{contentType}'.");
+                    return true;
+            }
+        }
+
+        if (ChatHelpers.IsPlanSnapshot(dataContent))
+        {
+            Plan? plan = ChatHelpers.TryParsePlanSnapshot(dataContent);
+            if (plan is not null)
+            {
+                ApplyPlanSnapshot(sessionId, context, plan);
+            }
+
+            return true;
+        }
+
+        if (_stateManager.TryExtractRecipeSnapshot(dataContent, out Recipe? recipe) && recipe is not null)
+        {
+            ApplyRecipeSnapshot(sessionId, context, recipe);
+            return true;
+        }
+
+        if (ChatHelpers.TryExtractDocumentSnapshot(dataContent, out DocumentState? docState) && docState is not null)
+        {
+            ApplyDocumentSnapshot(sessionId, docState);
+            sawDocumentPreview = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ApplyPlanSnapshot(string sessionId, SessionStreamingContext context, Plan plan)
+    {
+        SessionState session = GetSessionState(sessionId);
+        _checkpointService.CreateCheckpoint(
+            sessionId,
+            "Before plan update",
+            session.Plan,
+            GetRecipeCheckpointSnapshot(sessionId),
+            session.CurrentDocumentState,
+            session.Messages.Count);
+        context.LastDiffBefore = session.Plan;
+        _dispatcher.Dispatch(new SessionActions.SetPlanAction(sessionId, plan));
+        context.LastDiffAfter = plan;
+        context.LastDiffTitle = "Plan State Change";
+        _dispatcher.Dispatch(new SessionActions.SetDiffPreviewArtifactAction(sessionId, context.LastDiffBefore, plan, context.LastDiffTitle));
+        _stateChanged?.Invoke();
+    }
+
+    private void ApplyRecipeSnapshot(string sessionId, SessionStreamingContext context, Recipe recipe)
+    {
+        SessionState session = GetSessionState(sessionId);
+        _checkpointService.CreateCheckpoint(
+            sessionId,
+            "Before recipe update",
+            session.Plan,
+            session.CurrentRecipe,
+            session.CurrentDocumentState,
+            session.Messages.Count);
+        context.LastDiffBefore = session.CurrentRecipe;
+        _dispatcher.Dispatch(new SessionActions.SetRecipeAction(sessionId, recipe));
+        context.LastDiffAfter = recipe;
+        context.LastDiffTitle = "Recipe State Change";
+        _dispatcher.Dispatch(new SessionActions.SetDiffPreviewArtifactAction(sessionId, context.LastDiffBefore, recipe, context.LastDiffTitle));
+
+        if (string.Equals(SessionSelectors.GetActiveSessionId(_sessionStore.Value), sessionId, StringComparison.Ordinal))
+        {
+            _stateManager.UpdateFromServerSnapshot(recipe);
+        }
+
+        _stateChanged?.Invoke();
+    }
+
+    private void ApplyDocumentSnapshot(string sessionId, DocumentState docState)
+    {
+        SessionState session = GetSessionState(sessionId);
+        if (session.CurrentDocumentState is null)
+        {
+            _checkpointService.CreateCheckpoint(
+                sessionId,
+                "Before document update",
+                session.Plan,
+                GetRecipeCheckpointSnapshot(sessionId),
+                session.CurrentDocumentState,
+                session.Messages.Count);
+        }
+
+        _dispatcher.Dispatch(new SessionActions.SetDocumentAction(sessionId, docState));
+        _dispatcher.Dispatch(new SessionActions.SetDocumentPreviewAction(sessionId, true));
+        _throttledStateChanged?.Invoke();
+    }
+
+    private Recipe? GetRecipeCheckpointSnapshot(string sessionId) => GetSessionState(sessionId).CurrentRecipe;
+
+    private bool TryExtractRecipeFromPayload(JsonElement payload, out Recipe? recipe)
+    {
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload.GetRawText());
+        return _stateManager.TryExtractRecipeSnapshot(new DataContent(payloadBytes, "application/json"), out recipe);
+    }
+
+    private void TryDispatchDataGridArtifact(string sessionId, SessionStreamingContext context, FunctionResultContent frc)
     {
         if (frc.CallId is null)
         {
             return;
         }
 
-        // Check if this FRC is from a show_data_grid tool call
-        if (!_functionCallIdToToolName.TryGetValue(frc.CallId, out var toolName)
+        if (!context.FunctionCallIdToToolName.TryGetValue(frc.CallId, out string? toolName)
             || !string.Equals(toolName, "show_data_grid", StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -553,20 +900,192 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
             if (dataGrid?.Columns.Count > 0)
             {
-                _dispatcher.Dispatch(new SetDataGridArtifactAction(dataGrid));
+                _dispatcher.Dispatch(new SessionActions.SetDataGridArtifactAction(sessionId, dataGrid));
             }
         }
         catch
         {
-            // Failed to parse DataGrid result — no-op; data is still shown inline via ToolComponentRegistry
         }
     }
+
+    private void NotifyBackgroundApprovalRequired(string sessionId, PendingApproval approval)
+    {
+        if (!IsBackgroundSession(sessionId) || !TryGetSession(sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        EnqueueNotification(new SessionNotification
+        {
+            Id = approval.ApprovalId,
+            Type = NotificationType.ApprovalRequired,
+            SessionId = sessionId,
+            Title = entry.Metadata.Title,
+            Message = $"Approval needed: {approval.FunctionName}",
+            Timestamp = DateTimeOffset.UtcNow,
+            IsUrgent = true,
+            IsPersistent = true,
+            DurationMilliseconds = 0,
+        });
+    }
+
+    private void NotifyBackgroundCompletion(string sessionId)
+    {
+        if (!IsBackgroundSession(sessionId) || !TryGetSession(sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        EnqueueNotification(new SessionNotification
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = NotificationType.SessionCompleted,
+            SessionId = sessionId,
+            Title = entry.Metadata.Title,
+            Message = "Agent finished responding",
+            Timestamp = DateTimeOffset.UtcNow,
+            IsUrgent = false,
+            IsPersistent = false,
+            DurationMilliseconds = 5000,
+        });
+    }
+
+    private void NotifyBackgroundError(string sessionId, string? errorMessage)
+    {
+        if (!IsBackgroundSession(sessionId) || !TryGetSession(sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        EnqueueNotification(new SessionNotification
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = NotificationType.SessionError,
+            SessionId = sessionId,
+            Title = entry.Metadata.Title,
+            Message = BuildErrorNotificationMessage(errorMessage),
+            Timestamp = DateTimeOffset.UtcNow,
+            IsUrgent = false,
+            IsPersistent = false,
+            DurationMilliseconds = 8000,
+        });
+    }
+
+    private void EnqueueNotification(SessionNotification notification)
+    {
+        bool added;
+        lock (_notificationGate)
+        {
+            if (_notifications.Any(existing => string.Equals(existing.Id, notification.Id, StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            _notifications.Add(notification);
+            added = true;
+        }
+
+        if (added)
+        {
+            if (!notification.IsPersistent && notification.DurationMilliseconds > 0)
+            {
+                ScheduleNotificationDismissal(notification);
+            }
+
+            _ = RaiseNotificationsChangedAsync();
+        }
+    }
+
+    private void DismissNotifications(Func<SessionNotification, bool> predicate)
+    {
+        HashSet<string> removedIds;
+        lock (_notificationGate)
+        {
+            removedIds = _notifications.Where(predicate).Select(notification => notification.Id).ToHashSet(StringComparer.Ordinal);
+            if (removedIds.Count == 0)
+            {
+                return;
+            }
+
+            _notifications.RemoveAll(notification => removedIds.Contains(notification.Id, StringComparer.Ordinal));
+        }
+
+        foreach (string notificationId in removedIds)
+        {
+            CancelNotificationDismissal(notificationId);
+        }
+
+        _ = RaiseNotificationsChangedAsync();
+    }
+
+    private void ScheduleNotificationDismissal(SessionNotification notification)
+    {
+        CancellationTokenSource dismissal = new();
+        if (!_notificationDismissals.TryAdd(notification.Id, dismissal))
+        {
+            dismissal.Dispose();
+            return;
+        }
+
+        _ = AutoDismissNotificationAsync(notification.Id, notification.DurationMilliseconds, dismissal.Token);
+    }
+
+    private async Task AutoDismissNotificationAsync(string notificationId, int delayMilliseconds, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delayMilliseconds, cancellationToken);
+            DismissNotification(notificationId);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void CancelNotificationDismissal(string notificationId)
+    {
+        if (_notificationDismissals.TryRemove(notificationId, out CancellationTokenSource? dismissal))
+        {
+            dismissal.Cancel();
+            dismissal.Dispose();
+        }
+    }
+
+    private Task RaiseNotificationsChangedAsync() => InvokeOnUiAsync(() =>
+    {
+        NotificationsChanged?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    });
+
+    private static string BuildErrorNotificationMessage(string? errorMessage)
+    {
+        string detail = string.IsNullOrWhiteSpace(errorMessage) ? "An unexpected streaming error occurred." : errorMessage.Trim();
+        return $"Error: {Truncate(detail, 100)}";
+    }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength
+            ? text
+            : $"{text[..Math.Max(0, maxLength - 1)]}…";
 
     /// <inheritdoc />
     public void Dispose()
     {
-        _currentResponseCancellation?.Cancel();
-        _currentResponseCancellation?.Dispose();
-        _approvalTaskSource?.TrySetCanceled();
+        _sessionStore.StateChanged -= OnSessionStoreChanged;
+
+        foreach ((string sessionId, _) in _sessionContexts)
+        {
+            RemoveSessionContext(sessionId);
+        }
+
+        foreach (CancellationTokenSource dismissal in _notificationDismissals.Values)
+        {
+            dismissal.Cancel();
+            dismissal.Dispose();
+        }
+
+        _notificationDismissals.Clear();
     }
+
+    private sealed record QueuedStreamRequest(string SessionId);
 }

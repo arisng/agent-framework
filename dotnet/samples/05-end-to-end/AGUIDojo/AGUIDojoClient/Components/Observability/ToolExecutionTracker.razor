@@ -1,20 +1,14 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT: ToolExecutionTracker — compact real-time tool execution display for observability *@
-@using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Separator
-@using BlazorBlueprint.Components.Spinner
-@using BlazorBlueprint.Icons.Lucide.Components
-
-<Card Class="tool-execution-tracker">
-    <CardHeader>
-        <CardTitle>
+@* ToolExecutionTracker — compact real-time tool execution display for observability *@
+<BbCard Class="tool-execution-tracker">
+    <BbCardHeader>
+        <BbCardTitle>
             <LucideIcon Name="activity" Size="16" />
             Tool Execution
-        </CardTitle>
-        <CardDescription>Real-time tool call tracking</CardDescription>
-    </CardHeader>
-    <CardContent>
+        </BbCardTitle>
+        <BbCardDescription>Real-time tool call tracking</BbCardDescription>
+    </BbCardHeader>
+    <BbCardContent>
         @if (Steps is null || Steps.Count == 0)
         {
             @* Empty state *@
@@ -31,22 +25,22 @@
             {
                 <div class="tracker-active">
                     <div class="tracker-active-header">
-                        <Spinner Size="SpinnerSize.Small" />
+                        <BbSpinner Size="SpinnerSize.Small" />
                         <span class="tracker-tool-name">@activeStep.ToolName</span>
-                        <Badge Variant="BadgeVariant.Secondary">
+                        <BbBadge Variant="BadgeVariant.Secondary">
                             @FormatElapsed(activeStep.StartTime)
-                        </Badge>
+                        </BbBadge>
                     </div>
                     @if (activeStep.Arguments is not null && activeStep.Arguments.Count > 0)
                     {
                         <div class="tracker-args">
                             @foreach (var arg in activeStep.Arguments.Take(3))
                             {
-                                <Badge Variant="BadgeVariant.Outline">@arg.Key</Badge>
+                                <BbBadge Variant="BadgeVariant.Outline">@arg.Key</BbBadge>
                             }
                             @if (activeStep.Arguments.Count > 3)
                             {
-                                <Badge Variant="BadgeVariant.Outline">+@(activeStep.Arguments.Count - 3)</Badge>
+                                <BbBadge Variant="BadgeVariant.Outline">+@(activeStep.Arguments.Count - 3)</BbBadge>
                             }
                         </div>
                     }
@@ -54,7 +48,7 @@
 
                 @if (completedSteps.Count > 0)
                 {
-                    <Separator />
+                    <BbSeparator />
                 }
             }
 
@@ -68,7 +62,7 @@
                             <div class="tracker-completed-info">
                                 @if (step.Status == ReasoningStepStatus.Completed)
                                 {
-                                    @* MY CUSTOMIZATION POINT — Use "check" icon (check-circle not available in BlazorBlueprint.Icons.Lucide 2.0.0) *@
+                                    @* Use "check" icon (check-circle not available in BlazorBlueprint.Icons.Lucide 2.0.0) *@
                                     <LucideIcon Name="check" Size="14" />
                                 }
                                 else if (step.Status == ReasoningStepStatus.Failed)
@@ -80,15 +74,15 @@
                             <div class="tracker-completed-meta">
                                 @if (step.Duration.HasValue)
                                 {
-                                    <Badge Variant="BadgeVariant.Outline">@FormatDuration(step.Duration.Value)</Badge>
+                                    <BbBadge Variant="BadgeVariant.Outline">@FormatDuration(step.Duration.Value)</BbBadge>
                                 }
                                 @if (step.Status == ReasoningStepStatus.Completed)
                                 {
-                                    <Badge>Completed</Badge>
+                                    <BbBadge>Completed</BbBadge>
                                 }
                                 else if (step.Status == ReasoningStepStatus.Failed)
                                 {
-                                    <Badge Variant="BadgeVariant.Destructive">Failed</Badge>
+                                    <BbBadge Variant="BadgeVariant.Destructive">Failed</BbBadge>
                                 }
                             </div>
                         </div>
@@ -96,8 +90,8 @@
                 </div>
             }
         }
-    </CardContent>
-</Card>
+    </BbCardContent>
+</BbCard>
 
 @code {
     private List<ReasoningStep> completedSteps = [];

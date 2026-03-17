@@ -16,29 +16,28 @@ namespace AGUIDojoClient.Helpers;
 /// </summary>
 public static class ChatHelpers
 {
+    public const string PlanSnapshotType = "plan_snapshot";
+    public const string RecipeSnapshotType = "recipe_snapshot";
+    public const string DocumentPreviewType = "document_preview";
+
     /// <summary>
     /// Determines if <see cref="DataContent"/> represents a Plan state snapshot (Agentic Generative UI).
     /// Plan snapshots have media type <c>application/json</c> and contain a <c>"steps"</c> array.
     /// </summary>
     /// <param name="dc">The <see cref="DataContent"/> to inspect.</param>
     /// <returns><see langword="true"/> if the content is a plan state snapshot; otherwise, <see langword="false"/>.</returns>
-    public static bool IsPlanStateSnapshot(DataContent dc)
+    public static bool IsPlanSnapshot(DataContent dc)
     {
-        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
+        if (TryGetTypedEnvelopePayload(dc, out string? contentType, out JsonElement data))
         {
-            return false;
+            return string.Equals(contentType, PlanSnapshotType, StringComparison.Ordinal) &&
+                   data.ValueKind == JsonValueKind.Object &&
+                   data.TryGetProperty("steps", out _);
         }
 
-        try
-        {
-            string text = Encoding.UTF8.GetString(dc.Data.ToArray());
-            using JsonDocument doc = JsonDocument.Parse(text);
-            return doc.RootElement.TryGetProperty("steps", out _);
-        }
-        catch
-        {
-            return false;
-        }
+        return TryGetJsonRoot(dc, out JsonElement root) &&
+               root.ValueKind == JsonValueKind.Object &&
+               root.TryGetProperty("steps", out _);
     }
 
     /// <summary>
@@ -60,6 +59,16 @@ public static class ChatHelpers
     {
         try
         {
+            if (TryGetTypedEnvelopePayload(dc, out string? contentType, out JsonElement data))
+            {
+                if (!string.Equals(contentType, PlanSnapshotType, StringComparison.Ordinal))
+                {
+                    return null;
+                }
+
+                return JsonSerializer.Deserialize<Plan>(data.GetRawText(), JsonDefaults.Options);
+            }
+
             string text = Encoding.UTF8.GetString(dc.Data.ToArray());
             return JsonSerializer.Deserialize<Plan>(text, JsonDefaults.Options);
         }
@@ -99,36 +108,50 @@ public static class ChatHelpers
     {
         documentState = null;
 
-        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
+        if (TryGetTypedEnvelopePayload(dc, out string? contentType, out JsonElement data))
+        {
+            if (!string.Equals(contentType, DocumentPreviewType, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                documentState = JsonSerializer.Deserialize<DocumentState>(data.GetRawText(), JsonDefaults.Options);
+                return documentState is not null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        if (!TryGetJsonRoot(dc, out JsonElement root))
+        {
+            return false;
+        }
+
+        // Verify this is a DocumentState (has "document" property but not "steps" or "ingredients")
+        if (!root.TryGetProperty("document", out _))
+        {
+            return false;
+        }
+
+        // Exclude Plan snapshots (have "steps")
+        if (root.TryGetProperty("steps", out _))
+        {
+            return false;
+        }
+
+        // Exclude Recipe snapshots (have "ingredients")
+        if (root.TryGetProperty("ingredients", out _))
         {
             return false;
         }
 
         try
         {
-            string text = Encoding.UTF8.GetString(dc.Data.ToArray());
-            using JsonDocument doc = JsonDocument.Parse(text);
-
-            // Verify this is a DocumentState (has "document" property but not "steps" or "ingredients")
-            if (!doc.RootElement.TryGetProperty("document", out _))
-            {
-                return false;
-            }
-
-            // Exclude Plan snapshots (have "steps")
-            if (doc.RootElement.TryGetProperty("steps", out _))
-            {
-                return false;
-            }
-
-            // Exclude Recipe snapshots (have "ingredients")
-            if (doc.RootElement.TryGetProperty("ingredients", out _))
-            {
-                return false;
-            }
-
-            documentState = JsonSerializer.Deserialize<DocumentState>(text, JsonDefaults.Options);
-
+            documentState = JsonSerializer.Deserialize<DocumentState>(root.GetRawText(), JsonDefaults.Options);
             return documentState is not null;
         }
         catch
@@ -183,41 +206,94 @@ public static class ChatHelpers
             return "state-snapshot";
         }
 
-        // Try to detect content type from JSON structure
-        if (dc.MediaType == "application/json" && dc.Data.Length > 0)
+        if (TryGetTypedEnvelopePayload(dc, out string? contentType, out _))
         {
-            try
+            return contentType switch
             {
-                string text = Encoding.UTF8.GetString(dc.Data.ToArray());
-                using JsonDocument doc = JsonDocument.Parse(text);
+                PlanSnapshotType => "plan-snapshot",
+                RecipeSnapshotType => "recipe-snapshot",
+                DocumentPreviewType => "document-snapshot",
+                _ => $"typed:{contentType}"
+            };
+        }
 
-                // Plan snapshots
-                if (doc.RootElement.TryGetProperty("steps", out _))
-                {
-                    return "plan-snapshot";
-                }
-
-                // Recipe snapshots
-                if (doc.RootElement.TryGetProperty("ingredients", out _))
-                {
-                    return "recipe-snapshot";
-                }
-
-                // Document state snapshots
-                if (doc.RootElement.TryGetProperty("document", out _))
-                {
-                    return "document-snapshot";
-                }
+        // Try to detect content type from JSON structure
+        if (TryGetJsonRoot(dc, out JsonElement root))
+        {
+            // Plan snapshots
+            if (root.TryGetProperty("steps", out _))
+            {
+                return "plan-snapshot";
             }
-            catch
+
+            // Recipe snapshots
+            if (root.TryGetProperty("ingredients", out _))
             {
-                // Parsing failed, treat as generic
+                return "recipe-snapshot";
+            }
+
+            // Document state snapshots
+            if (root.TryGetProperty("document", out _))
+            {
+                return "document-snapshot";
             }
         }
 
         // Generic DataContent - use media type as category.
         // MediaType is non-nullable on DataContent (always set in constructors).
         return dc.MediaType;
+    }
+
+    /// <summary>
+    /// Attempts to parse a typed DataContent envelope and extract its discriminator and payload.
+    /// </summary>
+    public static bool TryGetTypedEnvelopePayload(DataContent dc, out string? contentType, out JsonElement data)
+    {
+        contentType = null;
+        data = default;
+
+        if (!TryGetJsonRoot(dc, out JsonElement root))
+        {
+            return false;
+        }
+
+        if (!root.TryGetProperty("$type", out JsonElement typeElement) ||
+            typeElement.ValueKind != JsonValueKind.String ||
+            !root.TryGetProperty("data", out JsonElement dataElement))
+        {
+            return false;
+        }
+
+        contentType = typeElement.GetString();
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            return false;
+        }
+
+        data = dataElement;
+        return true;
+    }
+
+    private static bool TryGetJsonRoot(DataContent dc, out JsonElement root)
+    {
+        root = default;
+
+        if (dc.MediaType != "application/json" || dc.Data.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            string text = Encoding.UTF8.GetString(dc.Data.ToArray());
+            using JsonDocument doc = JsonDocument.Parse(text);
+            root = doc.RootElement.Clone();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

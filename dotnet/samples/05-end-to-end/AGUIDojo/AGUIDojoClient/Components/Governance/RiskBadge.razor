@@ -1,15 +1,13 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT — RiskBadge: Maps RiskLevel enum to visual Badge variants *@
+@* RiskBadge: Maps RiskLevel enum to visual Badge variants *@
 
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Badge
-
-<Badge Variant="@GetVariant()" Class="@GetCssClass()">
+<BbBadge Variant="@GetVariant()" Class="@GetCssClass()">
     @if (ShowLabel)
     {
         <span>@GetLabel()</span>
     }
-</Badge>
+</BbBadge>
 
 @code {
     /// <summary>

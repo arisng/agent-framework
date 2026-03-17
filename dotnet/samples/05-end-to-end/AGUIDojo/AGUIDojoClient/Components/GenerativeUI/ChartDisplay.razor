@@ -2,18 +2,15 @@
 @* ChartDisplay: Renders chart data from the show_chart tool as a formatted visualization *@
 
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Icons.Lucide.Components
-
 <div class="chart-display">
     @if (!string.IsNullOrWhiteSpace(Chart.Title))
     {
         <div class="chart-header">
             <LucideIcon Name="bar-chart-3" Size="16" Class="chart-icon" />
             <span class="chart-title">@Chart.Title</span>
-            <Badge Variant="BadgeVariant.Secondary" Class="chart-type-badge">
+            <BbBadge Variant="BadgeVariant.Secondary" Class="chart-type-badge">
                 @Chart.ChartType
-            </Badge>
+            </BbBadge>
         </div>
     }
 
@@ -35,9 +32,9 @@
                             <span class="pie-color-swatch" style="background-color: @color;"></span>
                             <span class="pie-label">@Chart.Labels[i]</span>
                             <span class="pie-value">@value.ToString("N1")</span>
-                            <Badge Variant="BadgeVariant.Outline" Class="pie-percentage">
+                            <BbBadge Variant="BadgeVariant.Outline" Class="pie-percentage">
                                 @percentage.ToString("F1")%
-                            </Badge>
+                            </BbBadge>
                         </div>
                         <div class="pie-bar-track">
                             <div class="pie-bar-fill" style="width: @percentage.ToString("F1")%; background-color: @color;"></div>

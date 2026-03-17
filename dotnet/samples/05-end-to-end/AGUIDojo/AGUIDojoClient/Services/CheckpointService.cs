@@ -25,15 +25,17 @@ public sealed class CheckpointService : ICheckpointService
         WriteIndented = true, // Human-readable for DiffPreview / debugging
     };
 
-    private readonly List<Checkpoint> _checkpoints = new();
+    private readonly Dictionary<string, List<Checkpoint>> _checkpointsBySession = new(StringComparer.Ordinal);
 
     /// <inheritdoc />
-    public void CreateCheckpoint(string label, object? planState, object? recipeState, object? documentState, int messageCount)
+    public void CreateCheckpoint(string sessionId, string label, object? planState, object? recipeState, object? documentState, int messageCount)
     {
+        List<Checkpoint> checkpoints = GetOrCreateCheckpoints(sessionId);
+
         // Enforce FIFO eviction when at capacity
-        while (_checkpoints.Count >= MaxCheckpoints)
+        while (checkpoints.Count >= MaxCheckpoints)
         {
-            _checkpoints.RemoveAt(0);
+            checkpoints.RemoveAt(0);
         }
 
         var checkpoint = new Checkpoint
@@ -47,45 +49,47 @@ public sealed class CheckpointService : ICheckpointService
             MessageCount = messageCount,
         };
 
-        _checkpoints.Add(checkpoint);
+        checkpoints.Add(checkpoint);
     }
 
     /// <inheritdoc />
-    public Checkpoint? GetLatestCheckpoint()
+    public Checkpoint? GetLatestCheckpoint(string sessionId)
     {
-        return _checkpoints.Count > 0 ? _checkpoints[^1] : null;
+        List<Checkpoint> checkpoints = GetOrCreateCheckpoints(sessionId);
+        return checkpoints.Count > 0 ? checkpoints[^1] : null;
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<Checkpoint> GetAllCheckpoints()
+    public IReadOnlyList<Checkpoint> GetAllCheckpoints(string sessionId)
     {
-        return _checkpoints.AsReadOnly();
+        return GetOrCreateCheckpoints(sessionId).AsReadOnly();
     }
 
     /// <inheritdoc />
-    public Checkpoint? RevertToCheckpoint(string checkpointId)
+    public Checkpoint? RevertToCheckpoint(string sessionId, string checkpointId)
     {
-        var index = _checkpoints.FindIndex(c => c.Id == checkpointId);
+        List<Checkpoint> checkpoints = GetOrCreateCheckpoints(sessionId);
+        var index = checkpoints.FindIndex(c => c.Id == checkpointId);
         if (index < 0)
         {
             return null;
         }
 
-        var target = _checkpoints[index];
+        var target = checkpoints[index];
 
         // Remove all checkpoints newer than the target
-        if (index + 1 < _checkpoints.Count)
+        if (index + 1 < checkpoints.Count)
         {
-            _checkpoints.RemoveRange(index + 1, _checkpoints.Count - index - 1);
+            checkpoints.RemoveRange(index + 1, checkpoints.Count - index - 1);
         }
 
         return target;
     }
 
     /// <inheritdoc />
-    public void Clear()
+    public void Clear(string sessionId)
     {
-        _checkpoints.Clear();
+        _checkpointsBySession.Remove(sessionId);
     }
 
     /// <summary>
@@ -105,5 +109,16 @@ public sealed class CheckpointService : ICheckpointService
         }
 
         return JsonSerializer.Serialize(state, s_jsonOptions);
+    }
+
+    private List<Checkpoint> GetOrCreateCheckpoints(string sessionId)
+    {
+        if (!_checkpointsBySession.TryGetValue(sessionId, out List<Checkpoint>? checkpoints))
+        {
+            checkpoints = [];
+            _checkpointsBySession[sessionId] = checkpoints;
+        }
+
+        return checkpoints;
     }
 }

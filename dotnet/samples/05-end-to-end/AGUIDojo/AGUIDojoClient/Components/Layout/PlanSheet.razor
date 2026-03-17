@@ -1,39 +1,36 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
 
-@* MY CUSTOMIZATION POINT: PlanSheet — right-side Sheet overlay for full plan progress display.
-   Reads plan state from Fluxor IState<PlanState> and renders the PlanProgress component
+@* PlanSheet — right-side Sheet overlay for full plan progress display.
+   Reads plan state from the active session and renders the PlanProgress component
    inside a BlazorBlueprint Sheet. Opened via the "View Plan" button in CanvasPane. *@
 
 @using AGUIDojoClient.Models
-@using AGUIDojoClient.Store.PlanState
-@using BlazorBlueprint.Components.Sheet
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Icons.Lucide.Components
+@using AGUIDojoClient.Store.SessionManager
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
-@inject IState<PlanState> PlanStore
+@inject IState<SessionManagerState> SessionStore
 
-<Sheet Open="IsOpen" OpenChanged="OnOpenChanged">
-    <SheetContent Side="BlazorBlueprint.Primitives.Sheet.SheetSide.Right" Class="plan-sheet">
-        <SheetHeader>
-            <BlazorBlueprint.Components.Sheet.SheetTitle>
+<BbSheet Open="IsOpen" OpenChanged="OnOpenChanged">
+    <BbSheetContent Side="BlazorBlueprint.Primitives.SheetSide.Right" Class="plan-sheet">
+        <BbSheetHeader>
+            <BbSheetTitle>
                 <div class="plan-sheet__title-row">
                     <LucideIcon Name="clipboard-list" Size="20" />
                     <span>Execution Plan</span>
-                    @if (PlanStore.Value.Plan is not null)
+                    @if (ActivePlan is not null)
                     {
-                        <Badge Variant="BadgeVariant.Secondary" Class="plan-sheet__badge">
-                            @CompletedCount / @PlanStore.Value.Plan.Steps.Count
-                        </Badge>
+                        <BbBadge Variant="BadgeVariant.Secondary" Class="plan-sheet__badge">
+                            @CompletedCount / @ActivePlan.Steps.Count
+                        </BbBadge>
                     }
                 </div>
-            </BlazorBlueprint.Components.Sheet.SheetTitle>
-            <SheetDescription>
+            </BbSheetTitle>
+            <BbSheetDescription>
                 View and track the agent's execution plan progress.
-            </SheetDescription>
-        </SheetHeader>
+            </BbSheetDescription>
+        </BbSheetHeader>
 
         <div class="plan-sheet__body">
-            @if (PlanStore.Value.Plan is not null)
+            @if (ActivePlan is not null)
             {
                 <PlanProgress />
             }
@@ -49,11 +46,11 @@
             }
         </div>
 
-        <SheetFooter>
-            <SheetClose>Close</SheetClose>
-        </SheetFooter>
-    </SheetContent>
-</Sheet>
+        <BbSheetFooter>
+            <BbSheetClose>Close</BbSheetClose>
+        </BbSheetFooter>
+    </BbSheetContent>
+</BbSheet>
 
 @code {
     /// <summary>
@@ -73,7 +70,9 @@
     /// <summary>
     /// Gets the count of completed steps in the current plan.
     /// </summary>
-    private int CompletedCount => PlanStore.Value.Plan?.Steps.Count(s => s.Status == StepStatus.Completed) ?? 0;
+    private Plan? ActivePlan => SessionSelectors.GetActiveState(SessionStore.Value).Plan;
+
+    private int CompletedCount => ActivePlan?.Steps.Count(s => s.Status == StepStatus.Completed) ?? 0;
 
     /// <summary>
     /// Handles the Sheet's Open state change and notifies the parent via two-way binding.

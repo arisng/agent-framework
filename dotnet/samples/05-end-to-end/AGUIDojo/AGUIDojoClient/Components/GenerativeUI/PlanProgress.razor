@@ -1,12 +1,12 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
 
 @using AGUIDojoClient.Models
-@using AGUIDojoClient.Store.PlanState
+@using AGUIDojoClient.Store.SessionManager
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
-@inject IState<PlanState> PlanStore
+@inject IState<SessionManagerState> SessionStore
 
 @* Plan Progress Component - Renders a Plan with steps and their current status *@
-@if (PlanStore.Value.Plan is not null)
+@if (ActivePlan is not null)
 {
 <div class="plan-progress">
     <div class="plan-header">
@@ -16,12 +16,12 @@
             </svg>
         </div>
         <span class="plan-title">Execution Plan</span>
-        <span class="plan-progress-indicator">@CompletedCount / @PlanStore.Value.Plan.Steps.Count completed</span>
+        <span class="plan-progress-indicator">@CompletedCount / @ActivePlan.Steps.Count completed</span>
     </div>
     <div class="plan-steps">
-        @for (int i = 0; i < PlanStore.Value.Plan.Steps.Count; i++)
+        @for (int i = 0; i < ActivePlan.Steps.Count; i++)
         {
-            var step = PlanStore.Value.Plan.Steps[i];
+            var step = ActivePlan.Steps[i];
             var stepNumber = i + 1;
             <div class="plan-step @(step.Status == StepStatus.Completed ? "step-completed" : "step-pending")">
                 <div class="step-indicator">
@@ -50,5 +50,7 @@
     /// <summary>
     /// Gets the count of completed steps in the current plan.
     /// </summary>
-    private int CompletedCount => PlanStore.Value.Plan?.Steps.Count(s => s.Status == StepStatus.Completed) ?? 0;
+    private Plan? ActivePlan => SessionSelectors.GetActiveState(SessionStore.Value).Plan;
+
+    private int CompletedCount => ActivePlan?.Steps.Count(s => s.Status == StepStatus.Completed) ?? 0;
 }

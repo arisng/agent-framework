@@ -83,11 +83,16 @@ public sealed class ApprovalHandler : IApprovalHandler
     }
 
     /// <inheritdoc />
-    public FunctionResultContent CreateApprovalResponse(string approvalId, bool approved)
+    public FunctionResultContent CreateApprovalResponse(string sessionId, string approvalId, bool approved)
     {
         if (!this._pendingApprovals.TryGetValue(approvalId, out var pendingApproval))
         {
             throw new InvalidOperationException($"No pending approval found with ID: {approvalId}");
+        }
+
+        if (!string.Equals(pendingApproval.SessionId, sessionId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Approval '{approvalId}' does not belong to session '{sessionId}'.");
         }
 
         var response = new ApprovalResponse
@@ -105,9 +110,15 @@ public sealed class ApprovalHandler : IApprovalHandler
     }
 
     /// <inheritdoc />
-    public void ClearPendingApprovals()
+    public void ClearPendingApprovals(string sessionId)
     {
-        this._pendingApprovals.Clear();
+        foreach (string approvalId in this._pendingApprovals
+                     .Where(pair => string.Equals(pair.Value.SessionId, sessionId, StringComparison.Ordinal))
+                     .Select(pair => pair.Key)
+                     .ToArray())
+        {
+            this._pendingApprovals.Remove(approvalId);
+        }
     }
 }
 
@@ -137,15 +148,17 @@ public interface IApprovalHandler
     /// <summary>
     /// Creates an approval response to send back to the server.
     /// </summary>
+    /// <param name="sessionId">The session that owns the pending approval.</param>
     /// <param name="approvalId">The ID of the approval request.</param>
     /// <param name="approved">True if approved; false if rejected.</param>
     /// <returns>A FunctionResultContent containing the approval response.</returns>
-    FunctionResultContent CreateApprovalResponse(string approvalId, bool approved);
+    FunctionResultContent CreateApprovalResponse(string sessionId, string approvalId, bool approved);
 
     /// <summary>
     /// Clears all pending approvals.
     /// </summary>
-    void ClearPendingApprovals();
+    /// <param name="sessionId">The session whose pending approvals should be cleared.</param>
+    void ClearPendingApprovals(string sessionId);
 }
 
 /// <summary>
@@ -177,6 +190,11 @@ public sealed class PendingApproval
     /// Gets or sets the original call ID for creating the response.
     /// </summary>
     public required string OriginalCallId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the session that owns this approval request.
+    /// </summary>
+    public string? SessionId { get; set; }
 }
 
 /// <summary>

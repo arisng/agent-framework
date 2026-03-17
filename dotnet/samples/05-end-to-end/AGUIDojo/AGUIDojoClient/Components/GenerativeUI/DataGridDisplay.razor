@@ -1,7 +1,7 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
 @* DataGridDisplay: Renders tabular data from the show_data_grid tool using BB DataTable.
    Features: built-in search, sort, pagination, column visibility toggle, horizontal/vertical scroll.
-   Shared State AG-UI feature — renders in Canvas Pane via Fluxor ArtifactState. *@
+   Shared State AG-UI feature — renders in the Canvas Pane via session state. *@
 
 @using AGUIDojoClient.Models
 
@@ -12,15 +12,15 @@
         <div class="data-grid-header">
             <LucideIcon Name="table-2" Size="16" Class="data-grid-icon" />
             <span class="data-grid-title">@DataGrid.Title</span>
-            <Badge Variant="BadgeVariant.Secondary" Class="data-grid-count">
+            <BbBadge Variant="BadgeVariant.Secondary" Class="data-grid-count">
                 @DataGrid.Rows.Count @(DataGrid.Rows.Count == 1 ? "row" : "rows")
-            </Badge>
+            </BbBadge>
         </div>
     }
 
     @* BB DataTable with built-in toolbar (search + column visibility), pagination, sort *@
     <div class="data-grid-table-wrapper">
-        <DataTable TData="Dictionary<string, string>"
+        <BbDataTable TData="Dictionary<string, string>"
                    Data="@DataGrid.Rows"
                    ShowToolbar="true"
                    ShowPagination="true"
@@ -34,7 +34,7 @@
                     var col = column;
                     @if (col.Equals("Status", StringComparison.OrdinalIgnoreCase))
                     {
-                        <DataTableColumn TData="Dictionary<string, string>"
+                        <BbDataTableColumn TData="Dictionary<string, string>"
                                          TValue="string"
                                          Property="@(row => row.GetValueOrDefault(col, ""))"
                                          Header="@col"
@@ -45,7 +45,7 @@
                                     var cellValue = row.GetValueOrDefault(col, "");
                                     if (!string.IsNullOrEmpty(cellValue))
                                     {
-                                        <Badge Variant="@GetStatusBadgeVariant(cellValue)">@cellValue</Badge>
+                                        <BbBadge Variant="@GetStatusBadgeVariant(cellValue)">@cellValue</BbBadge>
                                     }
                                     else
                                     {
@@ -53,11 +53,11 @@
                                     }
                                 }
                             </CellTemplate>
-                        </DataTableColumn>
+                        </BbDataTableColumn>
                     }
                     else
                     {
-                        <DataTableColumn TData="Dictionary<string, string>"
+                        <BbDataTableColumn TData="Dictionary<string, string>"
                                          TValue="string"
                                          Property="@(row => row.GetValueOrDefault(col, ""))"
                                          Header="@col"
@@ -72,7 +72,7 @@
                     <p class="data-grid-empty-text">No data available</p>
                 </div>
             </EmptyTemplate>
-        </DataTable>
+        </BbDataTable>
     </div>
 </div>
 

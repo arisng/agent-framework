@@ -194,7 +194,7 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
 
         // Register DataGridDisplay for the show_data_grid tool
         // Classification: Interactive shared artifact (search, sort, paginate, column visibility)
-        // Per task-36/FR-001: Renders in CanvasPane "Data Table" tab via Fluxor ArtifactState
+        // Per task-36/FR-001: Renders in the CanvasPane "Data Table" tab via session state
         this.Register<DataGridDisplay>(
             toolName: "show_data_grid",
             parameterName: "DataGrid",

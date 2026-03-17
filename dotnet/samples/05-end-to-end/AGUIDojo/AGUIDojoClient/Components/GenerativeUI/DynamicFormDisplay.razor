@@ -2,24 +2,15 @@
 @* DynamicFormDisplay: Renders a dynamic form from the show_form tool using BlazorBlueprint components *@
 
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Button
-@using BlazorBlueprint.Components.Input
-@using BlazorBlueprint.Components.Label
-@using BlazorBlueprint.Components.Select
-@using BlazorBlueprint.Components.Textarea
-@using BlazorBlueprint.Components.Checkbox
-@using BlazorBlueprint.Icons.Lucide.Components
-
 <div class="dynamic-form-display">
     @if (!string.IsNullOrWhiteSpace(Form.Title))
     {
         <div class="form-header">
             <LucideIcon Name="clipboard-list" Size="16" Class="form-icon" />
             <span class="form-title">@Form.Title</span>
-            <Badge Variant="BadgeVariant.Secondary" Class="form-field-count">
+            <BbBadge Variant="BadgeVariant.Secondary" Class="form-field-count">
                 @Form.Fields.Count @(Form.Fields.Count == 1 ? "field" : "fields")
-            </Badge>
+            </BbBadge>
         </div>
     }
 
@@ -34,19 +25,19 @@
             <div class="form-field @(field.Type == "checkbox" ? "form-field-checkbox" : "")">
                 @if (field.Type != "checkbox")
                 {
-                    <Label For="@field.Name" Class="form-label">
+                    <BbLabel For="@field.Name" Class="form-label">
                         @field.Label
                         @if (field.Required)
                         {
                             <span class="form-required">*</span>
                         }
-                    </Label>
+                    </BbLabel>
                 }
 
                 @switch (field.Type.ToLowerInvariant())
                 {
                     case "textarea":
-                        <Textarea Id="@field.Name"
+                        <BbTextarea Id="@field.Name"
                                   Placeholder="@field.Placeholder"
                                   Class="form-textarea"
                                   Value="@(field.DefaultValue ?? string.Empty)" />
@@ -67,34 +58,34 @@
 
                     case "checkbox":
                         <div class="form-checkbox-wrapper">
-                            <Checkbox Id="@field.Name"
+                            <BbCheckbox Id="@field.Name"
                                       Checked="@(string.Equals(field.DefaultValue, "true", StringComparison.OrdinalIgnoreCase))" />
-                            <Label For="@field.Name" Class="form-checkbox-label">
+                            <BbLabel For="@field.Name" Class="form-checkbox-label">
                                 @field.Label
                                 @if (field.Required)
                                 {
                                     <span class="form-required">*</span>
                                 }
-                            </Label>
+                            </BbLabel>
                         </div>
                         break;
 
                     case "number":
-                        <Input Type="InputType.Number"
+                        <BbInput Type="InputType.Number"
                                Id="@field.Name"
                                Placeholder="@field.Placeholder"
                                Value="@(field.DefaultValue ?? string.Empty)" />
                         break;
 
                     case "email":
-                        <Input Type="InputType.Email"
+                        <BbInput Type="InputType.Email"
                                Id="@field.Name"
                                Placeholder="@field.Placeholder"
                                Value="@(field.DefaultValue ?? string.Empty)" />
                         break;
 
                     default:
-                        <Input Type="InputType.Text"
+                        <BbInput Type="InputType.Text"
                                Id="@field.Name"
                                Placeholder="@field.Placeholder"
                                Value="@(field.DefaultValue ?? string.Empty)" />
@@ -105,10 +96,10 @@
     </div>
 
     <div class="form-actions">
-        <Button Variant="ButtonVariant.Default" Class="form-submit-button">
+        <BbButton Variant="ButtonVariant.Default" Class="form-submit-button">
             <LucideIcon Name="send" Size="14" />
             @Form.SubmitLabel
-        </Button>
+        </BbButton>
     </div>
 </div>
 

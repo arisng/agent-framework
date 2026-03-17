@@ -1,80 +1,77 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
 
-@* MY CUSTOMIZATION POINT: Command Palette — global Ctrl+K / Cmd+K quick-action dialog.
+@* Command Palette — global Ctrl+K / Cmd+K quick-action dialog.
    Uses BlazorBlueprint Dialog + Command components to list registered tools and
    current endpoint information. Keyboard shortcut is handled via JS interop in
    commandPalette.js which invokes the TogglePalette callback. *@
 
-@using BlazorBlueprint.Icons.Lucide.Components
-@using BlazorBlueprint.Components.Command
-@using BlazorBlueprint.Components.Dialog
 @inject IToolComponentRegistry ToolRegistry
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<Dialog @bind-Open="_isOpen">
-    <DialogContent Class="p-0 max-w-lg">
-        <Command>
-            <CommandInput Placeholder="Type a command or search..." />
-            <CommandList>
-                <CommandEmpty>No results found.</CommandEmpty>
+<BbDialog @bind-Open="_isOpen">
+    <BbDialogContent Class="p-0 max-w-lg">
+        <BbCommand>
+            <BbCommandInput Placeholder="Type a command or search..." />
+            <BbCommandList>
+                <BbCommandEmpty>No results found.</BbCommandEmpty>
 
-                <CommandGroup Heading="Available Tools">
+                <BbCommandGroup Heading="Available Tools">
                     @foreach (string tool in ToolRegistry.RegisteredTools)
                     {
-                        <CommandItem>
+                        <BbCommandItem>
                             <LucideIcon Name="wrench" Size="16" />
                             @tool
-                        </CommandItem>
+                        </BbCommandItem>
                     }
-                </CommandGroup>
+                </BbCommandGroup>
 
-                <CommandSeparator />
+                <BbCommandSeparator />
 
-                <CommandGroup Heading="Navigation">
-                    <CommandItem>
+                <BbCommandGroup Heading="Navigation">
+                    <BbCommandItem>
                         <LucideIcon Name="message-circle" Size="16" />
                         Agentic Chat
-                    </CommandItem>
-                    <CommandItem>
+                    </BbCommandItem>
+                    <BbCommandItem>
                         <LucideIcon Name="wrench" Size="16" />
                         Backend Tools
-                    </CommandItem>
-                    <CommandItem>
+                    </BbCommandItem>
+                    <BbCommandItem>
                         <LucideIcon Name="shield" Size="16" />
                         Human-in-the-Loop
-                    </CommandItem>
-                    <CommandItem>
+                    </BbCommandItem>
+                    <BbCommandItem>
                         <LucideIcon Name="layout" Size="16" />
                         Generative UI (Plan)
-                    </CommandItem>
-                    <CommandItem>
+                    </BbCommandItem>
+                    <BbCommandItem>
                         <LucideIcon Name="component" Size="16" />
                         Tool-Based Rendering
-                    </CommandItem>
-                    <CommandItem>
+                    </BbCommandItem>
+                    <BbCommandItem>
                         <LucideIcon Name="share-2" Size="16" />
                         Shared State (Recipes)
-                    </CommandItem>
-                    <CommandItem>
+                    </BbCommandItem>
+                    <BbCommandItem>
                         <LucideIcon Name="file-text" Size="16" />
                         Predictive State (Writing)
-                    </CommandItem>
-                </CommandGroup>
+                    </BbCommandItem>
+                </BbCommandGroup>
 
-                <CommandSeparator />
+                <BbCommandSeparator />
 
-                <CommandGroup Heading="Actions">
-                    <CommandItem>
+                <BbCommandGroup Heading="Actions">
+                    <BbCommandItem>
                         <LucideIcon Name="sun" Size="16" />
                         Toggle Theme
                         <kbd>⌘T</kbd>
-                    </CommandItem>
-                </CommandGroup>
-            </CommandList>
-        </Command>
-    </DialogContent>
-</Dialog>
+                    </BbCommandItem>
+                </BbCommandGroup>
+            </BbCommandList>
+        </BbCommand>
+    </BbDialogContent>
+</BbDialog>
 
 @code {
     /// <summary>

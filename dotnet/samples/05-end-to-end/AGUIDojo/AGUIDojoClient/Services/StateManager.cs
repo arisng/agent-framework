@@ -8,8 +8,7 @@ using Microsoft.Extensions.AI;
 namespace AGUIDojoClient.Services;
 
 /// <summary>
-/// Manages shared application state with the AG-UI server.
-/// Handles bidirectional state synchronization for the /shared_state endpoint.
+/// Manages session-scoped recipe state shared with the unified AG-UI chat route.
 /// </summary>
 public sealed class StateManager : IStateManager
 {

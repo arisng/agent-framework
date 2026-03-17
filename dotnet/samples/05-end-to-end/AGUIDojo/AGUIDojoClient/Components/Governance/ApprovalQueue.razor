@@ -1,33 +1,27 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT — ApprovalQueue: Inline approval card styled as a message peer with Claude theme *@
+@* ApprovalQueue: Inline approval card styled as a message peer with Claude theme *@
 
 @using System.Text.Json
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Components.Button
-@using BlazorBlueprint.Components.Separator
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Icons.Lucide.Components
-
 <div class="approval-card-wrapper">
-    <Card Class="approval-queue-card">
-        <CardHeader>
+    <BbCard Class="approval-queue-card">
+        <BbCardHeader>
             <div class="approval-header-row">
                 <div class="approval-icon-title">
                     <div class="approval-icon">
                         <LucideIcon Name="shield-alert" Size="20" />
                     </div>
                     <div class="approval-title-group">
-                        <CardTitle Class="approval-title">Approval Required</CardTitle>
-                        <CardDescription Class="approval-subtitle">
+                        <BbCardTitle Class="approval-title">Approval Required</BbCardTitle>
+                        <BbCardDescription Class="approval-subtitle">
                             The agent wants to execute a tool and needs your permission.
-                        </CardDescription>
+                        </BbCardDescription>
                     </div>
                 </div>
                 <RiskBadge Level="@RiskLevel" />
             </div>
-        </CardHeader>
-        <CardContent>
+        </BbCardHeader>
+        <BbCardContent>
             <div class="approval-function-section">
                 <span class="approval-section-label">Function</span>
                 <code class="approval-function-name">@FunctionName</code>
@@ -35,13 +29,13 @@
 
             @if (Arguments is not null && Arguments.Count > 0)
             {
-                <Separator Class="approval-separator" />
+                <BbSeparator Class="approval-separator" />
 
                 <details class="approval-arguments-details" @onclick:stopPropagation>
                     <summary class="approval-arguments-summary">
                         <LucideIcon Name="chevron-right" Size="14" Class="approval-chevron" />
                         <span class="approval-section-label">Arguments</span>
-                        <Badge Variant="BadgeVariant.Secondary" Class="approval-arg-count">@Arguments.Count</Badge>
+                        <BbBadge Variant="BadgeVariant.Secondary" Class="approval-arg-count">@Arguments.Count</BbBadge>
                     </summary>
                     <div class="approval-arguments-body">
                         @foreach (var arg in Arguments)
@@ -54,26 +48,26 @@
                     </div>
                 </details>
             }
-        </CardContent>
-        <CardFooter>
+        </BbCardContent>
+        <BbCardFooter>
             <div class="approval-actions">
-                <Button Variant="ButtonVariant.Outline"
+                <BbButton Variant="ButtonVariant.Outline"
                         Class="approval-btn-reject"
                         OnClick="@HandleReject"
                         Disabled="@_isProcessing">
                     <LucideIcon Name="x" Size="16" />
                     Reject
-                </Button>
-                <Button Variant="ButtonVariant.Default"
+                </BbButton>
+                <BbButton Variant="ButtonVariant.Default"
                         Class="approval-btn-approve"
                         OnClick="@HandleApprove"
                         Disabled="@_isProcessing">
                     <LucideIcon Name="check" Size="16" />
                     Approve
-                </Button>
+                </BbButton>
             </div>
-        </CardFooter>
-    </Card>
+        </BbCardFooter>
+    </BbCard>
 </div>
 
 @code {

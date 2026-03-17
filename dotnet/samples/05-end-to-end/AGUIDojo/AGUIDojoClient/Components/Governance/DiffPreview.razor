@@ -1,22 +1,18 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT — DiffPreview: Two-column before/after state comparison view *@
+@* DiffPreview: Two-column before/after state comparison view *@
 
 @using System.Text.Json
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Components.Separator
-
 <div class="diff-preview-wrapper">
-<Card Class="diff-preview-card">
-    <CardHeader>
-        <CardTitle>@Title</CardTitle>
-        <CardDescription>Side-by-side state comparison</CardDescription>
-    </CardHeader>
-    <CardContent>
+<BbCard Class="diff-preview-card">
+    <BbCardHeader>
+        <BbCardTitle>@Title</BbCardTitle>
+        <BbCardDescription>Side-by-side state comparison</BbCardDescription>
+    </BbCardHeader>
+    <BbCardContent>
         <div class="diff-preview-columns">
             <div class="diff-preview-column">
                 <div class="diff-preview-column-header">
-                    <Badge Variant="BadgeVariant.Secondary">Before</Badge>
+                    <BbBadge Variant="BadgeVariant.Secondary">Before</BbBadge>
                 </div>
                 <div class="diff-preview-scroll">
                     <pre class="diff-preview-content">@foreach (var line in _beforeLines)
@@ -24,10 +20,10 @@
 }</pre>
                 </div>
             </div>
-            <Separator Orientation="SeparatorOrientation.Vertical" Class="diff-preview-separator" />
+            <BbSeparator Orientation="SeparatorOrientation.Vertical" Class="diff-preview-separator" />
             <div class="diff-preview-column">
                 <div class="diff-preview-column-header">
-                    <Badge Variant="BadgeVariant.Default">After</Badge>
+                    <BbBadge Variant="BadgeVariant.Default">After</BbBadge>
                 </div>
                 <div class="diff-preview-scroll">
                     <pre class="diff-preview-content">@foreach (var line in _afterLines)
@@ -36,8 +32,8 @@
                 </div>
             </div>
         </div>
-    </CardContent>
-</Card>
+    </BbCardContent>
+</BbCard>
 </div>
 
 @code {

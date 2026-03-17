@@ -47,7 +47,7 @@
 using System.Net.Http.Headers;
 using AGUIDojoClient.Components;
 using AGUIDojoClient.Services;
-using BlazorBlueprint.Primitives.Extensions;
+using BlazorBlueprint.Components;
 using Fluxor;
 using Microsoft.Agents.AI.AGUI;
 using Microsoft.AspNetCore.Diagnostics;
@@ -66,21 +66,21 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents(options =>
     {
-        // MY CUSTOMIZATION POINT: Enable detailed circuit errors in development
+        // Enable detailed circuit errors in development
         // to surface unhandled exceptions during Blazor component lifecycle.
         options.DetailedErrors = builder.Environment.IsDevelopment();
     });
 
-// MY CUSTOMIZATION POINT: Register BlazorBlueprint Primitives services (IPortalService, etc.)
-// Required for PortalHost overlay rendering used by Dialog, Sheet, Drawer, Tooltip, etc.
-builder.Services.AddBlazorBlueprintPrimitives();
+// Register BlazorBlueprint component services (portal, dialog, toast, etc.)
+// Required for BB v3 component rendering, including portal-backed overlays such as Dialog, Sheet, Drawer, Tooltip, and Select.
+builder.Services.AddBlazorBlueprintComponents();
 
-// MY CUSTOMIZATION POINT: Register Fluxor state management
+// Register Fluxor state management
 // Scans this assembly for Feature<T>, [ReducerMethod], and [EffectMethod] classes
-// to auto-register stores (PlanState, ArtifactState, AgentState, ChatState).
+// to auto-register the session manager feature, reducers, and effects.
 builder.Services.AddFluxor(options => options.ScanAssemblies(typeof(Program).Assembly));
 
-// MY CUSTOMIZATION POINT: Register ThemeService for dark/light theme switching
+// Register ThemeService for dark/light theme switching
 // Uses IJSRuntime to toggle .dark CSS class on <html> and persist to localStorage
 builder.Services.AddScoped<IThemeService, ThemeService>();
 
@@ -174,8 +174,7 @@ Console.WriteLine($"[Config] OpenTelemetry configured for service: {ServiceName}
 // Validate backend connection configuration at startup
 ValidateBffConfiguration(builder.Configuration, builder.Environment.EnvironmentName);
 
-// Register AGUIChatClientFactory for dynamic endpoint selection
-// The factory allows creating IChatClient instances for any of the 7 AG-UI endpoints
+// Register AGUIChatClientFactory for the unified /chat endpoint while preserving legacy session metadata hints.
 builder.Services.AddSingleton<IAGUIChatClientFactory, AGUIChatClientFactory>();
 
 // Register ApprovalHandler for Human-in-the-Loop feature
@@ -194,12 +193,12 @@ builder.Services.AddSingleton<IToolComponentRegistry, ToolComponentRegistry>();
 // This service manages bidirectional state sync with the server for Recipe data
 builder.Services.AddScoped<IStateManager, StateManager>();
 
-// MY CUSTOMIZATION POINT: Register ObservabilityService for tool call tracking
+// Register ObservabilityService for tool call tracking
 // This scoped service tracks agent reasoning steps with timing, status, and results
 // for the Accordion of Thought, MemoryInspector, and ToolExecutionTracker components
 builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
 
-// MY CUSTOMIZATION POINT: Register governance services for HITL governance pattern
+// Register governance services for HITL governance pattern
 // RiskAssessmentService maps function names to risk levels (Singleton — stateless)
 builder.Services.AddSingleton<IRiskAssessmentService, RiskAssessmentService>();
 // CheckpointService manages in-memory state snapshots for time-travel/undo (Scoped — per circuit)
@@ -209,7 +208,7 @@ builder.Services.AddScoped<ICheckpointService, CheckpointService>();
 // Extracted from Chat.razor to reduce component complexity (Scoped — per circuit)
 builder.Services.AddScoped<IAgentStreamingService, AgentStreamingService>();
 
-// MY CUSTOMIZATION POINT: Register ViewportService for responsive mobile layout
+// Register ViewportService for responsive mobile layout
 // Detects viewport width via JS interop and provides IsMobile property (breakpoint: 768px)
 // Used by DualPaneLayout to switch between desktop ResizablePanelGroup and mobile MobileLayout
 builder.Services.AddScoped<ViewportService>();
@@ -217,10 +216,9 @@ builder.Services.AddScoped<ViewportService>();
 // Register MarkdownService for rendering LLM markdown responses as HTML
 builder.Services.AddSingleton<IMarkdownService, MarkdownService>();
 
-// Register a default AGUIChatClient for backward compatibility
-// Components can also use IAGUIChatClientFactory to create clients for specific endpoints
+// Register a default AGUIChatClient for the unified chat endpoint.
 builder.Services.AddChatClient(sp => new AGUIChatClient(
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("aguiserver"), "agentic_chat"));
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("aguiserver"), "chat"));
 
 // -----------------------------------------------------------------------------
 // ERROR HANDLING CONFIGURATION (ProblemDetails - RFC 7807)

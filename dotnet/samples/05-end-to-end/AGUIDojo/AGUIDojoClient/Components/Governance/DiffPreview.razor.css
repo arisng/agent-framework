@@ -1,4 +1,4 @@
-/* MY CUSTOMIZATION POINT — DiffPreview scoped styles */
+/* DiffPreview scoped styles */
 
 /* Wrapper div provides scoped containment around the BB Card root
    (Card's root element doesn't receive the Blazor scope attribute b-XXXX,

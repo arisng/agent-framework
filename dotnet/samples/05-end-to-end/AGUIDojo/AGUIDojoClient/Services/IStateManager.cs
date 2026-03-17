@@ -26,8 +26,7 @@ public sealed class RecipeChangedEventArgs : EventArgs
 }
 
 /// <summary>
-/// Interface for managing shared application state with the AG-UI server.
-/// Provides bidirectional state synchronization for the /shared_state endpoint.
+/// Interface for managing session-scoped recipe state exchanged with the unified AG-UI chat route.
 /// </summary>
 public interface IStateManager
 {

@@ -5,7 +5,7 @@
         <textarea @ref="@textArea" @bind="@messageText" placeholder="Type your message..." rows="1"></textarea>
 
         <div class="tools">
-            @* MY CUSTOMIZATION POINT: PanicButton inline next to send — visible only when agent running *@
+            @* PanicButton inline next to send — visible only when agent running *@
             <PanicButton IsAgentRunning="@IsAgentRunning" OnPanic="@OnPanic" />
 
             <button type="submit" title="Send" class="send-button">

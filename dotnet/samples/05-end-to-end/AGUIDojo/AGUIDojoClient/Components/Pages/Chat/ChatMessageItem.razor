@@ -5,7 +5,6 @@
 
 @inject IMarkdownService MarkdownService
 @inject IToolComponentRegistry ToolRegistry
-@* MY CUSTOMIZATION POINT: Inject ObservabilityService to pass ReasoningSteps to AssistantThought *@
 @inject IObservabilityService ObservabilityService
 
 @if (Message.Role == ChatRole.User)
@@ -27,7 +26,6 @@ else if (Message.Role == ChatRole.Assistant)
     @* Render collapsible thought block if there are any non-visual thought contents *@
     @if (thoughtContents.Count > 0 && thoughtContents.Any(c => c is FunctionCallContent or ErrorContent))
     {
-        @* MY CUSTOMIZATION POINT: Pass ReasoningSteps for tool call timing display *@
         <AssistantThought ThoughtContents="@thoughtContents" AllContents="@Message.Contents" InProgress="@InProgress"
                           ReasoningSteps="@ObservabilityService.GetSteps()" />
     }

@@ -5,8 +5,7 @@ using System.Text.Json.Serialization;
 namespace AGUIDojoClient.Models;
 
 /// <summary>
-/// Represents document state for predictive state updates.
-/// Used by the /predictive_state_updates endpoint to stream progressive document content.
+/// Represents document state for predictive updates streamed through the unified chat route.
 /// </summary>
 public sealed class DocumentState
 {

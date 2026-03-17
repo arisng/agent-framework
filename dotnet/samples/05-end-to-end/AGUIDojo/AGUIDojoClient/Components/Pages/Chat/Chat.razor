@@ -1,64 +1,61 @@
 @page "/"
 @using AGUIDojoClient.Helpers
-@using AGUIDojoClient.Store.AgentState
-@using AGUIDojoClient.Store.ArtifactState
-@using AGUIDojoClient.Store.ChatState
-@using AGUIDojoClient.Store.PlanState
-@using BlazorBlueprint.Components.Button
-@using BlazorBlueprint.Components.Collapsible
-@using BlazorBlueprint.Components.Separator
-@inject IAGUIChatClientFactory ClientFactory
+@using AGUIDojoClient.Store.SessionManager
 @inject IAgentStreamingService StreamingService
-@inject IObservabilityService ObservabilityService
 @inject IRiskAssessmentService RiskAssessmentService
-@inject ICheckpointService CheckpointService
 @inject IStateManager StateManager
 @inject ViewportService ViewportService
 @inject IDispatcher Dispatcher
-@inject IState<PlanState> PlanStore
-@inject IState<AgentState> AgentStore
-@inject IState<ArtifactState> ArtifactStore
-@inject IState<ChatState> ChatStore
+@inject IState<SessionManagerState> SessionStore
 @implements IDisposable
 
 <PageTitle>AG-UI Dojo Chat</PageTitle>
 
-@* Sidebar — vertical navigation with endpoints, new chat, theme toggle *@
-<ChatHeader OnNewChat="@ResetConversationAsync"
-            AvailableEndpoints="@ClientFactory.AvailableEndpoints"
-            SelectedEndpointPath="@AgentStore.Value.SelectedEndpointPath"
-            OnEndpointChanged="@OnEndpointChangedAsync" />
+<ChatHeader OnNewChat="@CreateNewSessionAsync"
+            Sessions="@OrderedSessions"
+            ActiveSessionId="@ActiveSessionId"
+            OnSessionSelected="@HandleSessionSelectedAsync"
+            OnSessionDeleted="@HandleSessionDeletedAsync" />
 
-@* SidebarInset — main content area pushed by the sidebar *@
-<SidebarInset>
-    @* Compact header bar with sidebar toggle trigger *@
+<BbSidebarInset>
     <header class="sidebar-inset-header">
-        <SidebarTrigger />
-        <Separator Orientation="SeparatorOrientation.Vertical" Class="h-6" />
-        <span class="inset-header-title">@GetCurrentEndpointDisplayName()</span>
+        <BbSidebarTrigger />
+        <BbSeparator Orientation="SeparatorOrientation.Vertical" Class="h-6" />
 
-        @if (ArtifactStore.Value.HasInteractiveArtifact)
+        <div class="inset-header-session">
+            <LucideIcon Name="@GetActiveSessionStatusIcon()" Size="16" Class="@GetActiveSessionStatusIconClass()" />
+            <span class="inset-header-title">@GetCurrentSessionTitle()</span>
+        </div>
+
+        <BbBadge Variant="@GetSessionStatusVariant()" Class="@GetSessionStatusBadgeCssClass()">
+            @if (GetSessionStatusBadgeIcon() is string statusIcon)
+            {
+                <LucideIcon Name="@statusIcon" Size="12" Class="@GetSessionStatusBadgeIconClass()" />
+            }
+            <span>@GetSessionStatusLabel()</span>
+        </BbBadge>
+
+        @if (ActiveSessionState.HasInteractiveArtifact)
         {
-            <Button Variant="ButtonVariant.Ghost"
-                    Size="ButtonSize.IconSmall"
-                    Class="canvas-toggle-btn ml-auto"
-                    OnClick="@(() => _dualPane?.ToggleCanvasPane() ?? Task.CompletedTask)"
-                    AriaLabel="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "Show canvas pane" : "Hide canvas pane")">
+            <BbButton Variant="ButtonVariant.Ghost"
+                      Size="ButtonSize.IconSmall"
+                      Class="canvas-toggle-btn"
+                      OnClick="@(() => _dualPane?.ToggleCanvasPane() ?? Task.CompletedTask)"
+                      AriaLabel="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "Show canvas pane" : "Hide canvas pane")">
                 <LucideIcon Name="@((_dualPane?.IsCanvasPaneHidden ?? false) ? "panel-right-open" : "panel-right-close")" Size="16" />
-            </Button>
+            </BbButton>
         }
     </header>
 
-    @* Dual-pane layout — chat in Context Pane (left), artifacts in Canvas Pane (right) *@
     <DualPaneLayout @ref="_dualPane">
         <ContextPaneContent>
             <ContextPane>
-                <ChatMessageList Messages="@ChatStore.Value.Messages"
-                                InProgressMessage="@ChatStore.Value.CurrentResponseMessage"
-                                PendingApproval="@ChatStore.Value.PendingApproval"
-                                OnApprovalDecision="@OnApprovalDecision"
-                                RiskLevel="@(ChatStore.Value.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ChatStore.Value.PendingApproval.FunctionName) : RiskLevel.Low)"
-                                IsMobile="@ViewportService.IsMobile">
+                <ChatMessageList Messages="@SessionSelectors.ActiveMessages(SessionStore.Value)"
+                                 InProgressMessage="@ActiveSessionState.CurrentResponseMessage"
+                                 PendingApproval="@ActiveSessionState.PendingApproval"
+                                 OnApprovalDecision="@OnApprovalDecision"
+                                 RiskLevel="@(ActiveSessionState.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ActiveSessionState.PendingApproval.FunctionName) : RiskLevel.Low)"
+                                 IsMobile="@ViewportService.IsMobile">
                     <NoMessagesContent>
                         <div>Ask the assistant a question to start a conversation.</div>
                     </NoMessagesContent>
@@ -66,88 +63,75 @@
                 <div class="chat-container">
                     <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
                     <ChatInput OnSend="@AddUserMessageAsync"
-                            IsAgentRunning="@AgentStore.Value.IsRunning"
-                            OnPanic="@HandlePanicAsync"
-                            @ref="@chatInput" />
+                               IsAgentRunning="@ActiveSessionState.IsRunning"
+                               OnPanic="@HandlePanicAsync"
+                               @ref="@chatInput" />
                 </div>
             </ContextPane>
         </ContextPaneContent>
         <CanvasPaneContent>
             <CanvasPane>
                 @* All artifact content is now rendered by CanvasPane's BB Tabs
-                infrastructure from IState<ArtifactState> — DiffPreview, RecipeEditor, DocumentPreview,
-                and DataGrid tabs are dynamically shown/hidden based on ArtifactState.VisibleTabs.
+                infrastructure from session-keyed state — DiffPreview, RecipeEditor, DocumentPreview,
+                and DataGrid tabs are dynamically shown/hidden based on the active session.
                 See CanvasPane.razor for tab implementation details. *@
             </CanvasPane>
         </CanvasPaneContent>
     </DualPaneLayout>
-</SidebarInset>
+</BbSidebarInset>
 
 @code {
     private const string SystemPrompt = @"
         You are a helpful assistant.
         ";
 
-    private const int ThrottleDelayMs = 100; // Throttle StateHasChanged to prevent render thrashing
+    private const int ThrottleDelayMs = 100;
 
     private DualPaneLayout? _dualPane;
+    private string? _observedSessionId;
+
+    private SessionEntry ActiveSession => SessionSelectors.GetActiveSession(SessionStore.Value);
+
+    private IReadOnlyList<SessionEntry> OrderedSessions => SessionSelectors.GetOrderedSessions(SessionStore.Value);
+
+    private SessionState ActiveSessionState => ActiveSession.State;
+
+    private SessionMetadata ActiveSessionMetadata => ActiveSession.Metadata;
+
+    private string ActiveSessionId => ActiveSessionMetadata.Id;
     private ChatInput? chatInput;
     private ChatSuggestions? chatSuggestions;
-    private IChatClient? activeChatClient;
     private DateTime lastStateChangeTime = DateTime.MinValue;
-    private bool pendingStateChange = false;
+    private bool pendingStateChange;
     private System.Timers.Timer? throttleTimer;
 
-    /// <summary>
-    /// Gets whether the currently selected endpoint is the Shared State endpoint.
-    /// </summary>
-    private bool IsSharedStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("shared_state", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Gets whether the currently selected endpoint is the Predictive State Updates endpoint.
-    /// </summary>
-    private bool IsPredictiveStateEndpoint => AgentStore.Value.SelectedEndpointPath.Equals("predictive_state_updates", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Gets the display name for the currently selected endpoint, shown in the inset header bar.
-    /// </summary>
-    private string GetCurrentEndpointDisplayName()
+    private string GetCurrentSessionTitle()
     {
-        return ClientFactory.AvailableEndpoints
-            .FirstOrDefault(e => string.Equals(e.Path, AgentStore.Value.SelectedEndpointPath, StringComparison.OrdinalIgnoreCase))
-            ?.DisplayName ?? "AG-UI Dojo";
+        string title = ActiveSessionMetadata.Title?.Trim() ?? string.Empty;
+        return string.IsNullOrWhiteSpace(title) ? SessionMetadata.DefaultTitle : title;
     }
 
-    protected override void OnInitialized()
+    protected override Task OnInitializedAsync()
     {
-        Dispatcher.Dispatch(new ChatActions.AddMessageAction(new(ChatRole.System, SystemPrompt)));
-        activeChatClient = ClientFactory.CreateClient(AgentStore.Value.SelectedEndpointPath);
+        StreamingService.SetUiCallbacks(ThrottledStateHasChanged, () => InvokeAsync(StateHasChanged), callback => InvokeAsync(callback));
 
-        // Register UI callbacks for the streaming service
-        StreamingService.SetUiCallbacks(ThrottledStateHasChanged, () => InvokeAsync(StateHasChanged));
+        EnsureSessionInitialized(ActiveSessionId);
+        SyncActiveSessionContext();
 
-        // Initialize state manager for Shared State feature
-        StreamingService.InitializeEndpointState(AgentStore.Value.SelectedEndpointPath);
-
-        // Initialize throttle timer for debounced UI updates
         throttleTimer = new System.Timers.Timer(ThrottleDelayMs);
         throttleTimer.AutoReset = false;
         throttleTimer.Elapsed += OnThrottleElapsed;
 
-        // Subscribe to Fluxor state changes with throttled rendering
-        // (NOT FluxorComponent — preserves ThrottledStateHasChanged for SSE streaming)
-        PlanStore.StateChanged += OnFluxorStateChanged;
-        AgentStore.StateChanged += OnFluxorStateChanged;
-        ArtifactStore.StateChanged += OnFluxorStateChanged;
-        ChatStore.StateChanged += OnFluxorStateChanged;
+        SessionStore.StateChanged += OnFluxorStateChanged;
+        return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Handles Fluxor state changes by triggering throttled UI updates.
-    /// Uses a single handler for all stores instead of FluxorComponent
-    /// to preserve ThrottledStateHasChanged debounce for SSE streaming.
-    /// </summary>
-    private void OnFluxorStateChanged(object? sender, EventArgs e) => ThrottledStateHasChanged();
+    private void OnFluxorStateChanged(object? sender, EventArgs e)
+    {
+        EnsureSessionInitialized(ActiveSessionId);
+        SyncActiveSessionContext();
+        ThrottledStateHasChanged();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -160,9 +144,6 @@
 
     private void OnViewportChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
-    /// <summary>
-    /// Throttled StateHasChanged to prevent render thrashing during rapid streaming updates.
-    /// </summary>
     private void ThrottledStateHasChanged()
     {
         DateTime now = DateTime.UtcNow;
@@ -189,81 +170,255 @@
         }
     }
 
-    /// <summary>
-    /// Handles endpoint selection change by creating a new client and resetting the conversation.
-    /// </summary>
-    private async Task OnEndpointChangedAsync(string newEndpointPath)
+    private async Task AddUserMessageAsync(ChatMessage userMessage)
     {
-        if (string.Equals(AgentStore.Value.SelectedEndpointPath, newEndpointPath, StringComparison.OrdinalIgnoreCase))
+        if (!StreamingService.CanQueueResponse(ActiveSessionId))
         {
+            Dispatcher.Dispatch(new SessionActions.AddMessageAction(
+                ActiveSessionId,
+                new ChatMessage(ChatRole.Assistant, "Too many sessions are already streaming. Please wait for one to finish before sending another message.")));
+            await chatInput!.FocusAsync();
             return;
         }
 
-        Dispatcher.Dispatch(new AgentActions.SetEndpointAction(newEndpointPath));
-        activeChatClient = ClientFactory.CreateClient(newEndpointPath);
-        await ResetConversationAsync();
-        StreamingService.InitializeEndpointState(newEndpointPath);
-    }
+        StreamingService.CancelResponse(ActiveSessionId);
 
-    private async Task AddUserMessageAsync(ChatMessage userMessage)
-    {
-        StreamingService.CancelAnyCurrentResponse();
-
-        // For shared state endpoint, add state DataContent to the user message
-        if (IsSharedStateEndpoint && StateManager.HasActiveState)
+        Recipe? recipeState = ActiveSessionState.CurrentRecipe;
+        if (recipeState is null && ShouldBootstrapRecipeState(userMessage))
         {
+            StateManager.Initialize();
+            recipeState = StateManager.CurrentRecipe;
+            Dispatcher.Dispatch(new SessionActions.SetRecipeAction(ActiveSessionId, recipeState));
+        }
+
+        if (recipeState is not null)
+        {
+            StateManager.UpdateRecipe(recipeState);
             DataContent stateContent = StateManager.CreateStateContent();
             userMessage.Contents.Add(stateContent);
         }
 
-        Dispatcher.Dispatch(new ChatActions.AddMessageAction(userMessage));
+        Dispatcher.Dispatch(new SessionActions.AddMessageAction(ActiveSessionId, userMessage));
         chatSuggestions?.Clear();
         await chatInput!.FocusAsync();
 
-        await StreamingService.ProcessAgentResponseAsync(activeChatClient!);
-        chatSuggestions?.Update(ChatStore.Value.Messages);
+        await StreamingService.ProcessAgentResponseAsync(ActiveSessionId);
+        chatSuggestions?.Update(ActiveSessionState.Messages);
     }
 
-    /// <summary>
-    /// Handles the user's approval/rejection decision from the approval UI.
-    /// Delegates to <see cref="IAgentStreamingService.ResolveApproval"/> to unblock the streaming loop.
-    /// </summary>
-    private void OnApprovalDecision(bool approved) => StreamingService.ResolveApproval(approved);
+    private void OnApprovalDecision(bool approved) => StreamingService.ResolveApproval(ActiveSessionId, approved);
 
-    /// <summary>
-    /// Handles the emergency stop action. Delegates to the streaming service
-    /// and refocuses the chat input.
-    /// </summary>
     private async Task HandlePanicAsync()
     {
-        StreamingService.HandlePanic(AgentStore.Value.SelectedEndpointPath);
+        StreamingService.HandlePanic(ActiveSessionId);
         await chatInput!.FocusAsync();
     }
 
-    /// <summary>
-    /// Handles reverting to a specific checkpoint from the CheckpointManager timeline.
-    /// Delegates to the streaming service and refocuses the chat input.
-    /// </summary>
     private async Task HandleCheckpointRevertAsync(string checkpointId)
     {
-        StreamingService.HandleCheckpointRevert(checkpointId, AgentStore.Value.SelectedEndpointPath);
+        StreamingService.HandleCheckpointRevert(ActiveSessionId, checkpointId);
         await chatInput!.FocusAsync();
     }
 
-    private async Task ResetConversationAsync()
+    private async Task CreateNewSessionAsync()
     {
-        StreamingService.ResetConversation(SystemPrompt, AgentStore.Value.SelectedEndpointPath);
+        string sessionId = Guid.NewGuid().ToString("N");
+        Dispatcher.Dispatch(new SessionActions.CreateSessionAction(sessionId, EndpointPath: SessionMetadata.DefaultEndpointPath));
+        EnsureSessionInitialized(sessionId);
+        SyncActiveSessionContext();
         chatSuggestions?.Clear();
         await chatInput!.FocusAsync();
+    }
+
+    private void EnsureSessionInitialized(string sessionId)
+    {
+        if (!SessionSelectors.TryGetSession(SessionStore.Value, sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        if (entry.State.Messages.Count == 0)
+        {
+            Dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, new ChatMessage(ChatRole.System, SystemPrompt)));
+        }
+
+        if (string.Equals(SessionStore.Value.ActiveSessionId, sessionId, StringComparison.Ordinal))
+        {
+            StreamingService.SyncSessionState(sessionId);
+        }
+    }
+
+    private async Task HandleSessionSelectedAsync(string sessionId)
+    {
+        if (SessionSelectors.TryGetSession(SessionStore.Value, sessionId, out SessionEntry entry))
+        {
+            EnsureSessionInitialized(sessionId);
+        }
+
+        await chatInput!.FocusAsync();
+    }
+
+    private async Task HandleSessionDeletedAsync(string sessionId)
+    {
+        if (string.Equals(sessionId, ActiveSessionId, StringComparison.Ordinal))
+        {
+            EnsureSessionInitialized(ActiveSessionId);
+        }
+
+        await chatInput!.FocusAsync();
+    }
+
+    private void SyncActiveSessionContext()
+    {
+        if (string.IsNullOrEmpty(ActiveSessionId))
+        {
+            return;
+        }
+
+        if (string.Equals(_observedSessionId, ActiveSessionId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _observedSessionId = ActiveSessionId;
+        StreamingService.SyncSessionState(ActiveSessionId);
+    }
+
+    private string GetActiveSessionStatusIcon() => ActiveSessionMetadata.HasPendingApproval
+        ? "bell"
+        : ActiveSessionMetadata.Status switch
+        {
+            SessionStatus.Created => "circle",
+            SessionStatus.Active => "circle",
+            SessionStatus.Streaming => "loader",
+            SessionStatus.Background => "loader",
+            SessionStatus.Completed => "check",
+            SessionStatus.Error => "alert-triangle",
+            SessionStatus.Archived => "archive",
+            _ => "circle",
+        };
+
+    private string GetActiveSessionStatusIconClass() => ActiveSessionMetadata.HasPendingApproval
+        ? "inset-header-status-icon inset-header-status-icon--approval"
+        : ActiveSessionMetadata.Status switch
+        {
+            SessionStatus.Created => "inset-header-status-icon inset-header-status-icon--created",
+            SessionStatus.Active => "inset-header-status-icon inset-header-status-icon--active",
+            SessionStatus.Streaming => "inset-header-status-icon inset-header-status-icon--streaming",
+            SessionStatus.Background => "inset-header-status-icon inset-header-status-icon--background",
+            SessionStatus.Completed => "inset-header-status-icon inset-header-status-icon--completed",
+            SessionStatus.Error => "inset-header-status-icon inset-header-status-icon--error",
+            SessionStatus.Archived => "inset-header-status-icon inset-header-status-icon--created",
+            _ => "inset-header-status-icon inset-header-status-icon--created",
+        };
+
+    private BadgeVariant GetSessionStatusVariant()
+    {
+        if (ActiveSessionMetadata.HasPendingApproval)
+        {
+            return BadgeVariant.Destructive;
+        }
+
+        if (ActiveSessionState.IsRunning)
+        {
+            return BadgeVariant.Default;
+        }
+
+        return ActiveSessionMetadata.Status switch
+        {
+            SessionStatus.Created => BadgeVariant.Outline,
+            SessionStatus.Error => BadgeVariant.Destructive,
+            _ => BadgeVariant.Secondary,
+        };
+    }
+
+    private string GetSessionStatusLabel()
+    {
+        if (ActiveSessionMetadata.HasPendingApproval)
+        {
+            return "Approval Required";
+        }
+
+        if (ActiveSessionState.IsRunning)
+        {
+            return "Generating...";
+        }
+
+        return ActiveSessionMetadata.Status switch
+        {
+            SessionStatus.Created => "New",
+            SessionStatus.Error => "Error",
+            _ => "Ready",
+        };
+    }
+
+    private string? GetSessionStatusBadgeIcon()
+    {
+        if (ActiveSessionMetadata.HasPendingApproval)
+        {
+            return "bell";
+        }
+
+        if (ActiveSessionState.IsRunning)
+        {
+            return "loader";
+        }
+
+        if (ActiveSessionMetadata.Status == SessionStatus.Error)
+        {
+            return "alert-triangle";
+        }
+
+        return null;
+    }
+
+    private string GetSessionStatusBadgeCssClass()
+    {
+        string stateClass = ActiveSessionMetadata.HasPendingApproval
+            ? "agent-status-pill--approval"
+            : ActiveSessionState.IsRunning
+                ? "agent-status-pill--streaming"
+                : string.Empty;
+
+        return string.IsNullOrWhiteSpace(stateClass)
+            ? "agent-status-pill ml-auto"
+            : $"agent-status-pill ml-auto {stateClass}";
+    }
+
+    private string GetSessionStatusBadgeIconClass() => ActiveSessionState.IsRunning && !ActiveSessionMetadata.HasPendingApproval
+        ? "agent-status-pill__icon agent-status-pill__icon--spinning"
+        : "agent-status-pill__icon";
+
+    private static bool ShouldBootstrapRecipeState(ChatMessage userMessage)
+    {
+        string? text = userMessage.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        string[] recipeKeywords =
+        [
+            "recipe",
+            "ingredients",
+            "cook",
+            "cooking",
+            "meal",
+            "dish",
+            "bake",
+            "kitchen",
+            "dinner",
+            "lunch",
+            "breakfast",
+        ];
+
+        return recipeKeywords.Any(keyword => text.Contains(keyword, StringComparison.OrdinalIgnoreCase));
     }
 
     public void Dispose()
     {
         ViewportService.OnViewportChanged -= OnViewportChanged;
-        PlanStore.StateChanged -= OnFluxorStateChanged;
-        AgentStore.StateChanged -= OnFluxorStateChanged;
-        ArtifactStore.StateChanged -= OnFluxorStateChanged;
-        ChatStore.StateChanged -= OnFluxorStateChanged;
+        SessionStore.StateChanged -= OnFluxorStateChanged;
         throttleTimer?.Stop();
         throttleTimer?.Dispose();
     }

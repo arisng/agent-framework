@@ -1,0 +1,172 @@
+@using AGUIDojoClient.Store.SessionManager
+@inject IDispatcher Dispatcher
+
+<BbAlertDialog @bind-Open="_isDeleteDialogOpen">
+    <BbAlertDialogContent>
+        <BbAlertDialogHeader>
+            <BbAlertDialogTitle>Delete session?</BbAlertDialogTitle>
+            <BbAlertDialogDescription>
+                This will permanently delete "@Entry.Metadata.Title" and all messages. This cannot be undone.
+            </BbAlertDialogDescription>
+        </BbAlertDialogHeader>
+        <BbAlertDialogFooter>
+            <BbAlertDialogCancel AsChild>
+                <BbButton Variant="ButtonVariant.Outline">Cancel</BbButton>
+            </BbAlertDialogCancel>
+            <BbButton Variant="ButtonVariant.Destructive" @onclick="HandleDeleteAsync">
+                Delete
+            </BbButton>
+        </BbAlertDialogFooter>
+    </BbAlertDialogContent>
+</BbAlertDialog>
+
+<BbSidebarMenuItem Class="@(Entry.Metadata.Status == SessionStatus.Error ? "session-list-item--error" : null)">
+    <BbSidebarMenuButton @onclick="HandleSelectAsync"
+                         IsActive="@IsActive"
+                         Tooltip="@GetTooltip()"
+                         Class="session-list-item__button">
+        <LucideIcon Name="@GetStatusIcon()" Size="16" Class="@GetStatusIconClass()" />
+        <div class="session-list-item__content">
+            <span class="session-list-item__title @(IsActive ? "session-list-item__title--active" : null)">@Entry.Metadata.Title</span>
+            <span class="session-list-item__meta">@GetSecondaryText()</span>
+        </div>
+
+        @if (Entry.Metadata.HasPendingApproval)
+        {
+            <BbSidebarMenuBadge Class="session-list-item__badge session-list-item__badge--approval">!</BbSidebarMenuBadge>
+        }
+
+        @if (Entry.Metadata.UnreadCount > 0)
+        {
+            <BbSidebarMenuBadge Class="session-list-item__badge">@Entry.Metadata.UnreadCount</BbSidebarMenuBadge>
+        }
+    </BbSidebarMenuButton>
+
+    <BbSidebarMenuAction Tooltip="Delete session"
+                         ShowOnHover="true"
+                         @onclick="OpenDeleteDialog">
+        <LucideIcon Name="trash-2" Size="14" />
+    </BbSidebarMenuAction>
+</BbSidebarMenuItem>
+
+@code {
+    private bool _isDeleteDialogOpen;
+
+    [Parameter]
+    public required SessionEntry Entry { get; set; }
+
+    [Parameter]
+    public bool IsActive { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnDeleted { get; set; }
+
+    private async Task HandleSelectAsync()
+    {
+        if (!IsActive)
+        {
+            Dispatcher.Dispatch(new SessionActions.SetActiveSessionAction(Entry.Metadata.Id));
+        }
+
+        await OnSelected.InvokeAsync(Entry.Metadata.Id);
+    }
+
+    private void OpenDeleteDialog()
+    {
+        _isDeleteDialogOpen = true;
+    }
+
+    private async Task HandleDeleteAsync()
+    {
+        _isDeleteDialogOpen = false;
+        Dispatcher.Dispatch(new SessionActions.ArchiveSessionAction(Entry.Metadata.Id));
+        await OnDeleted.InvokeAsync(Entry.Metadata.Id);
+    }
+
+    private string GetTooltip() => $"{Entry.Metadata.Title} • {GetStatusLabel()} • {GetSecondaryText()}";
+
+    private string GetSecondaryText()
+    {
+        if (Entry.Metadata.HasPendingApproval)
+        {
+            return "Approval required";
+        }
+
+        return GetRelativeTime(Entry.Metadata.LastActivityAt);
+    }
+
+    private string GetStatusLabel() => Entry.Metadata.HasPendingApproval
+        ? "Approval required"
+        : Entry.Metadata.Status switch
+        {
+            SessionStatus.Created => "New",
+            SessionStatus.Active => "Active",
+            SessionStatus.Streaming => "Generating",
+            SessionStatus.Background => "Background",
+            SessionStatus.Completed => "Ready",
+            SessionStatus.Error => "Error",
+            SessionStatus.Archived => "Archived",
+            _ => "Session",
+        };
+
+    private string GetStatusIcon() => Entry.Metadata.HasPendingApproval
+        ? "bell"
+        : Entry.Metadata.Status switch
+        {
+            SessionStatus.Created => "circle",
+            SessionStatus.Active => "circle",
+            SessionStatus.Streaming => "loader",
+            SessionStatus.Background => "loader",
+            SessionStatus.Completed => "check",
+            SessionStatus.Error => "alert-triangle",
+            SessionStatus.Archived => "archive",
+            _ => "circle",
+        };
+
+    private string GetStatusIconClass() => Entry.Metadata.HasPendingApproval
+        ? "session-list-item__icon session-list-item__icon--approval"
+        : Entry.Metadata.Status switch
+        {
+            SessionStatus.Created => "session-list-item__icon session-list-item__icon--created",
+            SessionStatus.Active => "session-list-item__icon session-list-item__icon--active",
+            SessionStatus.Streaming => "session-list-item__icon session-list-item__icon--streaming",
+            SessionStatus.Background => "session-list-item__icon session-list-item__icon--background",
+            SessionStatus.Completed => "session-list-item__icon session-list-item__icon--completed",
+            SessionStatus.Error => "session-list-item__icon session-list-item__icon--error",
+            SessionStatus.Archived => "session-list-item__icon session-list-item__icon--created",
+            _ => "session-list-item__icon session-list-item__icon--created",
+        };
+
+    private static string GetRelativeTime(DateTimeOffset timestamp)
+    {
+        TimeSpan elapsed = DateTimeOffset.UtcNow - timestamp;
+
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "Just now";
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            int minutes = Math.Max(1, (int)Math.Floor(elapsed.TotalMinutes));
+            return $"{minutes} min{(minutes == 1 ? string.Empty : "s")} ago";
+        }
+
+        if (elapsed < TimeSpan.FromDays(1))
+        {
+            int hours = Math.Max(1, (int)Math.Floor(elapsed.TotalHours));
+            return $"{hours} hr{(hours == 1 ? string.Empty : "s")} ago";
+        }
+
+        if (elapsed < TimeSpan.FromDays(7))
+        {
+            int days = Math.Max(1, (int)Math.Floor(elapsed.TotalDays));
+            return $"{days} day{(days == 1 ? string.Empty : "s")} ago";
+        }
+
+        return timestamp.LocalDateTime.ToString("MMM d");
+    }
+}

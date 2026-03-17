@@ -1,10 +1,7 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT — SwipeApproval: Swipe-based mobile approval card with JS gesture handling *@
+@* SwipeApproval: Swipe-based mobile approval card with JS gesture handling *@
 
 @using AGUIDojoClient.Models
-@using BlazorBlueprint.Components.Badge
-@using BlazorBlueprint.Components.Card
-@using BlazorBlueprint.Icons.Lucide.Components
 @using Microsoft.JSInterop
 
 @implements IAsyncDisposable
@@ -26,14 +23,14 @@
         <div class="swipe-overlay swipe-overlay-approve"></div>
         <div class="swipe-overlay swipe-overlay-reject"></div>
 
-        <Card>
-            <CardHeader>
-                <CardTitle Class="swipe-card-title">
+        <BbCard>
+            <BbCardHeader>
+                <BbCardTitle Class="swipe-card-title">
                     <LucideIcon Name="shield-alert" Size="18" />
                     <span>Approval Required</span>
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
+                </BbCardTitle>
+            </BbCardHeader>
+            <BbCardContent>
                 <div class="swipe-card-body">
                     <div class="swipe-card-function">
                         <span class="swipe-card-label">Function</span>
@@ -48,7 +45,7 @@
                                 @foreach (var arg in Arguments)
                                 {
                                     <div class="swipe-card-arg-item">
-                                        <Badge Variant="BadgeVariant.Outline">@arg.Key</Badge>
+                                        <BbBadge Variant="BadgeVariant.Outline">@arg.Key</BbBadge>
                                         <span class="swipe-card-arg-value">@(arg.Value?.ToString() ?? "null")</span>
                                     </div>
                                 }
@@ -61,8 +58,8 @@
                         <RiskBadge Level="@RiskLevel" ShowLabel="true" />
                     </div>
                 </div>
-            </CardContent>
-        </Card>
+            </BbCardContent>
+        </BbCard>
 
         @* Swipe instruction hint *@
         <div class="swipe-hint">

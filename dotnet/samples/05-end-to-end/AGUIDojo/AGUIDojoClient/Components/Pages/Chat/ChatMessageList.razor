@@ -17,12 +17,14 @@
 
     TODO (.NET 11): Replace fixed ItemSize="150" with automatic variable-height support.
 *@
-@using AGUIDojoClient.Store.PlanState
+@using AGUIDojoClient.Store.SessionManager
 @using AGUIDojoClient.Components.GenerativeUI
 @using AGUIDojoClient.Helpers
+@using System.Runtime.CompilerServices
+@using System.Threading
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @inject IJSRuntime JS
-@inject IState<PlanState> PlanStore
+@inject IState<SessionManagerState> SessionStore
 
 <div class="message-list-container">
     <chat-messages class="message-list" in-progress="@(InProgressMessage is not null)">
@@ -35,13 +37,14 @@
                 {
                     <AgentHandoff AgentName="@item.HandoffAgentName" />
                 }
-                <ChatMessageItem @key="@item.Message" Message="@item.Message" InProgress="false" />
+                <ChatMessageItem @key="@GetCompletedMessageKey(item.Message, item.Index)" Message="@item.Message" InProgress="false" />
             </Virtualize>
         }
         else
         {
             @* Standard rendering for small conversations — no virtualization overhead. *@
             string? previousAuthorName = null;
+            var messageIndex = 0;
             @foreach (var message in Messages)
             {
                 if (message is null) continue;
@@ -55,12 +58,14 @@
                     <AgentHandoff AgentName="@currentAuthorName" />
                 }
 
-                <ChatMessageItem @key="@message" Message="@message" InProgress="false" />
+                <ChatMessageItem @key="@GetCompletedMessageKey(message, messageIndex)" Message="@message" InProgress="false" />
 
                 if (!string.IsNullOrEmpty(currentAuthorName))
                 {
                     previousAuthorName = currentAuthorName;
                 }
+
+                messageIndex++;
             }
         }
 
@@ -77,7 +82,7 @@
                 <AgentHandoff AgentName="@inProgressAuthor" />
             }
 
-            <ChatMessageItem @key="@InProgressMessage" Message="@InProgressMessage" InProgress="true" />
+            <ChatMessageItem @key="@GetInProgressMessageKey(InProgressMessage)" Message="@InProgressMessage" InProgress="true" />
             <LoadingSpinner />
         }
         else if (IsEmpty)
@@ -86,14 +91,14 @@
         }
 
         @* Render PlanProgress inline in message-list when a plan exists (state-based component) *@
-        @if (PlanStore.Value.Plan is not null)
+        @if (ActivePlan is not null)
         {
             <div class="plan-progress-message">
                 <PlanProgress />
             </div>
         }
 
-        @* MY CUSTOMIZATION POINT: Approval card — renders inline at bottom of message list *@
+        @* Approval card — renders inline at bottom of message list *@
         @if (PendingApproval is not null)
         {
             <div class="approval-message">
@@ -117,6 +122,17 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Assigns a process-local unique identifier to each message instance so render keys
+    /// stay unique even when upstream ChatMessage.MessageId values are blank or repeated.
+    /// </summary>
+    private static readonly ConditionalWeakTable<ChatMessage, MessageRenderIdentity> MessageInstanceIds = new();
+
+    /// <summary>
+    /// Tracks the next unique message instance id.
+    /// </summary>
+    private static int s_nextMessageInstanceId;
+
     /// <summary>
     /// The threshold of message count above which <see cref="Virtualize{TItem}"/>
     /// is used to reduce DOM element count. Default is 50 messages.
@@ -187,6 +203,8 @@
     /// </summary>
     private bool _shouldVirtualize;
 
+    private Plan? ActivePlan => SessionSelectors.GetActiveState(SessionStore.Value).Plan;
+
     private bool IsEmpty => !Messages.Any(m => m != null && (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
 
     /// <inheritdoc/>
@@ -245,6 +263,7 @@
     {
         var items = new List<ChatDisplayItem>(messages.Count);
         string? previousAuthor = null;
+        var index = 0;
 
         foreach (var message in messages)
         {
@@ -256,6 +275,7 @@
                 && author != previousAuthor;
 
             items.Add(new ChatDisplayItem(
+                Index: index,
                 Message: message,
                 ShowHandoff: showHandoff,
                 HandoffAgentName: showHandoff ? author : null,
@@ -265,22 +285,37 @@
             {
                 previousAuthor = author;
             }
+
+            index++;
         }
 
         return items;
     }
 
+    private static string GetCompletedMessageKey(ChatMessage message, int index) =>
+        $"completed:{GetMessageInstanceId(message)}:{index}";
+
+    private static string GetInProgressMessageKey(ChatMessage message) =>
+        $"in-progress:{GetMessageInstanceId(message)}";
+
+    private static string GetMessageInstanceId(ChatMessage message) =>
+        MessageInstanceIds.GetValue(message, _ => new MessageRenderIdentity($"msg-{Interlocked.Increment(ref s_nextMessageInstanceId)}")).Id;
+
     /// <summary>
     /// Represents a chat message with pre-computed agent handoff metadata
     /// for use with the <see cref="Virtualize{TItem}"/> component.
     /// </summary>
+    /// <param name="Index">The zero-based index of the message within the completed transcript.</param>
     /// <param name="Message">The chat message to render.</param>
     /// <param name="ShowHandoff">Whether to render an <see cref="AgentHandoff"/> separator before this message.</param>
     /// <param name="HandoffAgentName">The agent name for the handoff separator, if <paramref name="ShowHandoff"/> is true.</param>
     /// <param name="LastAuthorName">The last known assistant author name up to and including this item.</param>
     private sealed record ChatDisplayItem(
+        int Index,
         ChatMessage Message,
         bool ShowHandoff,
         string? HandoffAgentName,
         string? LastAuthorName);
+
+    private sealed record MessageRenderIdentity(string Id);
 }

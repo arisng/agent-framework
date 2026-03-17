@@ -3,20 +3,17 @@
     Licensed under the MIT License.
 *@
 
-@using BlazorBlueprint.Components.Separator
-@using BlazorBlueprint.Icons.Lucide.Components
-
 @* Renders a separator indicating an agent handoff in the conversation.
    Displays "Switched to {AgentName}" between two horizontal lines when
    the active agent changes during a multi-agent conversation. *@
 
 <div class="agent-handoff-separator">
-    <Separator Class="agent-handoff-line" />
+    <BbSeparator Class="agent-handoff-line" />
     <span class="agent-handoff-label">
         <LucideIcon Name="arrow-right-left" Size="12" />
         <span>Switched to @AgentName</span>
     </span>
-    <Separator Class="agent-handoff-line" />
+    <BbSeparator Class="agent-handoff-line" />
 </div>
 
 @code {

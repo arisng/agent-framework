@@ -1,26 +1,21 @@
 @* Copyright (c) Microsoft. All rights reserved. *@
-@* MY CUSTOMIZATION POINT: Mobile bottom sheet for displaying artifact content *@
+@* Mobile bottom sheet for displaying artifact content *@
 
-@using BlazorBlueprint.Components.Button
-@using BlazorBlueprint.Components.Drawer
-@using BlazorBlueprint.Components.ScrollArea
-@using BlazorBlueprint.Icons.Lucide.Components
-
-<Drawer @bind-Open="IsOpen" Direction="DrawerDirection.Bottom">
-    <DrawerTrigger>
-        @* MY CUSTOMIZATION POINT: Trigger button shown externally by parent — this is a fallback *@
-        <Button Variant="ButtonVariant.Outline" Class="w-full">
+<BbDrawer @bind-Open="IsOpen" Direction="DrawerDirection.Bottom">
+    <BbDrawerTrigger>
+        @* Trigger button shown externally by parent — this is a fallback *@
+        <BbButton Variant="ButtonVariant.Outline" Class="w-full">
             <LucideIcon Name="chevron-up" Size="16" />
             <span class="ml-2">@(Title ?? "View Artifacts")</span>
-        </Button>
-    </DrawerTrigger>
-    <DrawerContent>
-        <DrawerHeader>
-            <DrawerTitle>@(Title ?? "Artifacts")</DrawerTitle>
-        </DrawerHeader>
-        @* MY CUSTOMIZATION POINT: Artifact content area with scroll support *@
+        </BbButton>
+    </BbDrawerTrigger>
+    <BbDrawerContent>
+        <BbDrawerHeader>
+            <BbDrawerTitle>@(Title ?? "Artifacts")</BbDrawerTitle>
+        </BbDrawerHeader>
+        @* Artifact content area with scroll support *@
         <div class="artifact-sheet-body">
-            <ScrollArea Class="h-full">
+            <BbScrollArea Class="h-full">
                 @if (ChildContent is not null)
                 {
                     @ChildContent
@@ -32,21 +27,21 @@
                         <p>No active artifacts</p>
                     </div>
                 }
-            </ScrollArea>
+            </BbScrollArea>
         </div>
-        <DrawerFooter>
-            <DrawerClose>
-                <Button Variant="ButtonVariant.Outline" Class="w-full">
+        <BbDrawerFooter>
+            <BbDrawerClose>
+                <BbButton Variant="ButtonVariant.Outline" Class="w-full">
                     <LucideIcon Name="x" Size="16" />
                     <span class="ml-2">Close</span>
-                </Button>
-            </DrawerClose>
-        </DrawerFooter>
-    </DrawerContent>
-</Drawer>
+                </BbButton>
+            </BbDrawerClose>
+        </BbDrawerFooter>
+    </BbDrawerContent>
+</BbDrawer>
 
 @code {
-    // MY CUSTOMIZATION POINT: ArtifactSheet parameters
+    // ArtifactSheet parameters
 
     /// <summary>
     /// The artifact content to display in the bottom sheet.
