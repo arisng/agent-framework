@@ -84,8 +84,16 @@
     [Parameter]
     public EventCallback OnPanic { get; set; }
 
-    public ValueTask FocusAsync()
-        => textArea.FocusAsync();
+    public async ValueTask FocusAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("focusIfConnected", textArea);
+            return;
+        }
+
+        await textArea.FocusAsync();
+    }
 
     private async Task TriggerFilePicker()
     {
@@ -156,7 +164,7 @@
         bool sent = OnSend is null || await OnSend(message);
         if (!sent)
         {
-            await textArea.FocusAsync();
+            await FocusAsync();
             return;
         }
 
@@ -164,7 +172,7 @@
         _uploadError = null;
         _pendingAttachments.Clear();
 
-        await textArea.FocusAsync();
+        await FocusAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

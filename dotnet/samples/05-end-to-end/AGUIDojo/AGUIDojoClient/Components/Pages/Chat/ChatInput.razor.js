@@ -1,5 +1,5 @@
 export function init(elem) {
-    elem.focus();
+    focusIfConnected(elem);
 
     // Auto-resize whenever the user types or if the value is set programmatically
     elem.addEventListener('input', () => resizeToFit(elem));
@@ -13,6 +13,12 @@ export function init(elem) {
             elem.closest('form').dispatchEvent(new CustomEvent('submit', { bubbles: true, cancelable: true }));
         }
     });
+}
+
+export function focusIfConnected(elem) {
+    if (elem && elem.isConnected) {
+        elem.focus();
+    }
 }
 
 /**
