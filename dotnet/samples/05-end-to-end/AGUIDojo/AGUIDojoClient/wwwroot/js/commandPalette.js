@@ -33,7 +33,7 @@ window.commandPaletteInterop = {
         this._dotNetRef = dotNetRef;
         this._handler = function (e) {
             // Ctrl+K (Windows/Linux) or Cmd+K (macOS)
-            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            if ((e.ctrlKey || e.metaKey) && typeof e.key === 'string' && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 e.stopPropagation();
                 if (dotNetRef) {
@@ -43,6 +43,19 @@ window.commandPaletteInterop = {
         };
 
         document.addEventListener('keydown', this._handler, { capture: true });
+    },
+
+    /**
+     * Programmatically toggles the sidebar by clicking the built-in trigger.
+     * Prefer the layout trigger with `data-sidebar="trigger"` to avoid the
+     * duplicate rail affordance rendered by the sidebar itself.
+     */
+    toggleSidebar: function () {
+        const trigger = document.querySelector('button[data-sidebar="trigger"]')
+            || document.querySelector('button[aria-label="Toggle Sidebar"]');
+        if (trigger) {
+            trigger.click();
+        }
     },
 
     /**

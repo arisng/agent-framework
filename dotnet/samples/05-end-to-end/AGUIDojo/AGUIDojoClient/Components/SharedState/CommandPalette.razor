@@ -2,10 +2,16 @@
 
 @* Command Palette — global Ctrl+K / Cmd+K quick-action dialog.
    Uses BlazorBlueprint Dialog + Command components to list registered tools and
-   current endpoint information. Keyboard shortcut is handled via JS interop in
+   current session actions. Keyboard shortcut is handled via JS interop in
    commandPalette.js which invokes the TogglePalette callback. *@
 
+@using AGUIDojoClient.Models
+@using AGUIDojoClient.Services
+@using AGUIDojoClient.Store.SessionManager
 @inject IToolComponentRegistry ToolRegistry
+@inject IDispatcher Dispatcher
+@inject IState<SessionManagerState> SessionStore
+@inject IThemeService ThemeService
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
@@ -16,10 +22,26 @@
             <BbCommandList>
                 <BbCommandEmpty>No results found.</BbCommandEmpty>
 
+                <BbCommandGroup Heading="Sessions">
+                    @foreach (SessionEntry session in OrderedSessions)
+                    {
+                        <BbCommandItem Value="@session.Metadata.Id"
+                                       SearchText="@($"{session.Metadata.Title} {session.Metadata.Id}")"
+                                       OnSelect="@(() => ActivateSessionAsync(session.Metadata.Id))">
+                            <LucideIcon Name="message-circle" Size="16" />
+                            @session.Metadata.Title
+                        </BbCommandItem>
+                    }
+                </BbCommandGroup>
+
+                <BbCommandSeparator />
+
                 <BbCommandGroup Heading="Available Tools">
                     @foreach (string tool in ToolRegistry.RegisteredTools)
                     {
-                        <BbCommandItem>
+                        <BbCommandItem Value="@tool"
+                                       SearchText="@tool"
+                                       OnSelect="@ClosePaletteAsync">
                             <LucideIcon Name="wrench" Size="16" />
                             @tool
                         </BbCommandItem>
@@ -28,44 +50,18 @@
 
                 <BbCommandSeparator />
 
-                <BbCommandGroup Heading="Navigation">
-                    <BbCommandItem>
-                        <LucideIcon Name="message-circle" Size="16" />
-                        Agentic Chat
-                    </BbCommandItem>
-                    <BbCommandItem>
-                        <LucideIcon Name="wrench" Size="16" />
-                        Backend Tools
-                    </BbCommandItem>
-                    <BbCommandItem>
-                        <LucideIcon Name="shield" Size="16" />
-                        Human-in-the-Loop
-                    </BbCommandItem>
-                    <BbCommandItem>
-                        <LucideIcon Name="layout" Size="16" />
-                        Generative UI (Plan)
-                    </BbCommandItem>
-                    <BbCommandItem>
-                        <LucideIcon Name="component" Size="16" />
-                        Tool-Based Rendering
-                    </BbCommandItem>
-                    <BbCommandItem>
-                        <LucideIcon Name="share-2" Size="16" />
-                        Shared State (Recipes)
-                    </BbCommandItem>
-                    <BbCommandItem>
-                        <LucideIcon Name="file-text" Size="16" />
-                        Predictive State (Writing)
-                    </BbCommandItem>
-                </BbCommandGroup>
-
-                <BbCommandSeparator />
-
                 <BbCommandGroup Heading="Actions">
-                    <BbCommandItem>
+                    <BbCommandItem Value="new-chat" OnSelect="@CreateNewChatAsync">
+                        <LucideIcon Name="plus" Size="16" />
+                        New Chat
+                    </BbCommandItem>
+                    <BbCommandItem Value="toggle-theme" OnSelect="@ToggleThemeAsync">
                         <LucideIcon Name="sun" Size="16" />
                         Toggle Theme
-                        <kbd>⌘T</kbd>
+                    </BbCommandItem>
+                    <BbCommandItem Value="toggle-sidebar" OnSelect="@ToggleSidebarAsync">
+                        <LucideIcon Name="panel-right-close" Size="16" />
+                        Toggle Sidebar
                     </BbCommandItem>
                 </BbCommandGroup>
             </BbCommandList>
@@ -85,6 +81,8 @@
     /// Disposed on component teardown.
     /// </summary>
     private DotNetObjectReference<CommandPalette>? _dotNetRef;
+
+    private IReadOnlyList<SessionEntry> OrderedSessions => SessionSelectors.GetOrderedSessions(SessionStore.Value);
 
     /// <summary>
     /// Registers the global Ctrl+K / Cmd+K keyboard shortcut via JS interop
@@ -115,6 +113,37 @@
     {
         _isOpen = !_isOpen;
         StateHasChanged();
+    }
+
+    private Task ClosePaletteAsync()
+    {
+        _isOpen = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ActivateSessionAsync(string sessionId)
+    {
+        Dispatcher.Dispatch(new SessionActions.SetActiveSessionAction(sessionId));
+        await ClosePaletteAsync();
+    }
+
+    private async Task CreateNewChatAsync()
+    {
+        string sessionId = Guid.NewGuid().ToString("N");
+        Dispatcher.Dispatch(new SessionActions.CreateSessionAction(sessionId, EndpointPath: SessionMetadata.DefaultEndpointPath));
+        await ClosePaletteAsync();
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        await ThemeService.ToggleThemeAsync();
+        await ClosePaletteAsync();
+    }
+
+    private async Task ToggleSidebarAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("commandPaletteInterop.toggleSidebar");
+        await ClosePaletteAsync();
     }
 
     /// <summary>
