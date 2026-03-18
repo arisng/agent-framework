@@ -441,4 +441,26 @@ public static class SessionReducers
                 string leafId = session.Tree.FindLeafFromNode(action.TargetSiblingId);
                 return session with { Tree = session.Tree.SwitchToLeaf(leafId) };
             });
+
+    [ReducerMethod]
+    public static SessionManagerState OnHydrateSessions(SessionManagerState state, SessionActions.HydrateSessionsAction action)
+    {
+        if (action.Sessions.Count == 0)
+        {
+            return state;
+        }
+
+        var sessions = action.Sessions.ToImmutableDictionary();
+
+        // Determine active session: prefer persisted, fall back to first session
+        string? activeId = action.ActiveSessionId;
+        if (activeId is null || !sessions.ContainsKey(activeId))
+        {
+            activeId = sessions.Values
+                .OrderByDescending(e => e.Metadata.LastActivityAt)
+                .First().Metadata.Id;
+        }
+
+        return EnsureActiveSession(state with { Sessions = sessions, ActiveSessionId = activeId });
+    }
 }

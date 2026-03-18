@@ -84,6 +84,9 @@ builder.Services.AddFluxor(options => options.ScanAssemblies(typeof(Program).Ass
 // Uses IJSRuntime to toggle .dark CSS class on <html> and persist to localStorage
 builder.Services.AddScoped<IThemeService, ThemeService>();
 
+// Register SessionPersistenceService for browser-based session storage (localStorage + IndexedDB)
+builder.Services.AddScoped<ISessionPersistenceService, SessionPersistenceService>();
+
 // -----------------------------------------------------------------------------
 // BACKEND CONNECTION CONFIGURATION
 // -----------------------------------------------------------------------------

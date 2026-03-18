@@ -66,4 +66,18 @@ public static class SessionActions
     public sealed record EditAndRegenerateAction(string SessionId, int MessageIndex, string NewText);
 
     public sealed record SwitchBranchAction(string SessionId, string NodeId, string TargetSiblingId);
+
+    /// <summary>
+    /// Triggers hydration of session state from browser storage.
+    /// Dispatched once from <c>Chat.razor.OnAfterRenderAsync(firstRender: true)</c>.
+    /// </summary>
+    public sealed record HydrateFromStorageAction;
+
+    /// <summary>
+    /// Hydrates session state from browser persistence on app start.
+    /// Replaces the default initial state with previously persisted sessions.
+    /// </summary>
+    public sealed record HydrateSessionsAction(
+        IReadOnlyDictionary<string, SessionEntry> Sessions,
+        string? ActiveSessionId);
 }
