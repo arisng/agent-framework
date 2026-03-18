@@ -1,0 +1,140 @@
+.audit-trail {
+    padding: 16px;
+}
+
+.audit-trail__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.audit-trail__empty-icon {
+    color: oklch(0.55 0.01 250);
+    opacity: 0.5;
+}
+
+.audit-trail__empty-title {
+    font-weight: 600;
+    color: oklch(0.85 0.01 250);
+    margin: 0;
+}
+
+.audit-trail__empty-desc {
+    font-size: 0.8rem;
+    color: oklch(0.55 0.01 250);
+    max-width: 280px;
+    margin: 0;
+}
+
+.audit-trail__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    color: oklch(0.75 0.01 250);
+}
+
+.audit-trail__title {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.audit-trail__count {
+    font-variant-numeric: tabular-nums;
+}
+
+.audit-trail__timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.audit-entry {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: oklch(0.22 0.005 250);
+    border: 1px solid oklch(0.30 0.01 250);
+    transition: border-color 150ms ease;
+}
+
+.audit-entry:hover {
+    border-color: oklch(0.40 0.01 250);
+}
+
+.audit-entry__icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.audit-entry--approved .audit-entry__icon {
+    color: oklch(0.72 0.15 145);
+}
+
+.audit-entry--auto-approved .audit-entry__icon {
+    color: oklch(0.72 0.12 215);
+}
+
+.audit-entry--rejected .audit-entry__icon {
+    color: oklch(0.70 0.18 25);
+}
+
+.audit-entry__content {
+    flex: 1;
+    min-width: 0;
+}
+
+.audit-entry__top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.audit-entry__fn {
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: oklch(0.85 0.01 250);
+    background: oklch(0.27 0.005 250);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.audit-entry__meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: oklch(0.55 0.01 250);
+}
+
+.audit-entry__separator {
+    opacity: 0.4;
+}
+
+.audit-entry__decision {
+    font-weight: 500;
+}
+
+.audit-entry--approved .audit-entry__decision {
+    color: oklch(0.72 0.15 145);
+}
+
+.audit-entry--auto-approved .audit-entry__decision {
+    color: oklch(0.72 0.12 215);
+}
+
+.audit-entry--rejected .audit-entry__decision {
+    color: oklch(0.70 0.18 25);
+}

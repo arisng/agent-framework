@@ -468,4 +468,28 @@ public static class SessionReducers
 
         return EnsureActiveSession(state with { Sessions = sessions, ActiveSessionId = activeId });
     }
+
+    [ReducerMethod]
+    public static SessionManagerState OnSetAutonomyLevel(SessionManagerState state, SessionActions.SetAutonomyLevelAction action)
+        => state with { AutonomyLevel = action.Level };
+
+    [ReducerMethod]
+    public static SessionManagerState OnAddAuditEntry(SessionManagerState state, SessionActions.AddAuditEntryAction action)
+        => UpdateSessionState(
+            state,
+            action.SessionId,
+            session =>
+            {
+                var updatedTrail = session.AuditTrail.Add(action.Entry);
+                var updatedTabs = session.VisibleTabs.Add(ArtifactType.AuditTrail);
+                return session with
+                {
+                    AuditTrail = updatedTrail,
+                    VisibleTabs = updatedTabs,
+                    HasInteractiveArtifact = true,
+                    ActiveArtifactType = session.ActiveArtifactType == ArtifactType.None
+                        ? ArtifactType.AuditTrail
+                        : session.ActiveArtifactType,
+                };
+            });
 }

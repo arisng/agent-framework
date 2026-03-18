@@ -1,0 +1,74 @@
+@* AuditTrailPanel: Timeline view of tool call approval decisions *@
+@using AGUIDojoClient.Models
+@using AGUIDojoClient.Store.SessionManager
+@inject IState<SessionManagerState> SessionStore
+
+<div class="audit-trail" role="log" aria-label="Tool call audit trail">
+    @if (Entries.Count == 0)
+    {
+        <div class="audit-trail__empty">
+            <LucideIcon Name="clipboard-check" Size="40" Class="audit-trail__empty-icon" />
+            <p class="audit-trail__empty-title">No audit entries yet</p>
+            <p class="audit-trail__empty-desc">
+                Approval decisions will appear here when the agent executes tool calls.
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="audit-trail__header">
+            <LucideIcon Name="scroll-text" Size="16" />
+            <span class="audit-trail__title">Audit Trail</span>
+            <BbBadge Variant="BadgeVariant.Outline" Class="audit-trail__count">@Entries.Count</BbBadge>
+        </div>
+
+        <div class="audit-trail__timeline">
+            @foreach (var entry in Entries.OrderByDescending(e => e.Timestamp))
+            {
+                <div class="audit-entry @GetEntryClass(entry)" role="listitem">
+                    <div class="audit-entry__icon">
+                        <LucideIcon Name="@GetEntryIcon(entry)" Size="14" />
+                    </div>
+                    <div class="audit-entry__content">
+                        <div class="audit-entry__top">
+                            <code class="audit-entry__fn">@entry.FunctionName</code>
+                            <RiskBadge Level="@entry.RiskLevel" />
+                        </div>
+                        <div class="audit-entry__meta">
+                            <span class="audit-entry__decision">
+                                @(entry.WasApproved ? "Approved" : "Rejected")
+                            </span>
+                            <span class="audit-entry__separator">·</span>
+                            <span class="audit-entry__actor">
+                                @(entry.WasAutoDecided ? $"Auto ({entry.AutonomyLevel})" : "Human")
+                            </span>
+                            <span class="audit-entry__separator">·</span>
+                            <span class="audit-entry__time">@entry.Timestamp.ToString("HH:mm:ss")</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<AuditEntry> Entries { get; set; } = [];
+
+    private static string GetEntryIcon(AuditEntry entry) => entry switch
+    {
+        { WasApproved: true, WasAutoDecided: true } => "bot",
+        { WasApproved: true, WasAutoDecided: false } => "check-circle",
+        { WasApproved: false } => "x-circle",
+        _ => "circle"
+    };
+
+    private static string GetEntryClass(AuditEntry entry) => entry switch
+    {
+        { WasApproved: true, WasAutoDecided: true } => "audit-entry--auto-approved",
+        { WasApproved: true, WasAutoDecided: false } => "audit-entry--approved",
+        { WasApproved: false } => "audit-entry--rejected",
+        _ => ""
+    };
+}

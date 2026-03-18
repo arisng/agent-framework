@@ -22,6 +22,9 @@ public sealed record SessionManagerState
     /// <summary>Gets the currently active session identifier.</summary>
     public string? ActiveSessionId { get; init; }
 
+    /// <summary>Gets the global autonomy level preference (applies to all sessions).</summary>
+    public AutonomyLevel AutonomyLevel { get; init; } = AutonomyLevel.Suggest;
+
     /// <summary>Creates the initial store state with a single default session.</summary>
     public static SessionManagerState CreateInitial()
     {

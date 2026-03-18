@@ -42,6 +42,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private Action? _stateChanged;
     private Func<Func<Task>, Task>? _invokeAsync;
     private volatile SseStreamSnapshot? _currentStreamMetrics;
+    private readonly IRiskAssessmentService _riskAssessmentService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentStreamingService"/> class.
@@ -54,7 +55,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
         IStateManager stateManager,
         IObservabilityService observabilityService,
         ICheckpointService checkpointService,
-        IAGUIChatClientFactory chatClientFactory)
+        IAGUIChatClientFactory chatClientFactory,
+        IRiskAssessmentService riskAssessmentService)
     {
         _dispatcher = dispatcher;
         _sessionStore = sessionStore;
@@ -64,6 +66,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         _observabilityService = observabilityService;
         _checkpointService = checkpointService;
         _chatClientFactory = chatClientFactory;
+        _riskAssessmentService = riskAssessmentService;
         _sessionStore.StateChanged += OnSessionStoreChanged;
     }
 
@@ -443,19 +446,48 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                     if (content is FunctionCallContent fcc && _approvalHandler.TryExtractApprovalRequest(fcc, out PendingApproval? approval) && approval is not null)
                                     {
                                         approval.SessionId = sessionId;
-                                        _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, approval));
-                                        NotifyBackgroundApprovalRequired(sessionId, approval);
-                                        context.ApprovalTaskSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                                        _stateChanged?.Invoke();
+                                        var riskLevel = _riskAssessmentService.AssessRisk(approval.FunctionName);
+                                        var autonomyLevel = _sessionStore.Value.AutonomyLevel;
 
-                                        bool approved = await context.ApprovalTaskSource.Task;
+                                        bool shouldAutoDecide = ShouldAutoDecide(autonomyLevel, riskLevel);
+                                        bool approved;
+
+                                        if (shouldAutoDecide)
+                                        {
+                                            // Auto-approve: resolve immediately without blocking the user
+                                            approved = true;
+                                        }
+                                        else
+                                        {
+                                            // Human-in-the-loop: show approval UI and wait
+                                            _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, approval));
+                                            NotifyBackgroundApprovalRequired(sessionId, approval);
+                                            context.ApprovalTaskSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                                            _stateChanged?.Invoke();
+
+                                            approved = await context.ApprovalTaskSource.Task;
+                                            _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, null));
+                                            context.ApprovalTaskSource = null;
+                                            DismissNotification(approval.ApprovalId);
+                                        }
+
+                                        // Record audit entry for all decisions
+                                        var auditEntry = new AuditEntry
+                                        {
+                                            Id = Guid.NewGuid().ToString("N"),
+                                            ApprovalId = approval.ApprovalId,
+                                            FunctionName = approval.FunctionName,
+                                            RiskLevel = riskLevel,
+                                            AutonomyLevel = autonomyLevel,
+                                            WasApproved = approved,
+                                            WasAutoDecided = shouldAutoDecide,
+                                            SessionId = sessionId,
+                                        };
+                                        _dispatcher.Dispatch(new SessionActions.AddAuditEntryAction(sessionId, auditEntry));
+
                                         var response = _approvalHandler.CreateApprovalResponse(sessionId, approval.ApprovalId, approved);
                                         approvalResponses.Add(response);
                                         streamingMessage.Contents.Add(response);
-
-                                        _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, null));
-                                        context.ApprovalTaskSource = null;
-                                        DismissNotification(approval.ApprovalId);
                                         _stateChanged?.Invoke();
                                     }
                                     else if (content is DataContent dataContent && TryHandleDataContent(sessionId, context, dataContent, ref sawDocumentPreview))
@@ -1170,4 +1202,15 @@ public sealed class AgentStreamingService : IAgentStreamingService
     }
 
     private sealed record QueuedStreamRequest(string SessionId);
+
+    /// <summary>
+    /// Determines whether an approval should be auto-decided based on the current autonomy level and risk.
+    /// </summary>
+    private static bool ShouldAutoDecide(AutonomyLevel autonomy, RiskLevel risk) => autonomy switch
+    {
+        AutonomyLevel.Suggest => false,
+        AutonomyLevel.AutoReview => risk <= RiskLevel.Low,
+        AutonomyLevel.FullAuto => risk < RiskLevel.Critical,
+        _ => false,
+    };
 }

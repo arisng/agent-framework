@@ -1,0 +1,50 @@
+@* AutonomySelector: Segmented control for choosing agent autonomy level *@
+@using AGUIDojoClient.Models
+@using AGUIDojoClient.Store.SessionManager
+@inject IState<SessionManagerState> SessionStore
+@inject IDispatcher Dispatcher
+
+<div class="autonomy-selector" role="radiogroup" aria-label="Agent autonomy level">
+    <BbButton Variant="@GetVariant(AutonomyLevel.Suggest)"
+              Size="ButtonSize.Small"
+              Class="@GetButtonClass(AutonomyLevel.Suggest)"
+              OnClick="@(() => SetLevel(AutonomyLevel.Suggest))"
+              AriaLabel="Suggest mode: all tool calls require human approval">
+        <LucideIcon Name="shield-check" Size="14" />
+        <span>Suggest</span>
+    </BbButton>
+    <BbButton Variant="@GetVariant(AutonomyLevel.AutoReview)"
+              Size="ButtonSize.Small"
+              Class="@GetButtonClass(AutonomyLevel.AutoReview)"
+              OnClick="@(() => SetLevel(AutonomyLevel.AutoReview))"
+              AriaLabel="Auto-review mode: low-risk calls auto-approved">
+        <LucideIcon Name="scan-eye" Size="14" />
+        <span>Auto</span>
+    </BbButton>
+    <BbButton Variant="@GetVariant(AutonomyLevel.FullAuto)"
+              Size="ButtonSize.Small"
+              Class="@GetButtonClass(AutonomyLevel.FullAuto)"
+              OnClick="@(() => SetLevel(AutonomyLevel.FullAuto))"
+              AriaLabel="Full auto mode: all calls auto-approved except critical">
+        <LucideIcon Name="zap" Size="14" />
+        <span>Full</span>
+    </BbButton>
+</div>
+
+@code {
+    private AutonomyLevel CurrentLevel => SessionStore.Value.AutonomyLevel;
+
+    private ButtonVariant GetVariant(AutonomyLevel level)
+        => CurrentLevel == level ? ButtonVariant.Default : ButtonVariant.Ghost;
+
+    private string GetButtonClass(AutonomyLevel level)
+        => $"autonomy-btn{(CurrentLevel == level ? " autonomy-btn--active" : "")}";
+
+    private void SetLevel(AutonomyLevel level)
+    {
+        if (level != CurrentLevel)
+        {
+            Dispatcher.Dispatch(new SessionActions.SetAutonomyLevelAction(level));
+        }
+    }
+}

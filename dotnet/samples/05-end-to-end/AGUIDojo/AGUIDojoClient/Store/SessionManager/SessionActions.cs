@@ -80,4 +80,8 @@ public static class SessionActions
     public sealed record HydrateSessionsAction(
         IReadOnlyDictionary<string, SessionEntry> Sessions,
         string? ActiveSessionId);
+
+    public sealed record SetAutonomyLevelAction(AutonomyLevel Level);
+
+    public sealed record AddAuditEntryAction(string SessionId, AuditEntry Entry);
 }

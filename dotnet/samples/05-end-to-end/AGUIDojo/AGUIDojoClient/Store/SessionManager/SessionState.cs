@@ -28,6 +28,9 @@ public enum ArtifactType
 
     /// <summary>A document preview artifact is active.</summary>
     DocumentPreview,
+
+    /// <summary>An audit trail artifact is active.</summary>
+    AuditTrail,
 }
 
 /// <summary>
@@ -89,4 +92,7 @@ public sealed record SessionState
 
     /// <summary>Gets the visible artifact tabs.</summary>
     public ImmutableHashSet<ArtifactType> VisibleTabs { get; init; } = ImmutableHashSet<ArtifactType>.Empty;
+
+    /// <summary>Gets the audit trail entries for this session.</summary>
+    public ImmutableList<AuditEntry> AuditTrail { get; init; } = ImmutableList<AuditEntry>.Empty;
 }

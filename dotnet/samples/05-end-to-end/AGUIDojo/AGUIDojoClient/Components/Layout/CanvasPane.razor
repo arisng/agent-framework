@@ -158,6 +158,16 @@
                     </div>
                 </BbTabsContent>
             }
+
+            @* AuditTrail tab — timeline of tool call approval decisions *@
+            @if (ActiveSession.VisibleTabs.Contains(ArtifactType.AuditTrail))
+            {
+                <BbTabsContent Value="@nameof(ArtifactType.AuditTrail)" ForceMount="true" Class="canvas-pane__tab-content">
+                    <div class="canvas-pane__scroll">
+                        <AuditTrailPanel Entries="@ActiveSession.AuditTrail" />
+                    </div>
+                </BbTabsContent>
+            }
         </BbTabs>
     }
 </div>
@@ -282,6 +292,7 @@
         ArtifactType.DataGrid => "table-2",
         ArtifactType.RecipeEditor => "chef-hat",
         ArtifactType.DocumentPreview => "file-text",
+        ArtifactType.AuditTrail => "scroll-text",
         _ => "file"
     };
 
@@ -294,6 +305,7 @@
         ArtifactType.DataGrid => "Data Table",
         ArtifactType.RecipeEditor => "Recipe Editor",
         ArtifactType.DocumentPreview => "Document",
+        ArtifactType.AuditTrail => "Audit Trail",
         _ => type.ToString()
     };
 
