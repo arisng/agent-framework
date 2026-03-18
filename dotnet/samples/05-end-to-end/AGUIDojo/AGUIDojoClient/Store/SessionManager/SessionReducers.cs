@@ -423,7 +423,12 @@ public static class SessionReducers
                 }
 
                 var editedMessage = new ChatMessage(ChatRole.User, action.NewText);
-                return session with { Tree = session.Tree.BranchAt(node.ParentId, editedMessage) };
+                return session with
+                {
+                    Tree = session.Tree.BranchAt(node.ParentId, editedMessage),
+                    ConversationId = null,
+                    StatefulMessageCount = 0,
+                };
             });
 
     [ReducerMethod]

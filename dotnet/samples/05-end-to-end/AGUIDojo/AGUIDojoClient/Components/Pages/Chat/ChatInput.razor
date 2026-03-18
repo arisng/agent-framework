@@ -1,14 +1,54 @@
+@using AGUIDojoClient.Helpers
+@using AGUIDojoClient.Models
 @inject IJSRuntime JS
 
 <EditForm Model="@this" OnValidSubmit="@SendMessageAsync" FormName="chat-input-form">
-    <label class="input-box">
+    <label class="input-box" @ref="inputBox">
+        @if (_pendingAttachments.Count > 0)
+        {
+            <div class="attachment-previews" aria-label="Pending attachments">
+                @foreach (var att in _pendingAttachments)
+                {
+                    <div class="attachment-preview">
+                        <img src="/api/files/@att.Id" alt="@att.FileName" loading="lazy" />
+                        <button type="button" class="attachment-remove" @onclick="() => RemoveAttachment(att)" aria-label="Remove @att.FileName" title="Remove attachment">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="12" height="12">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_uploadError))
+        {
+            <div class="attachment-error" role="alert">@_uploadError</div>
+        }
+
+        @if (IsUploading)
+        {
+            <div class="attachment-status" role="status" aria-live="polite">
+                Uploading @(_pendingUploadCount == 1 ? "1 image" : $"{_pendingUploadCount} images")...
+            </div>
+        }
+
         <textarea @ref="@textArea" @bind="@messageText" placeholder="Type your message..." rows="1" aria-label="Type your message"></textarea>
 
+        <input type="file" @ref="fileInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple
+               style="display:none" aria-hidden="true" />
+
         <div class="tools">
+            <button type="button" class="attach" @onclick="TriggerFilePicker" title="Attach image" aria-label="Attach image" disabled="@IsUploading">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="tool-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                </svg>
+            </button>
+
             @* PanicButton inline next to send — visible only when agent running *@
             <PanicButton IsAgentRunning="@IsAgentRunning" OnPanic="@OnPanic" />
 
-            <button type="submit" title="Send" class="send-button" aria-label="Send message">
+            <button type="submit" title="Send" class="send-button" aria-label="Send message" disabled="@IsUploading">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="tool-icon">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
                 </svg>
@@ -19,10 +59,18 @@
 
 @code {
     private ElementReference textArea;
+    private ElementReference inputBox;
+    private ElementReference fileInput;
     private string? messageText;
+    private string? _uploadError;
+    private int _pendingUploadCount;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<ChatInput>? _dotNetRef;
+    private readonly List<AttachmentInfo> _pendingAttachments = [];
+    private bool IsUploading => _pendingUploadCount > 0;
 
     [Parameter]
-    public EventCallback<ChatMessage> OnSend { get; set; }
+    public Func<ChatMessage, Task<bool>>? OnSend { get; set; }
 
     /// <summary>
     /// Whether the agent is currently running. Controls PanicButton visibility.
@@ -39,14 +87,84 @@
     public ValueTask FocusAsync()
         => textArea.FocusAsync();
 
+    private async Task TriggerFilePicker()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("triggerFilePicker", fileInput);
+        }
+    }
+
+    private void RemoveAttachment(AttachmentInfo att)
+    {
+        _pendingAttachments.Remove(att);
+    }
+
+    /// <summary>
+    /// Called from JS when files have been uploaded to the server.
+    /// </summary>
+    [JSInvokable]
+    public void OnFileUploaded(string id, string fileName, string contentType, long size)
+    {
+        _pendingAttachments.Add(new AttachmentInfo(id, fileName, contentType, size));
+        _uploadError = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Called from JS when a file upload fails.
+    /// </summary>
+    [JSInvokable]
+    public void OnFileUploadError(string fileName, string error)
+    {
+        _uploadError = $"Couldn't attach {fileName}: {error}";
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnUploadBatchStarted(int count)
+    {
+        _pendingUploadCount += Math.Max(0, count);
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnUploadBatchFinished(int count)
+    {
+        _pendingUploadCount = Math.Max(0, _pendingUploadCount - Math.Max(0, count));
+        InvokeAsync(StateHasChanged);
+    }
+
     private async Task SendMessageAsync()
     {
-        if (messageText is { Length: > 0 } text)
+        if (IsUploading)
         {
-            messageText = null;
-            await OnSend.InvokeAsync(new ChatMessage(ChatRole.User, text));
-            await textArea.FocusAsync();
+            return;
         }
+
+        string text = messageText?.Trim() ?? string.Empty;
+        if (text.Length == 0 && _pendingAttachments.Count == 0)
+        {
+            return;
+        }
+
+        string fullText = MessageAttachmentMarkers.Append(
+            text,
+            _pendingAttachments.Select(att => new MessageAttachmentMarker(att.Id, att.FileName, att.ContentType)));
+        var message = new ChatMessage(ChatRole.User, fullText);
+
+        bool sent = OnSend is null || await OnSend(message);
+        if (!sent)
+        {
+            await textArea.FocusAsync();
+            return;
+        }
+
+        messageText = null;
+        _uploadError = null;
+        _pendingAttachments.Clear();
+
+        await textArea.FocusAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -55,9 +173,10 @@
         {
             try
             {
-                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Chat/ChatInput.razor.js");
-                await module.InvokeVoidAsync("init", textArea);
-                await module.DisposeAsync();
+                _dotNetRef = DotNetObjectReference.Create(this);
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Chat/ChatInput.razor.js");
+                await _module.InvokeVoidAsync("init", textArea);
+                await _module.InvokeVoidAsync("initAttachments", inputBox, fileInput, _dotNetRef);
             }
             catch (JSDisconnectedException)
             {

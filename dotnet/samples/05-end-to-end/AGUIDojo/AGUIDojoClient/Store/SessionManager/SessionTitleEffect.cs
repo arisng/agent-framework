@@ -2,6 +2,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Json;
+using AGUIDojoClient.Helpers;
 using AGUIDojoClient.Models;
 using Fluxor;
 using Microsoft.Extensions.AI;
@@ -44,7 +45,7 @@ public sealed class SessionTitleEffect
             return Task.CompletedTask;
         }
 
-        string? candidate = action.Message.Text?.Trim();
+        string? candidate = BuildInstantTitleCandidate(action.Message.Text);
         if (string.IsNullOrWhiteSpace(candidate))
         {
             return Task.CompletedTask;
@@ -83,7 +84,8 @@ public sealed class SessionTitleEffect
             return;
         }
 
-        if (!entry.Metadata.Title.EndsWith("...", StringComparison.Ordinal))
+        if (!entry.Metadata.Title.EndsWith("...", StringComparison.Ordinal)
+            && !IsAttachmentFallbackTitle(entry.Metadata.Title))
         {
             return;
         }
@@ -101,7 +103,13 @@ public sealed class SessionTitleEffect
             var titleMessages = messages
                 .Where(m => m.Role == ChatRole.User || m.Role == ChatRole.Assistant)
                 .Take(4)
-                .Select(m => new { Role = m.Role == ChatRole.User ? "user" : "assistant", Content = m.Text ?? string.Empty })
+                .Select(m => new
+                {
+                    Role = m.Role == ChatRole.User ? "user" : "assistant",
+                    Content = m.Role == ChatRole.User
+                        ? BuildTitlePromptContent(m.Text)
+                        : m.Text ?? string.Empty
+                })
                 .ToList();
 
             var titleRequest = new { Messages = titleMessages };
@@ -121,6 +129,42 @@ public sealed class SessionTitleEffect
             // Silently fail — truncated title is an acceptable fallback
         }
     }
+
+    private static string BuildInstantTitleCandidate(string? text)
+    {
+        string visibleText = MessageAttachmentMarkers.Strip(text).Trim();
+        if (!string.IsNullOrWhiteSpace(visibleText))
+        {
+            return visibleText;
+        }
+
+        int attachmentCount = MessageAttachmentMarkers.Extract(text).Count;
+        return attachmentCount switch
+        {
+            1 => "Image attachment",
+            > 1 => $"{attachmentCount} image attachments",
+            _ => string.Empty,
+        };
+    }
+
+    private static string BuildTitlePromptContent(string? text)
+    {
+        string visibleText = MessageAttachmentMarkers.Strip(text).Trim();
+        int attachmentCount = MessageAttachmentMarkers.Extract(text).Count;
+        if (attachmentCount == 0)
+        {
+            return visibleText;
+        }
+
+        string attachmentSummary = attachmentCount == 1 ? "1 image attachment" : $"{attachmentCount} image attachments";
+        return string.IsNullOrWhiteSpace(visibleText)
+            ? $"User shared {attachmentSummary}."
+            : $"{visibleText}\n\n[{attachmentSummary}]";
+    }
+
+    private static bool IsAttachmentFallbackTitle(string title) =>
+        string.Equals(title, "Image attachment", StringComparison.Ordinal)
+        || title.EndsWith(" image attachments", StringComparison.Ordinal);
 
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Deserialized by ReadFromJsonAsync.")]
     private sealed record TitleResponse(string Title);

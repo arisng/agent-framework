@@ -65,10 +65,10 @@
                 </ChatMessageList>
                 <div class="chat-container">
                     <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
-                    <ChatInput OnSend="@AddUserMessageAsync"
-                               IsAgentRunning="@ActiveSessionState.IsRunning"
-                               OnPanic="@HandlePanicAsync"
-                               @ref="@chatInput" />
+                    <ChatInput OnSend="@TryAddUserMessageAsync"
+                                IsAgentRunning="@ActiveSessionState.IsRunning"
+                                OnPanic="@HandlePanicAsync"
+                                @ref="@chatInput" />
                 </div>
             </ContextPane>
         </ContextPaneContent>
@@ -179,13 +179,18 @@
 
     private async Task AddUserMessageAsync(ChatMessage userMessage)
     {
+        _ = await TryAddUserMessageAsync(userMessage);
+    }
+
+    private async Task<bool> TryAddUserMessageAsync(ChatMessage userMessage)
+    {
         if (!StreamingService.CanQueueResponse(ActiveSessionId))
         {
             Dispatcher.Dispatch(new SessionActions.AddMessageAction(
                 ActiveSessionId,
                 new ChatMessage(ChatRole.Assistant, "Too many sessions are already streaming. Please wait for one to finish before sending another message.")));
             await chatInput!.FocusAsync();
-            return;
+            return false;
         }
 
         StreamingService.CancelResponse(ActiveSessionId);
@@ -211,6 +216,7 @@
 
         await StreamingService.ProcessAgentResponseAsync(ActiveSessionId);
         chatSuggestions?.Update(ActiveSessionState.Messages);
+        return true;
     }
 
     private void OnApprovalDecision(bool approved) => StreamingService.ResolveApproval(ActiveSessionId, approved);
@@ -413,7 +419,7 @@
 
     private static bool ShouldBootstrapRecipeState(ChatMessage userMessage)
     {
-        string? text = userMessage.Text;
+        string? text = MessageAttachmentMarkers.Strip(userMessage.Text);
         if (string.IsNullOrWhiteSpace(text))
         {
             return false;

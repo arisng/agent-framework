@@ -294,6 +294,9 @@ builder.Services.AddScoped<IWeatherService, WeatherService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
+// Register in-memory file storage for multimodal attachments
+builder.Services.AddSingleton<IFileStorageService, InMemoryFileStorageService>();
+
 // Register DI-compatible AI Tool classes as Singleton
 // Tools use IHttpContextAccessor to resolve scoped services at execution time (Q1.15-Q1.18)
 builder.Services.AddSingleton<WeatherTool>();
@@ -458,6 +461,7 @@ RouteGroupBuilder apiGroup = app.MapGroup("/api")
 apiGroup.MapWeatherEndpoints();
 apiGroup.MapEmailEndpoints();
 apiGroup.MapTitleEndpoints();
+apiGroup.MapFileEndpoints();
 
 // Map development-only authentication endpoints
 // AuthEndpoints.MapAuthEndpoints checks IsDevelopment() internally and returns early if not Dev

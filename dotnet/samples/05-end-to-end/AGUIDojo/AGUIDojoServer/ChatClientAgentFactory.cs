@@ -2,7 +2,9 @@
 
 using System.Text.Json;
 using AGUIDojoServer.AgenticUI;
+using AGUIDojoServer.Api;
 using AGUIDojoServer.HumanInTheLoop;
+using AGUIDojoServer.Multimodal;
 using AGUIDojoServer.PredictiveStateUpdates;
 using AGUIDojoServer.SharedState;
 using AGUIDojoServer.Tools;
@@ -70,6 +72,7 @@ public sealed class ChatClientAgentFactory
     private readonly WeatherTool _weatherTool;
     private readonly EmailTool _emailTool;
     private readonly DocumentTool _documentTool;
+    private readonly IFileStorageService _fileStorage;
 
     /// <summary>
     /// Gets an <see cref="IChatClient"/> wrapper around the underlying <see cref="ChatClient"/>,
@@ -85,6 +88,7 @@ public sealed class ChatClientAgentFactory
     /// <param name="weatherTool">The weather tool for AI function calls.</param>
     /// <param name="emailTool">The email tool for AI function calls.</param>
     /// <param name="documentTool">The document tool for AI function calls.</param>
+    /// <param name="fileStorage">The uploaded file storage used to resolve multimodal attachments.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when neither Azure OpenAI nor OpenAI credentials are configured.
     /// </exception>
@@ -92,16 +96,19 @@ public sealed class ChatClientAgentFactory
         IConfiguration configuration,
         WeatherTool weatherTool,
         EmailTool emailTool,
-        DocumentTool documentTool)
+        DocumentTool documentTool,
+        IFileStorageService fileStorage)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(weatherTool);
         ArgumentNullException.ThrowIfNull(emailTool);
         ArgumentNullException.ThrowIfNull(documentTool);
+        ArgumentNullException.ThrowIfNull(fileStorage);
 
         this._weatherTool = weatherTool;
         this._emailTool = emailTool;
         this._documentTool = documentTool;
+        this._fileStorage = fileStorage;
 
         // Create the real ChatClient with LLM backend
         // Requires OpenAI or Azure OpenAI credentials
@@ -157,6 +164,7 @@ public sealed class ChatClientAgentFactory
 
         return baseAgent
             .AsBuilder()
+            .Use(inner => new MultimodalAttachmentAgent(inner, this._fileStorage))
             .Use(inner => new ServerFunctionApprovalAgent(inner, jsonSerializerOptions))
             .Use(inner => new AgenticUIAgent(inner, jsonSerializerOptions))
             .Use(inner => new PredictiveStateUpdatesAgent(inner, jsonSerializerOptions))

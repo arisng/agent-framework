@@ -50,9 +50,85 @@ textarea {
     color: hsl(var(--muted-foreground));
     border-color: hsl(var(--border));
     padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
 }
 
     .attach:hover {
         background-color: hsl(var(--muted));
         color: hsl(var(--foreground));
     }
+
+/* Drag-over highlight */
+.input-box.drag-over {
+    border-color: hsl(var(--ring));
+    background-color: color-mix(in oklch, hsl(var(--ring)) 5%, hsl(var(--background)));
+}
+
+/* Attachment previews */
+.attachment-previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.attachment-preview {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid hsl(var(--border));
+}
+
+    .attachment-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+.attachment-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.attachment-preview:hover .attachment-remove {
+    opacity: 1;
+}
+
+.attachment-error {
+    color: hsl(var(--destructive));
+    background: color-mix(in oklch, hsl(var(--destructive)) 8%, hsl(var(--background)));
+    border: 1px solid color-mix(in oklch, hsl(var(--destructive)) 18%, transparent);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.attachment-status {
+    color: hsl(var(--muted-foreground));
+    background: color-mix(in oklch, hsl(var(--muted)) 45%, hsl(var(--background)));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
