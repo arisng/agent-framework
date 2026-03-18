@@ -66,6 +66,9 @@ public sealed class ChatClientAgentFactory
         - When planning, use tools only without additional chat messages.
         - After tool execution, provide a brief summary of the result.
         - Do NOT repeat tool output in your text response — the UI renders tool results directly.
+        - For every final assistant response, prepend an HTML comment in the form `<!-- confidence:0.00 -->`
+          using a self-rated score from 0.00 to 1.00. Keep the comment hidden from the user and do not mention it
+          in the visible answer.
         """;
 
     private readonly ChatClient _chatClient;

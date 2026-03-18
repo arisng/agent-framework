@@ -394,6 +394,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
                 var responseText = new TextContent(string.Empty);
                 var streamingMessage = new ChatMessage(ChatRole.Assistant, [responseText]);
+                var rawResponseText = new StringBuilder();
+                double? responseConfidence = null;
                 context.StreamingMessage = streamingMessage;
                 _dispatcher.Dispatch(new SessionActions.UpdateResponseMessageAction(sessionId, streamingMessage));
                 _stateChanged?.Invoke();
@@ -538,7 +540,18 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                     }
                                 }
 
-                                responseText.Text += update.Text;
+                                rawResponseText.Append(update.Text);
+                                responseText.Text = ConfidenceMarkers.StripLeadingConfidenceComment(rawResponseText.ToString(), out double? parsedConfidence);
+                                if (parsedConfidence.HasValue)
+                                {
+                                    responseConfidence = parsedConfidence;
+                                }
+
+                                if (responseConfidence.HasValue)
+                                {
+                                    SetConfidenceScore(streamingMessage, responseConfidence.Value);
+                                }
+
                                 context.ChatOptions.ConversationId = update.ConversationId;
                                 _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, update.ConversationId));
 
@@ -579,6 +592,12 @@ public sealed class AgentStreamingService : IAgentStreamingService
                             };
                             _throttledStateChanged?.Invoke();
                         }
+                    }
+
+                    if (!responseConfidence.HasValue)
+                    {
+                        responseConfidence = ConfidenceMarkers.EstimateConfidenceScore(responseText.Text);
+                        SetConfidenceScore(streamingMessage, responseConfidence.Value);
                     }
 
                     streamStopwatch.Stop();
@@ -763,6 +782,12 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private bool TryGetSession(string sessionId, out SessionEntry entry) => SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out entry);
 
     private SessionState GetSessionState(string sessionId) => SessionSelectors.GetSessionStateOrDefault(_sessionStore.Value, sessionId);
+
+    private static void SetConfidenceScore(ChatMessage message, double confidenceScore)
+    {
+        message.AdditionalProperties ??= new AdditionalPropertiesDictionary();
+        message.AdditionalProperties[ConfidenceMarkers.ConfidenceScoreKey] = confidenceScore;
+    }
 
     private void RestoreFromCheckpoint(string sessionId, Checkpoint checkpoint)
     {

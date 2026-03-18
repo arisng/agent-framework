@@ -146,7 +146,18 @@ else if (Message.Role == ChatRole.Assistant)
                     </div>
                 }
             </div>
-            <div class="assistant-message-header">@(Message.AuthorName ?? "Assistant")</div>
+            <div class="assistant-message-header">
+                <span class="assistant-message-header__name">@(Message.AuthorName ?? "Assistant")</span>
+                @if (TryGetConfidenceScore(out double confidenceScore))
+                {
+                    <div class="assistant-confidence assistant-confidence--@ConfidenceMarkers.GetConfidenceTone(confidenceScore)"
+                         title="@ConfidenceMarkers.GetConfidenceDescription(confidenceScore)"
+                         aria-label="@ConfidenceMarkers.GetConfidenceDescription(confidenceScore)">
+                        <span class="assistant-confidence__dot" aria-hidden="true"></span>
+                        <span class="assistant-confidence__text">@ConfidenceMarkers.GetConfidenceLabel(confidenceScore)</span>
+                    </div>
+                }
+            </div>
             <div class="assistant-message-text markdown-content">
                 <div>@((MarkupString)MarkdownService.ToHtml(tc.Text!))</div>
             </div>
@@ -375,5 +386,22 @@ else if (Message.Role == ChatRole.Assistant)
         {
             await OnSwitchBranch.InvokeAsync((direction, NodeId));
         }
+    }
+
+    private bool TryGetConfidenceScore(out double confidenceScore)
+    {
+        if (ConfidenceMarkers.TryGetConfidenceScore(Message.AdditionalProperties, out confidenceScore))
+        {
+            return true;
+        }
+
+        if (Message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(Message.Text))
+        {
+            confidenceScore = ConfidenceMarkers.EstimateConfidenceScore(Message.Text);
+            return true;
+        }
+
+        confidenceScore = default;
+        return false;
     }
 }

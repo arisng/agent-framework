@@ -177,11 +177,58 @@
 }
 
 .assistant-message-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
     font-weight: 600;
+}
+
+.assistant-message-header__name {
+    min-width: 0;
 }
 
 .assistant-message-text {
     grid-column-start: 2;
+}
+
+.assistant-confidence {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.assistant-confidence__dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background: currentColor;
+    box-shadow: 0 0 0 2px color-mix(in oklch, currentColor 15%, transparent);
+}
+
+.assistant-confidence--high {
+    color: oklch(0.72 0.15 145);
+    background: color-mix(in oklch, oklch(0.72 0.15 145) 12%, transparent);
+    border-color: color-mix(in oklch, oklch(0.72 0.15 145) 28%, transparent);
+}
+
+.assistant-confidence--medium {
+    color: oklch(0.72 0.12 215);
+    background: color-mix(in oklch, oklch(0.72 0.12 215) 12%, transparent);
+    border-color: color-mix(in oklch, oklch(0.72 0.12 215) 28%, transparent);
+}
+
+.assistant-confidence--low {
+    color: oklch(0.70 0.18 25);
+    background: color-mix(in oklch, oklch(0.70 0.18 25) 12%, transparent);
+    border-color: color-mix(in oklch, oklch(0.70 0.18 25) 28%, transparent);
 }
 
 .assistant-message-icon {
