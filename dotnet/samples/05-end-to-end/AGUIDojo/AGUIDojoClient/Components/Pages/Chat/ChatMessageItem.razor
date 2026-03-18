@@ -1,3 +1,4 @@
+@using System.Collections.Immutable
 @using System.Runtime.CompilerServices
 @using System.Linq
 @using AGUIDojoClient.Services
@@ -9,12 +10,68 @@
 
 @if (Message.Role == ChatRole.User)
 {
-    <div class="user-message" role="article" aria-label="You said">
-        @Message.Text
+    <div class="user-message-wrapper" role="article" aria-label="You said">
+        @if (BranchInfo is not null)
+        {
+            <div class="branch-nav" aria-label="Branch navigation">
+                <button class="branch-nav-btn"
+                        disabled="@(BranchInfo.Value.CurrentIndex == 0)"
+                        @onclick="() => SwitchBranch(-1)"
+                        aria-label="Previous branch">
+                    ◄
+                </button>
+                <span class="branch-nav-label">@(BranchInfo.Value.CurrentIndex + 1)/@BranchInfo.Value.Total</span>
+                <button class="branch-nav-btn"
+                        disabled="@(BranchInfo.Value.CurrentIndex >= BranchInfo.Value.Total - 1)"
+                        @onclick="() => SwitchBranch(1)"
+                        aria-label="Next branch">
+                    ►
+                </button>
+            </div>
+        }
+        @if (_isEditing)
+        {
+            <div class="edit-container">
+                <textarea class="edit-textarea" @bind="_editText" @bind:event="oninput" rows="3"></textarea>
+                <div class="edit-actions">
+                    <button class="edit-btn edit-btn--save" @onclick="SubmitEdit" aria-label="Save edit">Save & Submit</button>
+                    <button class="edit-btn edit-btn--cancel" @onclick="CancelEdit" aria-label="Cancel edit">Cancel</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="user-message">
+                @Message.Text
+                <button class="edit-message-btn" @onclick="StartEdit" aria-label="Edit message" title="Edit message">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="14" height="14">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                    </svg>
+                </button>
+            </div>
+        }
     </div>
 }
 else if (Message.Role == ChatRole.Assistant)
 {
+    @if (BranchInfo is not null)
+    {
+        <div class="branch-nav" aria-label="Branch navigation">
+            <button class="branch-nav-btn"
+                    disabled="@(BranchInfo.Value.CurrentIndex == 0)"
+                    @onclick="() => SwitchBranch(-1)"
+                    aria-label="Previous branch">
+                ◄
+            </button>
+            <span class="branch-nav-label">@(BranchInfo.Value.CurrentIndex + 1)/@BranchInfo.Value.Total</span>
+            <button class="branch-nav-btn"
+                    disabled="@(BranchInfo.Value.CurrentIndex >= BranchInfo.Value.Total - 1)"
+                    @onclick="() => SwitchBranch(1)"
+                    aria-label="Next branch">
+                ►
+            </button>
+        </div>
+    }
     @* Separate content into thoughts, visual components, and text messages *@
     var sortedContents = SortContentsForDisplay(Message.Contents).ToList();
     
@@ -75,6 +132,9 @@ else if (Message.Role == ChatRole.Assistant)
 @code {
     private static readonly ConditionalWeakTable<ChatMessage, ChatMessageItem> SubscribersLookup = new();
 
+    private bool _isEditing;
+    private string _editText = string.Empty;
+
     /// <summary>
     /// The chat message to display.
     /// </summary>
@@ -86,6 +146,39 @@ else if (Message.Role == ChatRole.Assistant)
     /// </summary>
     [Parameter]
     public bool InProgress { get; set; }
+
+    /// <summary>
+    /// Branch information for this message (sibling index, total count, sibling IDs).
+    /// Null if the message has no siblings (no branch point).
+    /// </summary>
+    [Parameter]
+    public (int CurrentIndex, int Total, ImmutableList<string> SiblingIds)? BranchInfo { get; set; }
+
+    /// <summary>
+    /// The conversation tree node ID for this message.
+    /// </summary>
+    [Parameter]
+    public string? NodeId { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user switches to a different branch.
+    /// Passes (Direction, NodeId) where Direction is -1 (previous) or +1 (next).
+    /// </summary>
+    [Parameter]
+    public EventCallback<(int Direction, string NodeId)> OnSwitchBranch { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user submits an edited message.
+    /// Passes (MessageIndex, NewText).
+    /// </summary>
+    [Parameter]
+    public EventCallback<(int MessageIndex, string NewText)> OnEditMessage { get; set; }
+
+    /// <summary>
+    /// The zero-based index of this message on the active branch.
+    /// </summary>
+    [Parameter]
+    public int MessageIndex { get; set; }
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -220,5 +313,37 @@ else if (Message.Role == ChatRole.Assistant)
         }
 
         return null;
+    }
+
+    private void StartEdit()
+    {
+        _editText = Message.Text ?? string.Empty;
+        _isEditing = true;
+    }
+
+    private void CancelEdit()
+    {
+        _isEditing = false;
+        _editText = string.Empty;
+    }
+
+    private async Task SubmitEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editText))
+        {
+            return;
+        }
+
+        _isEditing = false;
+        await OnEditMessage.InvokeAsync((MessageIndex, _editText));
+        _editText = string.Empty;
+    }
+
+    private async Task SwitchBranch(int direction)
+    {
+        if (NodeId is not null)
+        {
+            await OnSwitchBranch.InvokeAsync((direction, NodeId));
+        }
     }
 }

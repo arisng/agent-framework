@@ -18,13 +18,16 @@
     TODO (.NET 11): Replace fixed ItemSize="150" with automatic variable-height support.
 *@
 @using AGUIDojoClient.Store.SessionManager
+@using AGUIDojoClient.Models
 @using AGUIDojoClient.Components.GenerativeUI
 @using AGUIDojoClient.Helpers
+@using System.Collections.Immutable
 @using System.Runtime.CompilerServices
 @using System.Threading
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @inject IJSRuntime JS
 @inject IState<SessionManagerState> SessionStore
+@inject IDispatcher Dispatcher
 
 <div class="message-list-container">
     <chat-messages class="message-list" role="log" aria-live="polite" aria-atomic="false" aria-relevant="additions" aria-label="Chat conversation" in-progress="@(InProgressMessage is not null)">
@@ -37,7 +40,9 @@
                 {
                     <AgentHandoff AgentName="@item.HandoffAgentName" />
                 }
-                <ChatMessageItem @key="@GetCompletedMessageKey(item.Message, item.Index)" Message="@item.Message" InProgress="false" />
+                <ChatMessageItem @key="@GetCompletedMessageKey(item.Message, item.Index)" Message="@item.Message" InProgress="false"
+                                 BranchInfo="@item.BranchInfo" NodeId="@item.NodeId" MessageIndex="@item.Index"
+                                 OnSwitchBranch="@HandleSwitchBranch" OnEditMessage="@HandleEditMessage" />
             </Virtualize>
         }
         else
@@ -45,6 +50,7 @@
             @* Standard rendering for small conversations — no virtualization overhead. *@
             string? previousAuthorName = null;
             var messageIndex = 0;
+            var activeBranchNodeIds = ActiveTree.GetActiveBranchNodeIds();
             @foreach (var message in Messages)
             {
                 if (message is null) continue;
@@ -58,7 +64,13 @@
                     <AgentHandoff AgentName="@currentAuthorName" />
                 }
 
-                <ChatMessageItem @key="@GetCompletedMessageKey(message, messageIndex)" Message="@message" InProgress="false" />
+                var idx = messageIndex;
+                string? nodeId = idx < activeBranchNodeIds.Count ? activeBranchNodeIds[idx] : null;
+                var branchInfo = nodeId is not null ? ActiveTree.GetBranchInfo(nodeId) : null;
+
+                <ChatMessageItem @key="@GetCompletedMessageKey(message, messageIndex)" Message="@message" InProgress="false"
+                                 BranchInfo="@branchInfo" NodeId="@nodeId" MessageIndex="@idx"
+                                 OnSwitchBranch="@HandleSwitchBranch" OnEditMessage="@HandleEditMessage" />
 
                 if (!string.IsNullOrEmpty(currentAuthorName))
                 {
@@ -173,6 +185,13 @@
     public EventCallback<bool> OnApprovalDecision { get; set; }
 
     /// <summary>
+    /// Callback invoked when the user submits an edited user message.
+    /// Passes (MessageIndex, NewText).
+    /// </summary>
+    [Parameter]
+    public EventCallback<(int MessageIndex, string NewText)> OnEditMessage { get; set; }
+
+    /// <summary>
     /// The assessed risk level for the pending approval action.
     /// </summary>
     [Parameter]
@@ -204,6 +223,8 @@
     private bool _shouldVirtualize;
 
     private Plan? ActivePlan => SessionSelectors.GetActiveState(SessionStore.Value).Plan;
+
+    private ConversationTree ActiveTree => SessionSelectors.GetActiveState(SessionStore.Value).Tree;
 
     private bool IsEmpty => !Messages.Any(m => m != null && (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrEmpty(m.Text));
 
@@ -256,14 +277,16 @@
 
     /// <summary>
     /// Pre-computes display items from the message collection, attaching agent handoff
-    /// metadata to each item so the Virtualize template can render handoff separators
-    /// without needing to track state across items.
+    /// metadata and branch info to each item so the Virtualize template can render
+    /// handoff separators and branch navigation without tracking state across items.
     /// </summary>
-    private static List<ChatDisplayItem> ComputeDisplayItems(IList<ChatMessage> messages)
+    private List<ChatDisplayItem> ComputeDisplayItems(IList<ChatMessage> messages)
     {
         var items = new List<ChatDisplayItem>(messages.Count);
         string? previousAuthor = null;
         var index = 0;
+        var tree = ActiveTree;
+        var nodeIds = tree.GetActiveBranchNodeIds();
 
         foreach (var message in messages)
         {
@@ -274,12 +297,17 @@
                 && previousAuthor is not null
                 && author != previousAuthor;
 
+            string? nodeId = index < nodeIds.Count ? nodeIds[index] : null;
+            var branchInfo = nodeId is not null ? tree.GetBranchInfo(nodeId) : null;
+
             items.Add(new ChatDisplayItem(
                 Index: index,
                 Message: message,
                 ShowHandoff: showHandoff,
                 HandoffAgentName: showHandoff ? author : null,
-                LastAuthorName: !string.IsNullOrEmpty(author) ? author : previousAuthor));
+                LastAuthorName: !string.IsNullOrEmpty(author) ? author : previousAuthor,
+                NodeId: nodeId,
+                BranchInfo: branchInfo));
 
             if (!string.IsNullOrEmpty(author))
             {
@@ -301,8 +329,34 @@
     private static string GetMessageInstanceId(ChatMessage message) =>
         MessageInstanceIds.GetValue(message, _ => new MessageRenderIdentity($"msg-{Interlocked.Increment(ref s_nextMessageInstanceId)}")).Id;
 
+    private Task HandleSwitchBranch((int Direction, string NodeId) args)
+    {
+        var tree = ActiveTree;
+        var branchInfo = tree.GetBranchInfo(args.NodeId);
+        if (branchInfo is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        int newIndex = branchInfo.Value.CurrentIndex + args.Direction;
+        if (newIndex < 0 || newIndex >= branchInfo.Value.Total)
+        {
+            return Task.CompletedTask;
+        }
+
+        string targetSiblingId = branchInfo.Value.SiblingIds[newIndex];
+        string sessionId = SessionSelectors.GetActiveSessionId(SessionStore.Value);
+        Dispatcher.Dispatch(new SessionActions.SwitchBranchAction(sessionId, args.NodeId, targetSiblingId));
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleEditMessage((int MessageIndex, string NewText) args)
+    {
+        await OnEditMessage.InvokeAsync(args);
+    }
+
     /// <summary>
-    /// Represents a chat message with pre-computed agent handoff metadata
+    /// Represents a chat message with pre-computed agent handoff and branch metadata
     /// for use with the <see cref="Virtualize{TItem}"/> component.
     /// </summary>
     /// <param name="Index">The zero-based index of the message within the completed transcript.</param>
@@ -310,12 +364,16 @@
     /// <param name="ShowHandoff">Whether to render an <see cref="AgentHandoff"/> separator before this message.</param>
     /// <param name="HandoffAgentName">The agent name for the handoff separator, if <paramref name="ShowHandoff"/> is true.</param>
     /// <param name="LastAuthorName">The last known assistant author name up to and including this item.</param>
+    /// <param name="NodeId">The conversation tree node ID for this message.</param>
+    /// <param name="BranchInfo">Branch navigation info (sibling index, total, sibling IDs) or null.</param>
     private sealed record ChatDisplayItem(
         int Index,
         ChatMessage Message,
         bool ShowHandoff,
         string? HandoffAgentName,
-        string? LastAuthorName);
+        string? LastAuthorName,
+        string? NodeId,
+        (int CurrentIndex, int Total, ImmutableList<string> SiblingIds)? BranchInfo);
 
     private sealed record MessageRenderIdentity(string Id);
 }

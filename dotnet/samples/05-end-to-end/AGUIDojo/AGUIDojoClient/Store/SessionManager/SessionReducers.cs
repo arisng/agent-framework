@@ -218,7 +218,7 @@ public static class SessionReducers
         UpdateSessionState(
             state,
             action.SessionId,
-            session => session with { Messages = session.Messages.Add(action.Message) },
+            session => session with { Tree = session.Tree.AddMessage(action.Message) },
             metadata => UpdateActivity(
                 metadata,
                 action.OccurredAt,
@@ -248,7 +248,7 @@ public static class SessionReducers
             action.SessionId,
             session => session with
             {
-                Messages = ImmutableList<ChatMessage>.Empty,
+                Tree = new(),
                 CurrentResponseMessage = null,
                 ConversationId = null,
                 StatefulMessageCount = 0,
@@ -272,7 +272,7 @@ public static class SessionReducers
             action.SessionId,
             session => action.KeepCount >= session.Messages.Count
                 ? session
-                : session with { Messages = session.Messages.GetRange(0, action.KeepCount) });
+                : session with { Tree = session.Tree.TruncateActiveBranch(action.KeepCount) });
 
     [ReducerMethod]
     public static SessionManagerState OnSetRunning(SessionManagerState state, SessionActions.SetRunningAction action) =>
@@ -407,5 +407,38 @@ public static class SessionReducers
                 }
 
                 return session with { ActiveArtifactType = action.ArtifactType };
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnEditAndRegenerate(SessionManagerState state, SessionActions.EditAndRegenerateAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session =>
+            {
+                string? nodeId = session.Tree.GetNodeIdAtIndex(action.MessageIndex);
+                if (nodeId is null || !session.Tree.Nodes.TryGetValue(nodeId, out var node) || node.ParentId is null)
+                {
+                    return session;
+                }
+
+                var editedMessage = new ChatMessage(ChatRole.User, action.NewText);
+                return session with { Tree = session.Tree.BranchAt(node.ParentId, editedMessage) };
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnSwitchBranch(SessionManagerState state, SessionActions.SwitchBranchAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session =>
+            {
+                if (!session.Tree.Nodes.ContainsKey(action.TargetSiblingId))
+                {
+                    return session;
+                }
+
+                string leafId = session.Tree.FindLeafFromNode(action.TargetSiblingId);
+                return session with { Tree = session.Tree.SwitchToLeaf(leafId) };
             });
 }

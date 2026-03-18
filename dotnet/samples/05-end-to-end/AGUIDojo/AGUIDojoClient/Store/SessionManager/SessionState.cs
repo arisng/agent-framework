@@ -36,8 +36,11 @@ public enum ArtifactType
 [SuppressMessage("Naming", "CA1724:TypeNamesShouldNotMatchNamespaces", Justification = "Fluxor state naming convention.")]
 public sealed record SessionState
 {
-    /// <summary>Gets the chat messages for the session.</summary>
-    public ImmutableList<ChatMessage> Messages { get; init; } = ImmutableList<ChatMessage>.Empty;
+    /// <summary>Gets the conversation tree backing the session's message history.</summary>
+    public ConversationTree Tree { get; init; } = new();
+
+    /// <summary>Gets the active branch messages as a flat list (computed from the tree).</summary>
+    public ImmutableList<ChatMessage> Messages => Tree.GetActiveBranchMessages().ToImmutableList();
 
     /// <summary>Gets the in-progress assistant message for the session.</summary>
     public ChatMessage? CurrentResponseMessage { get; init; }

@@ -55,6 +55,7 @@
                                  InProgressMessage="@ActiveSessionState.CurrentResponseMessage"
                                  PendingApproval="@ActiveSessionState.PendingApproval"
                                  OnApprovalDecision="@OnApprovalDecision"
+                                 OnEditMessage="@HandleEditAndRegenerateAsync"
                                  RiskLevel="@(ActiveSessionState.PendingApproval is not null ? RiskAssessmentService.AssessRisk(ActiveSessionState.PendingApproval.FunctionName) : RiskLevel.Low)"
                                  IsMobile="@ViewportService.IsMobile">
                     <NoMessagesContent>
@@ -209,6 +210,21 @@
     }
 
     private void OnApprovalDecision(bool approved) => StreamingService.ResolveApproval(ActiveSessionId, approved);
+
+    private async Task HandleEditAndRegenerateAsync((int MessageIndex, string NewText) args)
+    {
+        if (!StreamingService.CanQueueResponse(ActiveSessionId))
+        {
+            return;
+        }
+
+        StreamingService.CancelResponse(ActiveSessionId);
+
+        Dispatcher.Dispatch(new SessionActions.EditAndRegenerateAction(ActiveSessionId, args.MessageIndex, args.NewText));
+        await chatInput!.FocusAsync();
+
+        await StreamingService.ProcessAgentResponseAsync(ActiveSessionId);
+    }
 
     private async Task HandlePanicAsync()
     {

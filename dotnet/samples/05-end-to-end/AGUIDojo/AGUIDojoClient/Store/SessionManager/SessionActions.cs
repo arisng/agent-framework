@@ -62,4 +62,8 @@ public static class SessionActions
     public sealed record SetDataGridArtifactAction(string SessionId, DataGridResult DataGrid);
 
     public sealed record SetActiveArtifactAction(string SessionId, ArtifactType ArtifactType);
+
+    public sealed record EditAndRegenerateAction(string SessionId, int MessageIndex, string NewText);
+
+    public sealed record SwitchBranchAction(string SessionId, string NodeId, string TargetSiblingId);
 }
