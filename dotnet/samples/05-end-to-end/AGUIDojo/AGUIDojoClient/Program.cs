@@ -167,6 +167,8 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation()
         // Runtime metrics (GC, thread pool, etc.)
         .AddRuntimeInstrumentation()
+        // SSE streaming metrics (first-token latency, stream duration, event counts, retries)
+        .AddMeter(AGUIDojoClient.Services.SseStreamMetrics.MeterName)
         // Console exporter for development visibility
         .AddConsoleExporter()
         // OTLP exporter for production observability platforms

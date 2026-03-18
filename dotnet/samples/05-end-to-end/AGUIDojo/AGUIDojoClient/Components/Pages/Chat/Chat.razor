@@ -1,5 +1,7 @@
 @page "/"
 @using AGUIDojoClient.Helpers
+@using AGUIDojoClient.Models
+@using AGUIDojoClient.Services
 @using AGUIDojoClient.Store.SessionManager
 @inject IAgentStreamingService StreamingService
 @inject IRiskAssessmentService RiskAssessmentService
@@ -35,6 +37,14 @@
             }
             <span>@GetSessionStatusLabel()</span>
         </BbBadge>
+
+        @if (GetStreamMetricsLabel() is string metricsLabel)
+        {
+            <BbBadge Variant="BadgeVariant.Outline" Class="agent-status-pill stream-metrics-pill">
+                <LucideIcon Name="@GetStreamMetricsIcon()" Size="12" />
+                <span>@metricsLabel</span>
+            </BbBadge>
+        }
 
         @if (ActiveSessionState.HasInteractiveArtifact)
         {
@@ -416,6 +426,43 @@
     private string GetSessionStatusBadgeIconClass() => ActiveSessionState.IsRunning && !ActiveSessionMetadata.HasPendingApproval
         ? "agent-status-pill__icon agent-status-pill__icon--spinning"
         : "agent-status-pill__icon";
+
+    private string? GetStreamMetricsLabel()
+    {
+        SseStreamSnapshot? metrics = StreamingService.CurrentStreamMetrics;
+        if (metrics is null)
+        {
+            return null;
+        }
+
+        return metrics.ConnectionState switch
+        {
+            SseConnectionState.Connecting => "Connecting…",
+            SseConnectionState.Retrying => $"Retry {metrics.RetryCount}/{MaxRetryDisplay}…",
+            SseConnectionState.Streaming when metrics.FirstTokenLatencyMs.HasValue =>
+                $"{metrics.FirstTokenLatencyMs.Value:F0}ms · {metrics.EventCount} events",
+            SseConnectionState.Completed when metrics.FirstTokenLatencyMs.HasValue =>
+                $"{metrics.FirstTokenLatencyMs.Value:F0}ms · {metrics.DurationMs / 1000.0:F1}s · {metrics.EventCount} events",
+            SseConnectionState.Error => metrics.RetryCount > 0 ? $"Failed after {metrics.RetryCount} retries" : null,
+            _ => null,
+        };
+    }
+
+    private string GetStreamMetricsIcon()
+    {
+        SseStreamSnapshot? metrics = StreamingService.CurrentStreamMetrics;
+        return metrics?.ConnectionState switch
+        {
+            SseConnectionState.Connecting => "wifi",
+            SseConnectionState.Retrying => "refresh-cw",
+            SseConnectionState.Streaming => "activity",
+            SseConnectionState.Completed => "zap",
+            SseConnectionState.Error => "wifi-off",
+            _ => "activity",
+        };
+    }
+
+    private const int MaxRetryDisplay = 3;
 
     private static bool ShouldBootstrapRecipeState(ChatMessage userMessage)
     {

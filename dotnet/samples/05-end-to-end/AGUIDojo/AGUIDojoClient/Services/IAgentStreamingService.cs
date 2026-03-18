@@ -117,4 +117,10 @@ public interface IAgentStreamingService : IDisposable
     /// </summary>
     /// <param name="notificationId">The notification identifier.</param>
     void DismissNotification(string notificationId);
+
+    /// <summary>
+    /// Gets the current SSE stream performance snapshot for the active session.
+    /// Returns <see langword="null"/> when no stream is active or has completed.
+    /// </summary>
+    SseStreamSnapshot? CurrentStreamMetrics { get; }
 }

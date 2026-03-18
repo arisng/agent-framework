@@ -141,3 +141,16 @@
         opacity: 0.65;
     }
 }
+
+/* Stream metrics pill — compact telemetry badge */
+::deep .stream-metrics-pill {
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    gap: 0.25rem;
+    opacity: 0.75;
+    transition: opacity 0.2s ease;
+}
+
+::deep .stream-metrics-pill:hover {
+    opacity: 1;
+}

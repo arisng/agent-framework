@@ -20,6 +20,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
 {
     private const int MaxConcurrentStreams = 3;
     private const int MaxQueuedStreams = 5;
+    private const int MaxRetryAttempts = 3;
 
     private readonly IDispatcher _dispatcher;
     private readonly IState<SessionManagerState> _sessionStore;
@@ -40,6 +41,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private Action? _throttledStateChanged;
     private Action? _stateChanged;
     private Func<Func<Task>, Task>? _invokeAsync;
+    private volatile SseStreamSnapshot? _currentStreamMetrics;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentStreamingService"/> class.
@@ -91,6 +93,9 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
     /// <inheritdoc />
     public event EventHandler? NotificationsChanged;
+
+    /// <inheritdoc />
+    public SseStreamSnapshot? CurrentStreamMetrics => _currentStreamMetrics;
 
     /// <inheritdoc />
     public void SetUiCallbacks(Action throttledStateChanged, Action stateChanged, Func<Func<Task>, Task> invokeAsync)
@@ -397,98 +402,173 @@ public sealed class AgentStreamingService : IAgentStreamingService
                 try
                 {
                     SessionState session = GetSessionState(sessionId);
-                    await foreach (var update in chatClient.GetStreamingResponseAsync(
-                        session.Messages.Skip(session.StatefulMessageCount),
-                        context.ChatOptions,
-                        responseCancellation.Token))
+                    bool receivedFirstContent = false;
+                    var streamStopwatch = Stopwatch.StartNew();
+                    int eventCount = 0;
+                    int retryCount = 0;
+
+                    _currentStreamMetrics = new SseStreamSnapshot { ConnectionState = SseConnectionState.Connecting };
+                    SseStreamMetrics.StreamsStarted.Add(1);
+                    _throttledStateChanged?.Invoke();
+
+                    // Retry loop: retries connection failures that occur before first content arrives.
+                    // Once content has been received, failures are not retried to avoid duplicate data.
+                    while (true)
                     {
-                        foreach (AIContent content in update.Contents)
+                        try
                         {
-                            if (content is FunctionCallContent fcc && _approvalHandler.TryExtractApprovalRequest(fcc, out PendingApproval? approval) && approval is not null)
+                            await foreach (var update in chatClient.GetStreamingResponseAsync(
+                                session.Messages.Skip(session.StatefulMessageCount),
+                                context.ChatOptions,
+                                responseCancellation.Token))
                             {
-                                approval.SessionId = sessionId;
-                                _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, approval));
-                                NotifyBackgroundApprovalRequired(sessionId, approval);
-                                context.ApprovalTaskSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                                _stateChanged?.Invoke();
-
-                                bool approved = await context.ApprovalTaskSource.Task;
-                                var response = _approvalHandler.CreateApprovalResponse(sessionId, approval.ApprovalId, approved);
-                                approvalResponses.Add(response);
-                                streamingMessage.Contents.Add(response);
-
-                                _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, null));
-                                context.ApprovalTaskSource = null;
-                                DismissNotification(approval.ApprovalId);
-                                _stateChanged?.Invoke();
-                            }
-                            else if (content is DataContent dataContent && TryHandleDataContent(sessionId, context, dataContent, ref sawDocumentPreview))
-                            {
-                            }
-                        }
-
-                        foreach (AIContent content in update.Contents)
-                        {
-                            if (content is TextContent)
-                            {
-                                continue;
-                            }
-
-                            if (content is FunctionCallContent fcc)
-                            {
-                                if (fcc.CallId is not null && context.SeenFunctionCallIds.Add(fcc.CallId))
+                                if (!receivedFirstContent)
                                 {
-                                    streamingMessage.Contents.Add(content);
-                                    _observabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
-
-                                    if (fcc.Name is not null)
+                                    receivedFirstContent = true;
+                                    double ttfMs = streamStopwatch.Elapsed.TotalMilliseconds;
+                                    SseStreamMetrics.FirstTokenLatency.Record(ttfMs);
+                                    _currentStreamMetrics = _currentStreamMetrics with
                                     {
-                                        context.FunctionCallIdToToolName[fcc.CallId] = fcc.Name;
+                                        ConnectionState = SseConnectionState.Streaming,
+                                        FirstTokenLatencyMs = ttfMs,
+                                        RetryCount = retryCount,
+                                    };
+                                    _throttledStateChanged?.Invoke();
+                                }
+
+                                eventCount++;
+
+                                foreach (AIContent content in update.Contents)
+                                {
+                                    if (content is FunctionCallContent fcc && _approvalHandler.TryExtractApprovalRequest(fcc, out PendingApproval? approval) && approval is not null)
+                                    {
+                                        approval.SessionId = sessionId;
+                                        _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, approval));
+                                        NotifyBackgroundApprovalRequired(sessionId, approval);
+                                        context.ApprovalTaskSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                                        _stateChanged?.Invoke();
+
+                                        bool approved = await context.ApprovalTaskSource.Task;
+                                        var response = _approvalHandler.CreateApprovalResponse(sessionId, approval.ApprovalId, approved);
+                                        approvalResponses.Add(response);
+                                        streamingMessage.Contents.Add(response);
+
+                                        _dispatcher.Dispatch(new SessionActions.SetPendingApprovalAction(sessionId, null));
+                                        context.ApprovalTaskSource = null;
+                                        DismissNotification(approval.ApprovalId);
+                                        _stateChanged?.Invoke();
+                                    }
+                                    else if (content is DataContent dataContent && TryHandleDataContent(sessionId, context, dataContent, ref sawDocumentPreview))
+                                    {
                                     }
                                 }
-                            }
-                            else if (content is DataContent dc)
-                            {
-                                ChatHelpers.ConsolidateDataContent(streamingMessage, dc);
-                            }
-                            else if (content is FunctionResultContent frc)
-                            {
-                                if (frc.CallId is not null && context.SeenFunctionResultCallIds.Add(frc.CallId))
+
+                                foreach (AIContent content in update.Contents)
                                 {
-                                    streamingMessage.Contents.Add(content);
-                                    _observabilityService.CompleteToolCall(frc.CallId, frc.Result);
-                                    TryDispatchDataGridArtifact(sessionId, context, frc);
+                                    if (content is TextContent)
+                                    {
+                                        continue;
+                                    }
+
+                                    if (content is FunctionCallContent fcc)
+                                    {
+                                        if (fcc.CallId is not null && context.SeenFunctionCallIds.Add(fcc.CallId))
+                                        {
+                                            streamingMessage.Contents.Add(content);
+                                            _observabilityService.StartToolCall(fcc.CallId, fcc.Name ?? "unknown", fcc.Arguments);
+
+                                            if (fcc.Name is not null)
+                                            {
+                                                context.FunctionCallIdToToolName[fcc.CallId] = fcc.Name;
+                                            }
+                                        }
+                                    }
+                                    else if (content is DataContent dc)
+                                    {
+                                        ChatHelpers.ConsolidateDataContent(streamingMessage, dc);
+                                    }
+                                    else if (content is FunctionResultContent frc)
+                                    {
+                                        if (frc.CallId is not null && context.SeenFunctionResultCallIds.Add(frc.CallId))
+                                        {
+                                            streamingMessage.Contents.Add(content);
+                                            _observabilityService.CompleteToolCall(frc.CallId, frc.Result);
+                                            TryDispatchDataGridArtifact(sessionId, context, frc);
+                                        }
+                                        else if (frc.CallId is null)
+                                        {
+                                            streamingMessage.Contents.Add(content);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        streamingMessage.Contents.Add(content);
+                                    }
                                 }
-                                else if (frc.CallId is null)
+
+                                responseText.Text += update.Text;
+                                context.ChatOptions.ConversationId = update.ConversationId;
+                                _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, update.ConversationId));
+
+                                if (update.AuthorName is not null)
                                 {
-                                    streamingMessage.Contents.Add(content);
+                                    _dispatcher.Dispatch(new SessionActions.SetAuthorNameAction(sessionId, update.AuthorName));
+                                    streamingMessage.AuthorName = update.AuthorName;
                                 }
+
+                                _currentStreamMetrics = _currentStreamMetrics with
+                                {
+                                    EventCount = eventCount,
+                                    DurationMs = streamStopwatch.Elapsed.TotalMilliseconds,
+                                };
+                                _throttledStateChanged?.Invoke();
                             }
-                            else
-                            {
-                                streamingMessage.Contents.Add(content);
-                            }
+
+                            break; // Stream completed normally
                         }
-
-                        responseText.Text += update.Text;
-                        context.ChatOptions.ConversationId = update.ConversationId;
-                        _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, update.ConversationId));
-
-                        if (update.AuthorName is not null)
+                        catch (HttpRequestException) when (!receivedFirstContent && retryCount < MaxRetryAttempts)
                         {
-                            _dispatcher.Dispatch(new SessionActions.SetAuthorNameAction(sessionId, update.AuthorName));
-                            streamingMessage.AuthorName = update.AuthorName;
-                        }
+                            retryCount++;
+                            SseStreamMetrics.RetryAttempts.Add(1);
+                            _currentStreamMetrics = _currentStreamMetrics with
+                            {
+                                ConnectionState = SseConnectionState.Retrying,
+                                RetryCount = retryCount,
+                            };
+                            _throttledStateChanged?.Invoke();
 
-                        _throttledStateChanged?.Invoke();
+                            // Exponential backoff: 1s, 2s, 4s
+                            int delayMs = 1000 * (1 << (retryCount - 1));
+                            await Task.Delay(delayMs, responseCancellation.Token);
+
+                            _currentStreamMetrics = _currentStreamMetrics with
+                            {
+                                ConnectionState = SseConnectionState.Connecting,
+                            };
+                            _throttledStateChanged?.Invoke();
+                        }
                     }
+
+                    streamStopwatch.Stop();
+                    SseStreamMetrics.StreamDuration.Record(streamStopwatch.Elapsed.TotalMilliseconds);
+                    SseStreamMetrics.EventsPerStream.Record(eventCount);
+                    SseStreamMetrics.StreamsCompleted.Add(1, new KeyValuePair<string, object?>("outcome", "completed"));
+                    _currentStreamMetrics = _currentStreamMetrics with
+                    {
+                        ConnectionState = SseConnectionState.Completed,
+                        DurationMs = streamStopwatch.Elapsed.TotalMilliseconds,
+                    };
                 }
                 catch (OperationCanceledException)
                 {
+                    SseStreamMetrics.StreamsCompleted.Add(1, new KeyValuePair<string, object?>("outcome", "cancelled"));
+                    _currentStreamMetrics = (_currentStreamMetrics ?? new SseStreamSnapshot()) with { ConnectionState = SseConnectionState.Idle };
                     wasCancelled = true;
                 }
                 catch (HttpRequestException ex)
                 {
+                    SseStreamMetrics.StreamsCompleted.Add(1, new KeyValuePair<string, object?>("outcome", "failed"));
+                    _currentStreamMetrics = (_currentStreamMetrics ?? new SseStreamSnapshot()) with { ConnectionState = SseConnectionState.Error };
                     encounteredError = true;
                     errorNotificationMessage = ex.Message;
                     responseText.Text = $"Error: {ex.Message}";
@@ -496,6 +576,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
                 }
                 catch (Exception ex)
                 {
+                    SseStreamMetrics.StreamsCompleted.Add(1, new KeyValuePair<string, object?>("outcome", "failed"));
+                    _currentStreamMetrics = (_currentStreamMetrics ?? new SseStreamSnapshot()) with { ConnectionState = SseConnectionState.Error };
                     encounteredError = true;
                     errorNotificationMessage = ex.Message;
                     responseText.Text = $"An unexpected error occurred: {ex.Message}";
