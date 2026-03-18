@@ -141,7 +141,8 @@ public sealed class ChatClientAgentFactory
     /// <returns>An <see cref="AIAgent"/> composed from the unified tool registry and wrapper pipeline.</returns>
     public AIAgent CreateUnifiedAgent(JsonSerializerOptions jsonSerializerOptions)
     {
-        IChatClient wrappedClient = new ToolResultStreamingChatClient(this._chatClient.AsIChatClient());
+        IChatClient wrappedClient = new ToolResultStreamingChatClient(
+            new ContextWindowChatClient(this._chatClient.AsIChatClient(), maxNonSystemMessages: 80));
 
         var baseAgent = wrappedClient.AsAIAgent(new ChatClientAgentOptions
         {
