@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.AI.Hosting.AGUI.AspNetCore.Shared;
@@ -79,18 +80,27 @@ internal sealed partial class AGUIServerSentEventsResult : IResult, IDisposable
         IAsyncEnumerable<BaseEvent> events,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        int eventId = 0;
         await foreach (BaseEvent evt in events.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            yield return new SseItem<BaseEvent>(evt);
+            // MY CUSTOMIZATION POINT: emit native SSE ids so reconnecting clients can send Last-Event-ID checkpoints.
+            yield return new SseItem<BaseEvent>(evt)
+            {
+                EventId = (++eventId).ToString(CultureInfo.InvariantCulture)
+            };
         }
     }
 
     private static async IAsyncEnumerable<SseItem<BaseEvent>> WrapEventsAsSseItemsAsync(
         IEnumerable<BaseEvent> events)
     {
+        int eventId = 0;
         foreach (BaseEvent evt in events)
         {
-            yield return new SseItem<BaseEvent>(evt);
+            yield return new SseItem<BaseEvent>(evt)
+            {
+                EventId = (++eventId).ToString(CultureInfo.InvariantCulture)
+            };
         }
     }
 

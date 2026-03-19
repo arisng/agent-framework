@@ -16,31 +16,103 @@ namespace Microsoft.Agents.AI.AGUI;
 
 internal sealed class AGUIHttpService(HttpClient client, string endpoint)
 {
+    private const int MaxReconnectAttempts = 3;
+
     public async IAsyncEnumerable<BaseEvent> PostRunAsync(
         RunAgentInput input,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        using HttpRequestMessage request = new(HttpMethod.Post, endpoint)
+        string? lastEventId = null;
+        int reconnectAttempts = 0;
+
+        while (true)
         {
-            Content = JsonContent.Create(input, AGUIJsonSerializerContext.Default.RunAgentInput)
-        };
+            using HttpRequestMessage request = new(HttpMethod.Post, endpoint)
+            {
+                Content = JsonContent.Create(input, AGUIJsonSerializerContext.Default.RunAgentInput)
+            };
 
-        using HttpResponseMessage response = await client.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(lastEventId))
+            {
+                // MY CUSTOMIZATION POINT: resume native SSE streams from the last successfully parsed event when the server honors Last-Event-ID.
+                request.Headers.TryAddWithoutValidation("Last-Event-ID", lastEventId);
+            }
 
-        response.EnsureSuccessStatusCode();
+            HttpResponseMessage response;
+            try
+            {
+                response = await client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ShouldReconnect(ex, lastEventId, reconnectAttempts, cancellationToken))
+            {
+                reconnectAttempts++;
+                continue;
+            }
+
+            using (response)
+            {
+                Stream responseStream;
+                try
+                {
+                    response.EnsureSuccessStatusCode();
 
 #if NET
-        Stream responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                    responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
 #else
-        Stream responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                    responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
 #endif
-        var items = SseParser.Create(responseStream, ItemParser).EnumerateAsync(cancellationToken);
-        await foreach (var sseItem in items.ConfigureAwait(false))
-        {
-            yield return sseItem.Data;
+                }
+                catch (Exception ex) when (ShouldReconnect(ex, lastEventId, reconnectAttempts, cancellationToken))
+                {
+                    reconnectAttempts++;
+                    continue;
+                }
+
+                IAsyncEnumerator<SseItem<BaseEvent>> enumerator =
+                    SseParser.Create(responseStream, ItemParser).EnumerateAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
+
+                bool shouldReconnect = false;
+                try
+                {
+                    while (true)
+                    {
+                        bool hasNext;
+                        try
+                        {
+                            hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+                        }
+                        catch (Exception ex) when (ShouldReconnect(ex, lastEventId, reconnectAttempts, cancellationToken))
+                        {
+                            reconnectAttempts++;
+                            shouldReconnect = true;
+                            break;
+                        }
+
+                        if (!hasNext)
+                        {
+                            yield break;
+                        }
+
+                        SseItem<BaseEvent> sseItem = enumerator.Current;
+                        BaseEvent parsedEvent = sseItem.Data;
+                        parsedEvent.EventId = sseItem.EventId;
+                        lastEventId = sseItem.EventId ?? lastEventId;
+                        yield return parsedEvent;
+                    }
+                }
+                finally
+                {
+                    await enumerator.DisposeAsync().ConfigureAwait(false);
+                }
+
+                if (!shouldReconnect)
+                {
+                    yield break;
+                }
+            }
         }
     }
 
@@ -48,5 +120,17 @@ internal sealed class AGUIHttpService(HttpClient client, string endpoint)
     {
         return JsonSerializer.Deserialize(data, AGUIJsonSerializerContext.Default.BaseEvent) ??
             throw new InvalidOperationException("Failed to deserialize SSE item.");
+    }
+
+    private static bool ShouldReconnect(Exception exception, string? lastEventId, int reconnectAttempts, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested
+            || string.IsNullOrWhiteSpace(lastEventId)
+            || reconnectAttempts >= MaxReconnectAttempts)
+        {
+            return false;
+        }
+
+        return exception is HttpRequestException or IOException;
     }
 }

@@ -13,4 +13,8 @@ internal abstract class BaseEvent
 {
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
+
+    // MY CUSTOMIZATION POINT: retain native SSE event ids separately from the AG-UI JSON payload for reconnect handling.
+    [JsonIgnore]
+    public string? EventId { get; set; }
 }

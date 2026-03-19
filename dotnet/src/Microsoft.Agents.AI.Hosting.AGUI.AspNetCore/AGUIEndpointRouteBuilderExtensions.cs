@@ -63,6 +63,13 @@ public static class AGUIEndpointRouteBuilderExtensions
                 }
             };
 
+            string? lastEventId = context.Request.Headers["Last-Event-ID"];
+            if (!string.IsNullOrWhiteSpace(lastEventId))
+            {
+                // MY CUSTOMIZATION POINT: forward the native SSE checkpoint so resumable handlers can opt into replay behavior.
+                runOptions.ChatOptions.AdditionalProperties["agui_last_event_id"] = lastEventId;
+            }
+
             // Run the agent and convert to AG-UI events
             var events = aiAgent.RunStreamingAsync(
                 messages,

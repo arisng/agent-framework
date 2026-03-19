@@ -64,6 +64,31 @@ public sealed class AGUIServerSentEventsResultTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_EmitsSequentialEventIds_ForNativeSseReconnectsAsync()
+    {
+        // Arrange
+        // MY CUSTOMIZATION POINT: verify the native SSE payload now carries event ids for Last-Event-ID reconnect checkpoints.
+        List<BaseEvent> events =
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run1" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run1" }
+        ];
+        ILogger<AGUIServerSentEventsResult> logger = NullLogger<AGUIServerSentEventsResult>.Instance;
+        AGUIServerSentEventsResult result = new(events.ToAsyncEnumerableAsync(), logger);
+        DefaultHttpContext httpContext = new();
+        MemoryStream responseStream = new();
+        httpContext.Response.Body = responseStream;
+
+        // Act
+        await result.ExecuteAsync(httpContext);
+
+        // Assert
+        string responseContent = Encoding.UTF8.GetString(responseStream.ToArray());
+        Assert.Contains("id: 1", responseContent);
+        Assert.Contains("id: 2", responseContent);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_FlushesResponse_AfterEachEventAsync()
     {
         // Arrange

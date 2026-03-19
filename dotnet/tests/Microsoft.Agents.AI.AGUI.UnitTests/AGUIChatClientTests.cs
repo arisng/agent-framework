@@ -2,9 +2,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -211,6 +213,55 @@ public sealed class AGUIAgentTests
         // Assert
         Assert.Equal(2, handler.CapturedRunIds.Count);
         Assert.NotEqual(handler.CapturedRunIds[0], handler.CapturedRunIds[1]);
+    }
+
+    [Fact]
+    public async Task GetStreamingResponseAsync_ReconnectsWithLastEventId_AfterMidStreamDisconnectAsync()
+    {
+        // Arrange
+        // MY CUSTOMIZATION POINT: verify AGUIChatClient resumes native SSE streams by replaying the Last-Event-ID checkpoint on reconnect.
+        var handler = new ReconnectingStreamTestDelegatingHandler();
+        const string firstResponse =
+            """
+            id: 1
+            data: {"type":"RUN_STARTED","threadId":"thread1","runId":"run1"}
+
+            id: 2
+            data: {"type":"TEXT_MESSAGE_START","messageId":"msg1","role":"assistant"}
+
+            id: 3
+            data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg1","delta":"Hello"}
+
+            """;
+        const string secondResponse =
+            """
+            id: 4
+            data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg1","delta":" World"}
+
+            id: 5
+            data: {"type":"TEXT_MESSAGE_END","messageId":"msg1"}
+
+            id: 6
+            data: {"type":"RUN_FINISHED","threadId":"thread1","runId":"run1"}
+
+            """;
+        handler.AddResponse(firstResponse, throwAfterBytes: Encoding.UTF8.GetByteCount(firstResponse));
+        handler.AddResponse(secondResponse);
+
+        using HttpClient httpClient = new(handler);
+        var chatClient = new AGUIChatClient(httpClient, "http://localhost/agent", null, AGUIJsonSerializerContext.Default.Options);
+
+        // Act
+        List<ChatResponseUpdate> updates = [];
+        await foreach (ChatResponseUpdate update in chatClient.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "Test")]))
+        {
+            updates.Add(update);
+        }
+
+        // Assert
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal("2", Assert.Single(handler.CapturedLastEventIds));
+        Assert.Contains(updates, static update => update.Text == " World");
     }
 
     [Fact]
@@ -1646,6 +1697,48 @@ internal sealed class TestDelegatingHandler : DelegatingHandler
     }
 }
 
+internal sealed class ReconnectingStreamTestDelegatingHandler : DelegatingHandler
+{
+    private readonly Queue<HttpResponseMessage> _responses = new();
+    private readonly List<string> _capturedLastEventIds = [];
+
+    public IReadOnlyList<string> CapturedLastEventIds => this._capturedLastEventIds;
+
+    public int RequestCount { get; private set; }
+
+    public void AddResponse(string ssePayload, int? throwAfterBytes = null)
+    {
+        Stream stream = throwAfterBytes.HasValue
+            ? new ThrowAfterReadStream(Encoding.UTF8.GetBytes(ssePayload), throwAfterBytes.Value)
+            : new MemoryStream(Encoding.UTF8.GetBytes(ssePayload));
+
+        HttpResponseMessage response = new()
+        {
+            StatusCode = HttpStatusCode.OK,
+            Content = new StreamContent(stream)
+        };
+        response.Content.Headers.ContentType = new("text/event-stream");
+        this._responses.Enqueue(response);
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        this.RequestCount++;
+
+        if (request.Headers.TryGetValues("Last-Event-ID", out IEnumerable<string>? values))
+        {
+            this._capturedLastEventIds.Add(values.Single());
+        }
+
+        if (this._responses.Count == 0)
+        {
+            throw new InvalidOperationException("No more responses configured for ReconnectingStreamTestDelegatingHandler.");
+        }
+
+        return Task.FromResult(this._responses.Dequeue());
+    }
+}
+
 internal sealed class CapturingTestDelegatingHandler : DelegatingHandler
 {
     private readonly Queue<Func<HttpRequestMessage, Task<HttpResponseMessage>>> _responseFactories = new();
@@ -1680,6 +1773,92 @@ internal sealed class CapturingTestDelegatingHandler : DelegatingHandler
             StatusCode = HttpStatusCode.OK,
             Content = new StringContent(sseContent)
         };
+    }
+}
+
+internal sealed class ThrowAfterReadStream : Stream
+{
+    private readonly MemoryStream _inner;
+    private readonly int _throwAfterBytes;
+
+    public ThrowAfterReadStream(byte[] payload, int throwAfterBytes)
+    {
+        this._inner = new MemoryStream(payload);
+        this._throwAfterBytes = throwAfterBytes;
+    }
+
+    public override bool CanRead => this._inner.CanRead;
+
+    public override bool CanSeek => this._inner.CanSeek;
+
+    public override bool CanWrite => false;
+
+    public override long Length => this._inner.Length;
+
+    public override long Position
+    {
+        get => this._inner.Position;
+        set => this._inner.Position = value;
+    }
+
+    public override void Flush()
+    {
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        return this.Read(new Span<byte>(buffer, offset, count));
+    }
+
+    public override int Read(Span<byte> buffer)
+    {
+        if (this._inner.Position >= this._throwAfterBytes)
+        {
+            throw new IOException("Simulated mid-stream disconnect.");
+        }
+
+        int allowedCount = (int)Math.Min(buffer.Length, this._throwAfterBytes - this._inner.Position);
+        return this._inner.Read(buffer[..allowedCount]);
+    }
+
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return ValueTask.FromResult(this.Read(buffer.Span));
+        }
+        catch (Exception ex)
+        {
+            return ValueTask.FromException<int>(ex);
+        }
+    }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Task.FromResult(this.Read(new Span<byte>(buffer, offset, count)));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromException<int>(ex);
+        }
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => this._inner.Seek(offset, origin);
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            this._inner.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }
 
