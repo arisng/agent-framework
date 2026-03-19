@@ -11,6 +11,10 @@
 
   <ItemGroup>
     <PackageVersion Remove="Aspire.Hosting.AppHost" />
+    <!-- MY CUSTOMIZATION POINT: add bUnit version management for AGUIDojo client-side tests -->
+    <PackageVersion Include="bunit" Version="2.6.2" />
+    <!-- MY CUSTOMIZATION POINT: align the client test project's HtmlSanitizer dependency with .NET 10-compatible bUnit dependencies -->
+    <PackageVersion Include="HtmlSanitizer" Version="9.1.893-beta" />
 
     <!-- BlazorBlueprint UI -->
     <PackageVersion Include="BlazorBlueprint.Components" Version="3.5.2" />
