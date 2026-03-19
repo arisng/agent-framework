@@ -1,261 +1,140 @@
-# AGUIDojo v3 Validation Mapping — Complete Index
+# AGUIDojo v3 Validation Index
 
-Generated: 2026-03-18  
+Generated: 2026-03-19  
 Scope: `/dotnet/samples/05-end-to-end/AGUIDojo`
 
 ---
 
-## 📋 Documents in This Analysis
+## Audit Summary
 
-### 1. **AGUIDOJO_V3_VALIDATION_MAP.md** (23 KB, 489 lines)
-**Comprehensive mapping of implementation files and tests**
+This index reflects the completed validation follow-up work from the session audit, not the earlier pre-test snapshot.
 
-- Detailed breakdown of each validation area (Session Persistence, Multimodal, SSE, Autonomy)
-- Full file listings by category with line counts and purposes
-- Exact test coverage status (existing tests vs. missing tests)
-- Identified gaps and blockers for each area
-- v3 Implementation Plan references (§2, §6, §11, §12)
+### Authoritative completed session work
+- `6681d4b4` — `chore(aguidojo-client): add client test scaffold`
+- `9be787d6` — `test(aguidojo-tests): add multimodal attachment coverage`
+- `71e0ea8d` — `fix(aguidojo): harden sse reconnect flow`
+- `5d319c1f` — `feat(aguidojo-governance): add undo grace period`
+- `b364547d` — `test(aguidojo-client): add persistence and autonomy coverage`
 
-**Use this when you need:** Deep understanding of implementation status, specific file locations, detailed gap analysis
-
----
-
-### 2. **AGUIDOJO_QUICK_REFERENCE.md** (7.4 KB, 234 lines)
-**Fast lookup reference for implementation status**
-
-- Implementation status matrix (% complete by area)
-- What's implemented ✅ vs. what's missing 🔴 for each area
-- Key implementation diagrams (flow/architecture)
-- Existing vs. needed test files
-- Priority test implementation order (Phase 1-3)
-- Quick statistics (file counts, LOC)
-
-**Use this when you need:** Quick overview, implementation percentages, test priorities, next steps
+### Verified test state
+- `dotnet test --project AGUIDojoClient.Tests/AGUIDojoClient.Tests.csproj` → **41 passed**
+- `dotnet test --project AGUIDojoServer.Tests/AGUIDojoServer.Tests.csproj` → **16 passed**
+- **Total validated tests:** **57 passed**
 
 ---
 
-## 🎯 Validation Areas Covered
+## Documents in This Analysis
 
-### 1️⃣ Session Persistence & Cross-Circuit Continuity — **80% Complete**
+### 1. `AGUIDOJO_V3_VALIDATION_MAP.md`
+Comprehensive mapping of implementation files, current test coverage, completed validation waves, and remaining gaps.
 
-**Key Files:**
-- Implementation: `SessionPersistenceService.cs`, `ConversationTree.cs`, `sessionPersistence.js`
-- State: `SessionPersistenceEffect.cs`, `SessionState.cs`
-- Models: `ConversationNode`, `ConversationTree`
+**Use this when you need:** exact file/test references, area-by-area status, or gap analysis tied to the v3 plan.
 
-**Test Status:** ❌ 0 tests
+### 2. `AGUIDOJO_V3_VALIDATION_QUICK_REFERENCE.md`
+Fast lookup sheet for current coverage, completed waves, and open items that are still real.
 
-**Key Gaps:**
-- No save/load cycle tests
-- No IndexedDB mock tests
-- No DAG operation tests (branch, traverse)
-- No hydration tests (circuit reconnect)
+**Use this when you need:** a concise status view before coding or review.
 
 ---
 
-### 2️⃣ Multimodal Attachments — **40% Complete**
+## Current Validation Status by Area
 
-**Key Files:**
-- Server: `MultimodalAttachmentAgent.cs`, `FileUploadEndpoints.cs`
-- Client: `AttachmentInfo.cs`, `MessageAttachmentMarkers.cs`
-
-**Test Status:** ❌ 0 tests
-
-**Key Gaps:**
-- No marker parsing tests
-- No upload validation tests (10MB, 5-attachment limits)
-- No vision model tests
-- `IFileStorageService` implementation location unclear
+| Area | Current status | Coverage now in place | Real gaps still open |
+| --- | --- | --- | --- |
+| Session persistence & DAG | Implemented with targeted client coverage | `ConversationTreeTests`, `SessionPersistenceServiceTests` | No hydration/circuit-reconnect tests; no JS/browser persistence tests; no layout persistence tests |
+| Multimodal attachments | Server-side flow implemented and covered | `MultimodalAttachmentAgentTests` validates marker stripping, missing-file handling, upload validation, placeholder serving | No client attachment UI/component tests; no end-to-end vision flow; no explicit 5-attachment cap validation |
+| Streaming / SSE | Core flow implemented and hardened | `AgentStreamingServiceTests` covers queue saturation, queued-session promotion, and duplicate in-flight request handling | No first-token benchmark tests; no Last-Event-ID replay support; no explicit .NET 10 native SSE migration validation |
+| Autonomy / governance | Implemented with targeted client coverage | `AutonomyPolicyServiceTests`, `RiskAssessmentServiceTests`, `AutonomySelectorTests`, `ApprovalQueueTests`, undo grace period tests | No end-to-end approval lifecycle tests through streaming; no audit trail rendering tests; confidence path is implemented but not deeply test-focused |
 
 ---
 
-### 3️⃣ Streaming/SSE Infrastructure Upgrades — **70% Complete**
+## Completed Validation Waves
 
-**Key Files:**
-- Core: `AgentStreamingService.cs`, `SessionStreamingContext.cs`
-- Metrics: `SseStreamSnapshot.cs`, `SseStreamMetrics.cs`
-- Middleware: `ContextWindowChatClient.cs`, `ToolResultStreamingChatClient.cs`
+### Wave 1 — Client test foundation ✅
+**Commit:** `6681d4b4`
+- Added `AGUIDojoClient.Tests`
+- Introduced client-side xUnit + bUnit coverage surface
+- Closed the stale “client tests are missing entirely” claim
 
-**Test Status:** ❌ 0 tests
+### Wave 2 — Persistence + autonomy coverage ✅
+**Commit:** `b364547d`
+- Added tests for `ConversationTree`
+- Added tests for `SessionPersistenceService`
+- Added tests for `RiskAssessmentService`
+- Added policy-matrix coverage for `AutonomyPolicyService`
+- Added component tests for `AutonomySelector` and `ApprovalQueue`
+- Closed the stale claim that `ShouldAutoDecide` was still private inside `AgentStreamingService`
 
-**Key Gaps:**
-- No backpressure/concurrency tests
-- No latency benchmarks (<250ms first-token)
-- No .NET 10 SSE migration
-- No Last-Event-ID reconnection logic
+### Wave 3 — Multimodal/server validation ✅
+**Commit:** `9be787d6`
+- Added multimodal attachment tests on the server
+- Covered marker stripping, binary resolution, missing attachments, upload content-type validation, size validation, and placeholder file serving
+- Closed the stale “0 multimodal tests” and “file storage implementation unclear” claims
 
----
+### Wave 4 — SSE hardening ✅
+**Commit:** `71e0ea8d`
+- Hardened reconnect/queue handling in the streaming loop
+- Added coverage for queue limits and queued-session promotion behavior
+- Closed the stale claim that the area had zero streaming tests
+- **Still open:** standards-based replay via `Last-Event-ID` remains a separate gap
 
-### 4️⃣ Autonomy Controls & Confidence Visualization — **60% Complete**
-
-**Key Files:**
-- Model: `AutonomyLevel.cs`
-- Logic: `RiskAssessmentService.cs`, `ApprovalHandler.cs`
-- UI: `AutonomySelector.razor`, `ApprovalDialog.razor`
-- Audit: `AuditEntry.cs`, `AuditTrailPanel.razor`
-
-**Test Status:** ❌ 0 tests
-
-**Key Gaps:**
-- No autonomy logic tests
-- No risk assessment tests
-- No approval workflow tests
-- **Confidence visualization NOT implemented** (no system prompt instruction)
-
----
-
-## 📊 Test Coverage Summary
-
-| Area | Impl % | Tests | Status |
-|------|--------|-------|--------|
-| Session Persistence | 80% | 0 | ❌ Critical gap |
-| Multimodal | 40% | 0 | ❌ Major gap |
-| SSE/Streaming | 70% | 0 | ❌ Critical gap |
-| Autonomy | 60% | 0 | ❌ Critical gap |
-| **TOTAL** | **62.5%** | **0** | **❌ 0% test coverage** |
+### Wave 5 — Undo grace period ✅
+**Commit:** `5d319c1f`
+- Implemented the undo grace period UX/state flow
+- Added reducer and toast component coverage
+- Closed the stale “undo grace period missing” claim
 
 ---
 
-## 🗂️ File Organization
+## Key Corrections vs. Older Validation Notes
 
-### Repository Structure
-```
-/dotnet/samples/05-end-to-end/AGUIDojo/
-├── AGUIDojo.AppHost/              (Aspire host)
-├── AGUIDojoClient/                (~60 files, 40+ Razor components)
-│   ├── Models/                    (27 models)
-│   ├── Services/                  (16 services, 3,515 LOC)
-│   ├── Store/SessionManager/      (8 Fluxor files)
-│   ├── Components/                (40+ Razor components)
-│   └── wwwroot/js/                (5 JS interop modules)
-├── AGUIDojoServer/                (~30 files)
-│   ├── Agents/                    (~10 agent wrappers)
-│   ├── Tools/                     (8 tools)
-│   ├── Api/                       (5 endpoint groups)
-│   ├── Services/                  (5+ backend services)
-│   └── Multimodal/, HumanInTheLoop/, PredictiveStateUpdates/
-├── AGUIDojoServer.Tests/          ⚠️ ONLY 2 TEST FILES
-│   ├── BasicTests.cs              (1 test)
-│   └── SharedStateAgentTests.cs   (2 tests)
-└── .docs/
-    └── implementation-plan-v3/    (v3 specification)
-```
+These older claims are now stale and should no longer be used:
+- “0 tests”
+- “Only 2 server test files”
+- “Confidence visualization missing”
+- “Undo grace period missing”
+- “`ShouldAutoDecide` is still private”
+
+Current reality:
+- There is a dedicated **client** test project.
+- Server tests include **3** files, not 2.
+- Confidence metadata/pill rendering is implemented.
+- Undo grace period is implemented and covered.
+- Auto-decision policy lives in `AutonomyPolicyService` and is directly testable.
 
 ---
 
-## 📐 Implementation Percentages Explained
+## Remaining Real Gaps
 
-### Session Persistence (80%)
-- ✅ L1 localStorage (metadata, active ID)
-- ✅ L2 IndexedDB (conversation trees)
-- ✅ ConversationTree DAG (add, branch, switch, truncate)
-- ✅ SessionPersistenceEffect (auto-persist)
-- ❌ Missing: Tests, hydration validation, archival cleanup
-
-### Multimodal Attachments (40%)
-- ✅ Server-side attachment marker resolution
-- ✅ FileUploadEndpoints
-- ✅ AttachmentInfo model
-- ❌ Missing: Client upload UI, validation, vision tests, file storage
-
-### SSE/Streaming (70%)
-- ✅ AgentStreamingService (main coordinator)
-- ✅ Backpressure (3 concurrent, 5 queued)
-- ✅ Retry logic (3 attempts)
-- ✅ SseStreamSnapshot metrics
-- ✅ ContextWindowChatClient, ToolResultStreamingChatClient
-- ❌ Missing: Tests, .NET 10 migration, Last-Event-ID reconnection
-
-### Autonomy Controls (60%)
-- ✅ AutonomyLevel enum (3 levels)
-- ✅ ShouldAutoDecide() logic
-- ✅ RiskAssessmentService
-- ✅ AutonomySelector UI
-- ✅ AuditTrail infrastructure
-- ❌ Missing: Tests, confidence visualization, undo grace period
+### Highest-value remaining gaps
+1. **Persistence hydration coverage**
+   - No explicit test for restoring state on circuit reconnect.
+2. **Client attachment UX coverage**
+   - `ChatInput` upload/pending-preview behavior is implemented but still untested here.
+3. **SSE standards alignment**
+   - Reconnect logic is stronger, but `Last-Event-ID` replay is still not documented as complete.
+4. **Governance end-to-end coverage**
+   - Approval queue pieces are tested, but the full streamed approval lifecycle still lacks deeper validation.
+5. **Observability / latency validation**
+   - Metrics objects exist, but latency targets and telemetry assertions remain open.
 
 ---
 
-## 🎯 v3 Implementation Plan References
+## Quick Facts
 
-### Document Location
-`/dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan-v3/unified-agentic-chat-implementation-plan-v3.md`
-
-### Relevant Sections
-- **§2:** Session Persistence & Cross-Circuit Continuity (L1+L2+L3 strategy)
-- **§6:** Multimodal Attachments (file upload + LLM vision)
-- **§11:** Autonomy Controls & Confidence Visualization (3 levels + risk matrix)
-- **§12:** Streaming & SSE Infrastructure Upgrades (.NET 10 native, <250ms latency, Last-Event-ID)
-- **§13:** Summary: v2 → v3 Upgrade Matrix + recommended phase ordering
-
----
-
-## 🔍 Key Discoveries
-
-### What's Working Well ✅
-1. **Session Persistence infrastructure is solid** — L1+L2 + DAG tree + effects all present
-2. **SSE backpressure is implemented** — 3 concurrent, 5 queue limits enforced
-3. **Autonomy framework exists** — 3 levels, risk logic, approval UI, audit trail
-4. **Multimodal marker system** — Server-side resolution functional
-5. **Fluxor state management** — Comprehensive, well-organized
-
-### Critical Gaps ⚠️
-1. **ZERO TEST COVERAGE** — All 4 areas untested (~50+ test cases needed)
-2. **Confidence visualization missing** — Not implemented in system prompt
-3. **File storage unclear** — `IFileStorageService` location unknown
-4. **.NET 10 SSE not yet migrated** — Still using older pattern
-5. **Undo grace period missing** — 5-second undo not implemented
+- **Client test project:** `AGUIDojoClient.Tests`
+- **Client test files:** 9
+- **Server test files:** 3
+- **Verified test totals:** 41 client + 16 server = 57 passing
+- **bUnit usage:** now present in the sample
+- **Confidence UI:** implemented
+- **Undo grace period:** implemented
+- **Auto-decision policy:** extracted into `AutonomyPolicyService`
 
 ---
 
-## 📝 Next Steps
+## Related Documents
 
-### Immediate (Week 1)
-1. Write ConversationTree DAG tests (10-15 cases)
-2. Write ShouldAutoDecide() logic tests (12 cases: 3 autonomy × 4 risk levels)
-3. Write SessionPersistenceService tests (5-10 cases)
-
-### Short-term (Week 2-3)
-4. Write SSE backpressure & concurrency tests
-5. Write RiskAssessmentService tests
-6. Write MultimodalAttachmentAgent tests
-7. Add bUnit component tests for AutonomySelector, ApprovalDialog
-
-### Medium-term (Week 4+)
-8. Implement confidence visualization (system prompt + badge UI)
-9. Migrate to .NET 10 native SSE
-10. Add Last-Event-ID reconnection logic
-11. Implement undo grace period
-
----
-
-## 📚 Documentation Map
-
-| Document | Size | Focus | Best For |
-|----------|------|-------|----------|
-| `AGUIDOJO_V3_VALIDATION_MAP.md` | 23 KB | Comprehensive mapping | Deep dive, reference, gap analysis |
-| `AGUIDOJO_QUICK_REFERENCE.md` | 7.4 KB | Quick lookup | Overviews, priorities, fast answers |
-| `AGUIDOJO_V3_INDEX.md` | this file | Navigation & summary | Finding what you need |
-
----
-
-## 🔗 Related Documents in Repository
-
-- `/dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan-v3/unified-agentic-chat-implementation-plan-v3.md` — Full v3 specification
-- `/dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan-v3/AGUIDOJO_ARCHITECTURE_DIAGRAM.md` — Architecture overview
-- `/dotnet/samples/05-end-to-end/AGUIDojo/README.md` — Project readme
-
----
-
-## 📞 Quick Facts
-
-- **Total Files:** ~120 (80 client, 30 server, 2 tests)
-- **Total LOC:** ~16,000+
-- **Test Files:** 2 (BasicTests.cs, SharedStateAgentTests.cs)
-- **Test Cases:** 3 (all server-side, all basic)
-- **Test Coverage:** <1%
-- **Key Frameworks:** Fluxor, Blazor, AG-UI, xUnit (no bUnit or Jest yet)
-
----
-
-Generated by AGUIDojo v3 validation analysis, 2026-03-18
+- `/dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan-v3/AGUIDOJO_V3_VALIDATION_MAP.md`
+- `/dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan-v3/AGUIDOJO_V3_VALIDATION_QUICK_REFERENCE.md`
+- `/dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan-v3/unified-agentic-chat-implementation-plan-v3.md`
