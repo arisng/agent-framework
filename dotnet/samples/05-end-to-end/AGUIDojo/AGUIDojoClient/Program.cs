@@ -168,7 +168,7 @@ builder.Services.AddOpenTelemetry()
         // Runtime metrics (GC, thread pool, etc.)
         .AddRuntimeInstrumentation()
         // SSE streaming metrics (first-token latency, stream duration, event counts, retries)
-        .AddMeter(AGUIDojoClient.Services.SseStreamMetrics.MeterName)
+        .AddMeter(SseStreamMetrics.MeterName)
         // Console exporter for development visibility
         .AddConsoleExporter()
         // OTLP exporter for production observability platforms
@@ -206,6 +206,8 @@ builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
 // Register governance services for HITL governance pattern
 // RiskAssessmentService maps function names to risk levels (Singleton — stateless)
 builder.Services.AddSingleton<IRiskAssessmentService, RiskAssessmentService>();
+// AutonomyPolicyService centralizes auto-decision rules for governance approval flows
+builder.Services.AddSingleton<IAutonomyPolicyService, AutonomyPolicyService>();
 // CheckpointService manages in-memory state snapshots for time-travel/undo (Scoped — per circuit)
 builder.Services.AddScoped<ICheckpointService, CheckpointService>();
 

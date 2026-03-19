@@ -167,7 +167,8 @@ public sealed class AgentStreamingServiceTests
             observability.Object,
             checkpointService.Object,
             new QueueChatClientFactory(clients),
-            riskAssessment.Object);
+            riskAssessment.Object,
+            new AutonomyPolicyService());
     }
 
     private static SessionManagerState CreateState(IEnumerable<string> sessionIds)

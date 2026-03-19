@@ -43,6 +43,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private Func<Func<Task>, Task>? _invokeAsync;
     private volatile SseStreamSnapshot? _currentStreamMetrics;
     private readonly IRiskAssessmentService _riskAssessmentService;
+    private readonly IAutonomyPolicyService _autonomyPolicyService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentStreamingService"/> class.
@@ -56,7 +57,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
         IObservabilityService observabilityService,
         ICheckpointService checkpointService,
         IAGUIChatClientFactory chatClientFactory,
-        IRiskAssessmentService riskAssessmentService)
+        IRiskAssessmentService riskAssessmentService,
+        IAutonomyPolicyService autonomyPolicyService)
     {
         _dispatcher = dispatcher;
         _sessionStore = sessionStore;
@@ -67,6 +69,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         _checkpointService = checkpointService;
         _chatClientFactory = chatClientFactory;
         _riskAssessmentService = riskAssessmentService;
+        _autonomyPolicyService = autonomyPolicyService;
         _sessionStore.StateChanged += OnSessionStoreChanged;
     }
 
@@ -454,7 +457,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                         var riskLevel = _riskAssessmentService.AssessRisk(approval.FunctionName);
                                         var autonomyLevel = _sessionStore.Value.AutonomyLevel;
 
-                                        bool shouldAutoDecide = ShouldAutoDecide(autonomyLevel, riskLevel);
+                                        bool shouldAutoDecide = _autonomyPolicyService.ShouldAutoDecide(autonomyLevel, riskLevel);
                                         bool approved;
 
                                         if (shouldAutoDecide)
@@ -1246,15 +1249,4 @@ public sealed class AgentStreamingService : IAgentStreamingService
     }
 
     private sealed record QueuedStreamRequest(string SessionId);
-
-    /// <summary>
-    /// Determines whether an approval should be auto-decided based on the current autonomy level and risk.
-    /// </summary>
-    private static bool ShouldAutoDecide(AutonomyLevel autonomy, RiskLevel risk) => autonomy switch
-    {
-        AutonomyLevel.Suggest => false,
-        AutonomyLevel.AutoReview => risk <= RiskLevel.Low,
-        AutonomyLevel.FullAuto => risk < RiskLevel.Critical,
-        _ => false,
-    };
 }
