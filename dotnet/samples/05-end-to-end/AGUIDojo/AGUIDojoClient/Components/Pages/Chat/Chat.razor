@@ -3,13 +3,17 @@
 @using AGUIDojoClient.Models
 @using AGUIDojoClient.Services
 @using AGUIDojoClient.Store.SessionManager
+@using Microsoft.Extensions.Hosting
 @inject IAgentStreamingService StreamingService
+@inject ICheckpointService CheckpointService
 @inject IRiskAssessmentService RiskAssessmentService
 @inject IStateManager StateManager
 @inject ViewportService ViewportService
 @inject IDispatcher Dispatcher
 @inject IState<SessionManagerState> SessionStore
 @inject ISessionPersistenceService SessionPersistence
+@inject NavigationManager NavigationManager
+@inject IHostEnvironment HostEnvironment
 @implements IDisposable
 
 <PageTitle>AG-UI Dojo Chat</PageTitle>
@@ -76,6 +80,9 @@
                     </NoMessagesContent>
                 </ChatMessageList>
                 <div class="chat-container">
+                    <UndoGracePeriodToast PendingUndo="@ActiveSessionState.PendingUndo"
+                                          OnUndo="@HandleUndoGracePeriodAsync"
+                                          OnDismiss="@HandleDismissUndoGracePeriodAsync" />
                     <ChatSuggestions OnSelected="@AddUserMessageAsync" @ref="@chatSuggestions" />
                     <ChatInput OnSend="@TryAddUserMessageAsync"
                                 IsAgentRunning="@ActiveSessionState.IsRunning"
@@ -158,6 +165,11 @@
 
             // Hydrate sessions from browser storage (localStorage + IndexedDB)
             Dispatcher.Dispatch(new SessionActions.HydrateFromStorageAction());
+
+            if (ShouldPreviewUndoGracePeriod())
+            {
+                SeedUndoGracePeriodPreview();
+            }
         }
     }
 
@@ -210,9 +222,17 @@
         Recipe? recipeState = ActiveSessionState.CurrentRecipe;
         if (recipeState is null && ShouldBootstrapRecipeState(userMessage))
         {
+            Checkpoint checkpoint = CheckpointService.CreateCheckpoint(
+                ActiveSessionId,
+                "Before recipe bootstrap",
+                ActiveSessionState.Plan,
+                ActiveSessionState.CurrentRecipe,
+                ActiveSessionState.CurrentDocumentState,
+                ActiveSessionState.Messages.Count);
             StateManager.Initialize();
             recipeState = StateManager.CurrentRecipe;
             Dispatcher.Dispatch(new SessionActions.SetRecipeAction(ActiveSessionId, recipeState));
+            StartUndoGracePeriod(ActiveSessionId, checkpoint, "Recipe workspace initialized");
         }
 
         if (recipeState is not null)
@@ -258,6 +278,29 @@
     {
         StreamingService.HandleCheckpointRevert(ActiveSessionId, checkpointId);
         await chatInput!.FocusAsync();
+    }
+
+    private async Task HandleUndoGracePeriodAsync(string checkpointId)
+    {
+        PendingUndoState? pendingUndo = ActiveSessionState.PendingUndo;
+        if (pendingUndo is null || !string.Equals(pendingUndo.CheckpointId, checkpointId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        StreamingService.HandleCheckpointRevert(ActiveSessionId, checkpointId);
+        Dispatcher.Dispatch(new SessionActions.ClearUndoGracePeriodAction(ActiveSessionId, checkpointId));
+        await chatInput!.FocusAsync();
+    }
+
+    private Task HandleDismissUndoGracePeriodAsync()
+    {
+        if (ActiveSessionState.PendingUndo is not null)
+        {
+            Dispatcher.Dispatch(new SessionActions.ClearUndoGracePeriodAction(ActiveSessionId, ActiveSessionState.PendingUndo.CheckpointId));
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task CreateNewSessionAsync()
@@ -465,6 +508,40 @@
     }
 
     private const int MaxRetryDisplay = 3;
+
+    private bool ShouldPreviewUndoGracePeriod() =>
+        HostEnvironment.IsDevelopment() &&
+        NavigationManager.Uri.Contains("previewUndoGrace=1", StringComparison.OrdinalIgnoreCase);
+
+    private void SeedUndoGracePeriodPreview()
+    {
+        if (ActiveSessionState.PendingUndo is not null)
+        {
+            return;
+        }
+
+        Checkpoint checkpoint = CheckpointService.CreateCheckpoint(
+            ActiveSessionId,
+            "Before recipe bootstrap",
+            ActiveSessionState.Plan,
+            ActiveSessionState.CurrentRecipe,
+            ActiveSessionState.CurrentDocumentState,
+            ActiveSessionState.Messages.Count);
+
+        StartUndoGracePeriod(ActiveSessionId, checkpoint, "Recipe workspace initialized");
+    }
+
+    private void StartUndoGracePeriod(string sessionId, Checkpoint checkpoint, string summary)
+    {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        Dispatcher.Dispatch(new SessionActions.StartUndoGracePeriodAction(
+            sessionId,
+            checkpoint.Id,
+            checkpoint.Label,
+            summary,
+            startedAt,
+            startedAt.AddSeconds(5)));
+    }
 
     private static bool ShouldBootstrapRecipeState(ChatMessage userMessage)
     {

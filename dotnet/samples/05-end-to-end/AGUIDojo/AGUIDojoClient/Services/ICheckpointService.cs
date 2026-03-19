@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 using AGUIDojoClient.Models;
 
@@ -25,7 +25,8 @@ public interface ICheckpointService
     /// <param name="recipeState">The current recipe state object to serialize, or null if no recipe is active.</param>
     /// <param name="documentState">The current document state object to serialize, or null if no document is active.</param>
     /// <param name="messageCount">The number of messages in the conversation at this point.</param>
-    void CreateCheckpoint(string sessionId, string label, object? planState, object? recipeState, object? documentState, int messageCount);
+    /// <returns>The created <see cref="Checkpoint"/> so callers can immediately surface undo affordances.</returns>
+    Checkpoint CreateCheckpoint(string sessionId, string label, object? planState, object? recipeState, object? documentState, int messageCount);
 
     /// <summary>
     /// Gets the most recently created checkpoint.

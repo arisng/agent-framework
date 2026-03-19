@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Text.Json;
 using AGUIDojoClient.Models;
@@ -28,9 +28,9 @@ public sealed class CheckpointService : ICheckpointService
     private readonly Dictionary<string, List<Checkpoint>> _checkpointsBySession = new(StringComparer.Ordinal);
 
     /// <inheritdoc />
-    public void CreateCheckpoint(string sessionId, string label, object? planState, object? recipeState, object? documentState, int messageCount)
+    public Checkpoint CreateCheckpoint(string sessionId, string label, object? planState, object? recipeState, object? documentState, int messageCount)
     {
-        List<Checkpoint> checkpoints = GetOrCreateCheckpoints(sessionId);
+        List<Checkpoint> checkpoints = this.GetOrCreateCheckpoints(sessionId);
 
         // Enforce FIFO eviction when at capacity
         while (checkpoints.Count >= MaxCheckpoints)
@@ -38,7 +38,7 @@ public sealed class CheckpointService : ICheckpointService
             checkpoints.RemoveAt(0);
         }
 
-        var checkpoint = new Checkpoint
+        Checkpoint checkpoint = new()
         {
             Id = Guid.NewGuid().ToString("N"),
             Label = label,
@@ -50,25 +50,26 @@ public sealed class CheckpointService : ICheckpointService
         };
 
         checkpoints.Add(checkpoint);
+        return checkpoint;
     }
 
     /// <inheritdoc />
     public Checkpoint? GetLatestCheckpoint(string sessionId)
     {
-        List<Checkpoint> checkpoints = GetOrCreateCheckpoints(sessionId);
+        List<Checkpoint> checkpoints = this.GetOrCreateCheckpoints(sessionId);
         return checkpoints.Count > 0 ? checkpoints[^1] : null;
     }
 
     /// <inheritdoc />
     public IReadOnlyList<Checkpoint> GetAllCheckpoints(string sessionId)
     {
-        return GetOrCreateCheckpoints(sessionId).AsReadOnly();
+        return this.GetOrCreateCheckpoints(sessionId).AsReadOnly();
     }
 
     /// <inheritdoc />
     public Checkpoint? RevertToCheckpoint(string sessionId, string checkpointId)
     {
-        List<Checkpoint> checkpoints = GetOrCreateCheckpoints(sessionId);
+        List<Checkpoint> checkpoints = this.GetOrCreateCheckpoints(sessionId);
         var index = checkpoints.FindIndex(c => c.Id == checkpointId);
         if (index < 0)
         {
@@ -89,7 +90,7 @@ public sealed class CheckpointService : ICheckpointService
     /// <inheritdoc />
     public void Clear(string sessionId)
     {
-        _checkpointsBySession.Remove(sessionId);
+        this._checkpointsBySession.Remove(sessionId);
     }
 
     /// <summary>
@@ -113,10 +114,10 @@ public sealed class CheckpointService : ICheckpointService
 
     private List<Checkpoint> GetOrCreateCheckpoints(string sessionId)
     {
-        if (!_checkpointsBySession.TryGetValue(sessionId, out List<Checkpoint>? checkpoints))
+        if (!this._checkpointsBySession.TryGetValue(sessionId, out List<Checkpoint>? checkpoints))
         {
             checkpoints = [];
-            _checkpointsBySession[sessionId] = checkpoints;
+            this._checkpointsBySession[sessionId] = checkpoints;
         }
 
         return checkpoints;

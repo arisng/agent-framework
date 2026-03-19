@@ -31,6 +31,16 @@ public static class SessionActions
 
     public sealed record SetPendingApprovalAction(string SessionId, PendingApproval? PendingApproval);
 
+    public sealed record StartUndoGracePeriodAction(
+        string SessionId,
+        string CheckpointId,
+        string CheckpointLabel,
+        string Summary,
+        DateTimeOffset StartedAt,
+        DateTimeOffset ExpiresAt);
+
+    public sealed record ClearUndoGracePeriodAction(string SessionId, string? CheckpointId = null);
+
     public sealed record ClearMessagesAction(string SessionId, DateTimeOffset? OccurredAt = null);
 
     public sealed record SetStatefulCountAction(string SessionId, int Count);

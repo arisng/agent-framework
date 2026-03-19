@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft. All rights reserved.
+﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Collections.Immutable;
 using AGUIDojoClient.Models;
@@ -242,6 +242,34 @@ public static class SessionReducers
             metadata => UpdateActivity(metadata, hasPendingApproval: action.PendingApproval is not null));
 
     [ReducerMethod]
+    public static SessionManagerState OnStartUndoGracePeriod(SessionManagerState state, SessionActions.StartUndoGracePeriodAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session => session with
+            {
+                PendingUndo = new PendingUndoState
+                {
+                    CheckpointId = action.CheckpointId,
+                    CheckpointLabel = action.CheckpointLabel,
+                    Summary = action.Summary,
+                    StartedAt = action.StartedAt,
+                    ExpiresAt = action.ExpiresAt,
+                }
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnClearUndoGracePeriod(SessionManagerState state, SessionActions.ClearUndoGracePeriodAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session => session.PendingUndo is null ||
+                (action.CheckpointId is not null &&
+                 !string.Equals(session.PendingUndo.CheckpointId, action.CheckpointId, StringComparison.Ordinal))
+                ? session
+                : session with { PendingUndo = null });
+
+    [ReducerMethod]
     public static SessionManagerState OnClearMessages(SessionManagerState state, SessionActions.ClearMessagesAction action) =>
         UpdateSessionState(
             state,
@@ -253,6 +281,7 @@ public static class SessionReducers
                 ConversationId = null,
                 StatefulMessageCount = 0,
                 PendingApproval = null,
+                PendingUndo = null,
             },
             metadata => UpdateActivity(
                 metadata,

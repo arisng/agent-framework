@@ -211,6 +211,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     public void ResetConversation(string sessionId, string systemPrompt)
     {
         CancelResponse(sessionId);
+        _dispatcher.Dispatch(new SessionActions.ClearUndoGracePeriodAction(sessionId));
         _dispatcher.Dispatch(new SessionActions.ClearMessagesAction(sessionId));
         _dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, new ChatMessage(ChatRole.System, systemPrompt)));
         _dispatcher.Dispatch(new SessionActions.ClearPlanAction(sessionId));
@@ -229,6 +230,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     public void HandlePanic(string sessionId)
     {
         CancelResponse(sessionId);
+        _dispatcher.Dispatch(new SessionActions.ClearUndoGracePeriodAction(sessionId));
         Checkpoint? checkpoint = _checkpointService.GetLatestCheckpoint(sessionId);
         if (checkpoint is not null)
         {
@@ -243,6 +245,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     public void HandleCheckpointRevert(string sessionId, string checkpointId)
     {
         CancelResponse(sessionId);
+        _dispatcher.Dispatch(new SessionActions.ClearUndoGracePeriodAction(sessionId));
         Checkpoint? checkpoint = _checkpointService.RevertToCheckpoint(sessionId, checkpointId);
         if (checkpoint is null)
         {
@@ -789,6 +792,18 @@ public sealed class AgentStreamingService : IAgentStreamingService
         message.AdditionalProperties[ConfidenceMarkers.ConfidenceScoreKey] = confidenceScore;
     }
 
+    private void StartUndoGracePeriod(string sessionId, Checkpoint checkpoint, string summary)
+    {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        _dispatcher.Dispatch(new SessionActions.StartUndoGracePeriodAction(
+            sessionId,
+            checkpoint.Id,
+            checkpoint.Label,
+            summary,
+            startedAt,
+            startedAt.AddSeconds(5)));
+    }
+
     private void RestoreFromCheckpoint(string sessionId, Checkpoint checkpoint)
     {
         if (checkpoint.PlanSnapshot is not null)
@@ -862,7 +877,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                 List<JsonPatchOperation>? operations = ChatHelpers.TryParsePatchOperations(dataContent);
                 if (operations is not null)
                 {
-                    _checkpointService.CreateCheckpoint(
+                    Checkpoint checkpoint = _checkpointService.CreateCheckpoint(
                         sessionId,
                         "Before plan step update",
                         session.Plan,
@@ -871,6 +886,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                         session.Messages.Count);
                     _jsonPatchApplier.ApplyPatch(session.Plan, operations);
                     _dispatcher.Dispatch(new SessionActions.ApplyPlanDeltaAction(sessionId, operations));
+                    StartUndoGracePeriod(sessionId, checkpoint, "Plan step updated");
                     _stateChanged?.Invoke();
                 }
             }
@@ -945,7 +961,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private void ApplyPlanSnapshot(string sessionId, SessionStreamingContext context, Plan plan)
     {
         SessionState session = GetSessionState(sessionId);
-        _checkpointService.CreateCheckpoint(
+        Checkpoint checkpoint = _checkpointService.CreateCheckpoint(
             sessionId,
             "Before plan update",
             session.Plan,
@@ -957,13 +973,14 @@ public sealed class AgentStreamingService : IAgentStreamingService
         context.LastDiffAfter = plan;
         context.LastDiffTitle = "Plan State Change";
         _dispatcher.Dispatch(new SessionActions.SetDiffPreviewArtifactAction(sessionId, context.LastDiffBefore, plan, context.LastDiffTitle));
+        StartUndoGracePeriod(sessionId, checkpoint, "Plan updated");
         _stateChanged?.Invoke();
     }
 
     private void ApplyRecipeSnapshot(string sessionId, SessionStreamingContext context, Recipe recipe)
     {
         SessionState session = GetSessionState(sessionId);
-        _checkpointService.CreateCheckpoint(
+        Checkpoint checkpoint = _checkpointService.CreateCheckpoint(
             sessionId,
             "Before recipe update",
             session.Plan,
@@ -975,6 +992,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         context.LastDiffAfter = recipe;
         context.LastDiffTitle = "Recipe State Change";
         _dispatcher.Dispatch(new SessionActions.SetDiffPreviewArtifactAction(sessionId, context.LastDiffBefore, recipe, context.LastDiffTitle));
+        StartUndoGracePeriod(sessionId, checkpoint, "Recipe updated");
 
         if (string.Equals(SessionSelectors.GetActiveSessionId(_sessionStore.Value), sessionId, StringComparison.Ordinal))
         {
@@ -989,13 +1007,14 @@ public sealed class AgentStreamingService : IAgentStreamingService
         SessionState session = GetSessionState(sessionId);
         if (session.CurrentDocumentState is null)
         {
-            _checkpointService.CreateCheckpoint(
+            Checkpoint checkpoint = _checkpointService.CreateCheckpoint(
                 sessionId,
                 "Before document update",
                 session.Plan,
                 GetRecipeCheckpointSnapshot(sessionId),
                 session.CurrentDocumentState,
                 session.Messages.Count);
+            StartUndoGracePeriod(sessionId, checkpoint, "Document preview added");
         }
 
         _dispatcher.Dispatch(new SessionActions.SetDocumentAction(sessionId, docState));

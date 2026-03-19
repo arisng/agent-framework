@@ -11,6 +11,27 @@ namespace AGUIDojoClient.Store.SessionManager;
 /// <summary>Represents before and after values for a plan diff preview.</summary>
 public sealed record DiffState(object? Before, object? After, string Title = "State Diff");
 
+/// <summary>
+/// Represents a time-limited undo affordance for the latest checkpointed change.
+/// </summary>
+public sealed record PendingUndoState
+{
+    /// <summary>Gets the checkpoint identifier that will be restored when the user undoes the change.</summary>
+    public required string CheckpointId { get; init; }
+
+    /// <summary>Gets the label of the checkpoint that will be restored.</summary>
+    public required string CheckpointLabel { get; init; }
+
+    /// <summary>Gets the user-facing summary of the applied change.</summary>
+    public required string Summary { get; init; }
+
+    /// <summary>Gets when the grace period started.</summary>
+    public required DateTimeOffset StartedAt { get; init; }
+
+    /// <summary>Gets when the grace period expires.</summary>
+    public required DateTimeOffset ExpiresAt { get; init; }
+}
+
 /// <summary>Enumerates the artifact tabs that can be shown for a session.</summary>
 public enum ArtifactType
 {
@@ -43,7 +64,7 @@ public sealed record SessionState
     public ConversationTree Tree { get; init; } = new();
 
     /// <summary>Gets the active branch messages as a flat list (computed from the tree).</summary>
-    public ImmutableList<ChatMessage> Messages => Tree.GetActiveBranchMessages().ToImmutableList();
+    public ImmutableList<ChatMessage> Messages => this.Tree.GetActiveBranchMessages().ToImmutableList();
 
     /// <summary>Gets the in-progress assistant message for the session.</summary>
     public ChatMessage? CurrentResponseMessage { get; init; }
@@ -95,4 +116,7 @@ public sealed record SessionState
 
     /// <summary>Gets the audit trail entries for this session.</summary>
     public ImmutableList<AuditEntry> AuditTrail { get; init; } = ImmutableList<AuditEntry>.Empty;
+
+    /// <summary>Gets the active undo grace period, if any.</summary>
+    public PendingUndoState? PendingUndo { get; init; }
 }

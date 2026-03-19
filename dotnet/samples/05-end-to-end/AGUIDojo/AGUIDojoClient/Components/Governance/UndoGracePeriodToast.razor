@@ -1,0 +1,139 @@
+@using AGUIDojoClient.Store.SessionManager
+@implements IDisposable
+
+@if (PendingUndo is not null)
+{
+    <section class="undo-grace-toast"
+             role="status"
+             aria-live="polite"
+             aria-atomic="true"
+             data-testid="undo-grace-toast">
+        <div class="undo-grace-toast__icon" aria-hidden="true">
+            <LucideIcon Name="history" Size="18" />
+        </div>
+
+        <div class="undo-grace-toast__content">
+            <div class="undo-grace-toast__header">
+                <span class="undo-grace-toast__title">@PendingUndo.Summary</span>
+                <span class="undo-grace-toast__countdown">@FormatRemaining(Remaining)</span>
+            </div>
+
+            <p class="undo-grace-toast__message">
+                Undo restores the checkpoint captured before this change.
+            </p>
+            <div class="undo-grace-toast__checkpoint">@PendingUndo.CheckpointLabel</div>
+
+            <div class="undo-grace-toast__actions">
+                <BbButton Variant="ButtonVariant.Secondary"
+                          Size="ButtonSize.Small"
+                          Class="undo-grace-toast__undo-btn"
+                          OnClick="@(() => OnUndo.InvokeAsync(PendingUndo.CheckpointId))">
+                    <LucideIcon Name="undo-2" Size="14" />
+                    Undo
+                </BbButton>
+                <BbButton Variant="ButtonVariant.Ghost"
+                          Size="ButtonSize.Small"
+                          Class="undo-grace-toast__dismiss-btn"
+                          OnClick="@(() => OnDismiss.InvokeAsync())">
+                    Keep changes
+                </BbButton>
+            </div>
+
+            <div class="undo-grace-toast__progress" aria-hidden="true">
+                <div class="undo-grace-toast__progress-bar" style="@GetProgressStyle()"></div>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    private static readonly TimeSpan GracePeriod = TimeSpan.FromSeconds(5);
+    private CancellationTokenSource? _renderLoopCts;
+
+    [Parameter]
+    public PendingUndoState? PendingUndo { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnUndo { get; set; }
+
+    [Parameter]
+    public EventCallback OnDismiss { get; set; }
+
+    private TimeSpan Remaining
+    {
+        get
+        {
+            if (PendingUndo is null)
+            {
+                return TimeSpan.Zero;
+            }
+
+            TimeSpan remaining = PendingUndo.ExpiresAt - DateTimeOffset.UtcNow;
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (PendingUndo is null)
+        {
+            StopRenderLoop();
+            return;
+        }
+
+        StartRenderLoop();
+    }
+
+    public void Dispose() => StopRenderLoop();
+
+    private string GetProgressStyle()
+    {
+        if (PendingUndo is null)
+        {
+            return "width: 0%;";
+        }
+
+        double elapsedMs = (DateTimeOffset.UtcNow - PendingUndo.StartedAt).TotalMilliseconds;
+        double percentRemaining = 100 - Math.Clamp(elapsedMs / GracePeriod.TotalMilliseconds * 100, 0, 100);
+        return FormattableString.Invariant($"width: {percentRemaining:F1}%;");
+    }
+
+    private static string FormatRemaining(TimeSpan remaining)
+    {
+        double seconds = Math.Max(0, remaining.TotalSeconds);
+        return $"{seconds:0.0}s left";
+    }
+
+    private async Task PumpAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(100));
+            while (PendingUndo is not null && await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void StartRenderLoop()
+    {
+        if (_renderLoopCts is not null)
+        {
+            return;
+        }
+
+        _renderLoopCts = new CancellationTokenSource();
+        _ = PumpAsync(_renderLoopCts.Token);
+    }
+
+    private void StopRenderLoop()
+    {
+        _renderLoopCts?.Cancel();
+        _renderLoopCts?.Dispose();
+        _renderLoopCts = null;
+    }
+}
