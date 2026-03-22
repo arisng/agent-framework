@@ -1,6 +1,8 @@
 # AGUIDojo system design
 
-This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session architecture the roadmap is targeting next.
+This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the roadmap is targeting next.
+
+For the supporting model-picker and MAF correlation research that informs this design, see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`.
 
 ## 1. Scope and status
 
@@ -8,12 +10,17 @@ This document consolidates the legacy AGUIDojo design notes into one implementat
 - AGUIDojo is a unified `/chat` sample. `AGUIDojoClient` is a Blazor Server BFF, `AGUIDojoServer` is a Minimal API backend, and `AGUIDojo.AppHost` wires both together.
 - `AGUIDojoClient` sends AG-UI traffic directly to `AGUIDojoServer /chat`. YARP proxies only `/api/*` business endpoints.
 - Client session state lives in Fluxor and is hydrated from browser storage. The server does not yet own chat-session identity or persistence.
+- Model selection is process-wide today. `ChatClientAgentFactory` creates one provider-bound `ChatClient` from startup configuration and all sessions use it.
+- Context handling is still transitional: the client has a history-slicing continuity bug, and the server uses `ContextWindowChatClient` with a fixed 80 non-system-message cap rather than a model-aware token policy.
 - Browser storage is a convenience cache, not the system of record.
 - `/chat` is the canonical server shape. The older seven-endpoint AG-UI layout is legacy only.
 
 **TARGET**
 - Phase 0 fixes multi-turn continuity by sending full active-branch history on every `/chat` turn.
 - Phase 1+ moves primary session ownership into `AGUIDojoServer` via a Chat Sessions module backed by SQLite for sample scope.
+- Per-session model preference becomes part of session metadata and later part of server-owned session records.
+- `/chat` remains the only AG-UI route; requested model should travel as per-request metadata on that route rather than spawning per-model endpoints.
+- Context-window policy moves fully server-side: the client sends the full active branch, the server selects the effective model, and compaction/trimming happens on the server.
 - Auth and ownership remain simulated only.
 - `ConversationId`, `threadId`, `runId`, and workflow/Durable Task IDs remain correlation-only.
 
@@ -64,7 +71,7 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 2. `AgentStreamingService` flattens the active branch from the session's `ConversationTree`, reuses `ChatOptions.ConversationId` when present, and calls `AGUIChatClient.GetStreamingResponseAsync(...)` against `SERVER_URL/chat`.
 3. `AGUIDojoServer/Program.cs` maps `/chat` to `ChatClientAgentFactory.CreateUnifiedAgent(...)`.
 4. The unified pipeline currently includes:
-   - `ContextWindowChatClient` with a simple non-system message cap
+   - `ContextWindowChatClient` with a fixed 80-message non-system cap (simple sliding window, not model-aware)
    - `ToolResultStreamingChatClient`, which emits `FunctionResultContent` into the stream instead of hiding it inside tool invocation
    - `MultimodalAttachmentAgent`
    - `ServerFunctionApprovalAgent`
@@ -74,6 +81,17 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
    - OpenTelemetry instrumentation
 5. The server streams text, tool calls, tool results, approval requests/responses, plan snapshots/deltas, recipe/shared-state snapshots, document preview snapshots, author metadata, and `ConversationId`.
 6. The client turns those updates into session-state mutations and renders them in either the message list or the artifact canvas.
+
+### Model-selection and context-policy direction
+
+**TARGET**
+- The client remains a session-oriented UI shell, but the model picker is only a preference/control surface. It should not become the place where token budgets are enforced.
+- The transport seam stays on the existing `/chat` request. In MAF terms, the intended shape is AG-UI forwarded/request metadata (`RunAgentInput.ForwardedProperties` on the wire, then `ChatOptions.AdditionalProperties["ag_ui_forwarded_properties"]` at the server boundary).
+- Because the current `AGUIChatClient` does not automatically forward arbitrary `ChatOptions.AdditionalProperties`, AGUIDojo will likely need a thin client-side extension or wrapper when the model picker is added.
+- The server-side model-routing seam is per-request chat-client selection. `ChatOptions.ModelId` is useful companion metadata, but provider-bound OpenAI/Azure clients still require swapping the underlying `IChatClient`; the relevant MAF seam is `ChatClientAgentRunOptions.ChatClientFactory` or equivalent per-request factory logic around the agent run.
+- The current `ContextWindowChatClient` is a transitional wrapper. The research-backed target is a server-side compaction pipeline (`CompactionProvider` plus `PipelineCompactionStrategy`) so older tool turns and results can be compacted with model-aware thresholds instead of a fixed message cap.
+- If AGUIDojo adopts MAF compaction, it should choose the `AIContextProviders` mount point deliberately so behavior during tool-call loops is explicit and testable.
+- Client-side history slicing is explicitly the wrong long-term boundary. The server needs the full active branch before it can decide whether to summarize, slide, or truncate.
 
 **Why this wrapper stack exists**
 - Tool execution is server-side, but tool results still need to be visible in the AG-UI stream.
@@ -93,6 +111,11 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 - Session switching is first-class. The sidebar changes the active session, clears unread count for the foreground session, and lets other sessions continue streaming in the background.
 - Status values such as `Created`, `Active`, `Streaming`, `Background`, `Completed`, `Error`, and `Archived` are UI/session lifecycle markers, not server-owned records.
 - Concurrency is managed client-side today: up to three active streams, with a small queue for overflow.
+
+**TARGET**
+- Session metadata should gain model-preference information (for example model ID and display name) without changing the single `/chat` route shape.
+- The client may cache and render that preference, but once server-owned sessions exist the server becomes the authority for both the selected model and the effective model that actually served each turn.
+- The client keeps its session-scoped rendering role; it does not become the owner of token budgeting, compaction thresholds, or downgrade safety.
 
 ### Artifact rendering model
 
@@ -153,10 +176,12 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 - Session archive/delete is still client-side cleanup: the client marks metadata as archived and deletes the local conversation record. There is no server archive API yet.
 - Browser storage is therefore **not** a system of record. It cannot provide authoritative history, cross-device resume, or durable governance/audit data.
 - Attachment persistence is also temporary today: uploaded files live in an in-memory file store, so attachments disappear after a server restart.
+- There is no per-session model preference or compaction state to restore; the effective model is simply whatever the server process was configured with at startup.
 
 **TARGET**
 - Browser persistence becomes cache, draft, and best-effort import support only.
 - Durable session ownership moves to the server.
+- Server-owned session records eventually hold selected-model metadata and, where it helps the sample, model-switch / compaction audit facts.
 
 ## 6. Critical continuity bug and why it matters
 
@@ -180,16 +205,28 @@ After a turn completes, the client stores `StatefulMessageCount = session.Messag
   - approval decisions
   - plan/recipe/document state already discussed in the branch
 - The bug is not subtle: second and later turns can forget earlier instructions inside the same session.
+- It also blocks safe per-session model switching: a server-side compaction policy can only make good decisions if it sees the full active branch before trimming or summarizing it.
 
 **TARGET / Phase 0**
 - Always send the full active-branch history on every `/chat` turn.
 - Keep context-window trimming as an explicit server policy, not a client-side skip heuristic.
 - Apply the same rule to edit/regenerate, retry, and approval re-entry paths.
+- Treat that invariant as a prerequisite for future model-picker and server-side compaction work.
 
 ## 7. Target session architecture
 
 **TARGET**
 The next real architecture step is not "more tools." It is a server-owned Chat Sessions module inside `AGUIDojoServer`.
+
+### Target model-selection and context policy
+
+- Per-session model selection is part of the intended chat-session experience, but it stays inside the same unified `/chat` contract.
+- AGUIDojo will need an application-owned model catalog / registry because MAF does not provide model-to-context-window metadata.
+- The client-side model picker should read from a small server model catalog, store the user's preference per session, and send that preference with each `/chat` turn.
+- The server remains authoritative: it routes the request to the effective provider client, reports the effective `ModelId` back in the stream when available, and can persist that fact with session or audit data later.
+- When a session switches to a smaller-context model, the server must re-evaluate the current branch against that model's safe input budget before the provider call.
+- Ordered server-side compaction (tool-result collapse -> summarization -> sliding window -> truncation, or equivalent) is the intended policy shape, but exact thresholds remain implementation detail.
+- Client UX can warn about likely downgrades, but the client should not count tokens or perform the actual compaction.
 
 ### Phase shape
 
@@ -200,14 +237,20 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 - Add a Chat Sessions module with create/list/get/archive semantics.
 - Move primary business session ID issuance from the client to the server.
 - Use SQLite for sample scope, but keep the schema relational and portable to SQL Server or PostgreSQL later.
+- Add room for model metadata in the server-owned session contract and expose a small model catalog for the future picker.
 
 **Phase 2**
 - Persist the canonical branching conversation graph on the server.
 - Store the active leaf/branch explicitly.
 - Preserve richer message payloads than the current browser DTOs.
+- Make requested model part of the `/chat` request contract via forwarded/request metadata on the single route.
+- Use per-request chat-client selection on the server so different sessions can target different models without separate endpoints.
+- Persist enough metadata to know which model actually served assistant turns when that becomes useful.
 
 **Phase 3**
 - Persist approvals, audit entries, and session artifact projections/snapshots.
+- Replace the fixed message-cap wrapper with a model-aware compaction pipeline when the sample is ready to make context policy durable and explainable.
+- Capture model-switch and compaction events in audit/projection state where that materially helps the sample.
 
 **Phase 4**
 - Add simulated current-user/current-tenant ownership context on server records.
@@ -224,7 +267,9 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 | Concern | CURRENT | TARGET |
 | --- | --- | --- |
 | Session identity | client-generated, effectively browser-owned | server-issued business session ID |
+| Model preference | no per-session setting; one server startup model for all sessions | per-session preference owned by server records and cached in the client UI |
 | Conversation graph | client-only `ConversationTree` | server-owned branching graph in SQLite |
+| Context-window policy | client skip heuristic plus fixed 80-message server cap | full-history submission plus server-owned, model-aware compaction |
 | Message fidelity | good live state, lossy browser persistence | durable message payloads with tool/state context |
 | Approval history | transient UI/session state | durable approval records |
 | Audit trail | transient UI/session state | durable audit records |
@@ -234,10 +279,10 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 ### Practical sample-scope store
 
 A pragmatic SQLite-backed module can stay small and still demonstrate the right boundary:
-- `ChatSession`
+- `ChatSession` (including selected-model metadata)
 - `ConversationNode` or equivalent parent-linked message record
 - `ApprovalDecision`
-- `AuditEvent`
+- `AuditEvent` (including model-switch / compaction events if persisted)
 - `ArtifactProjection` / `ArtifactSnapshot`
 - `RuntimeLink`
 
@@ -255,6 +300,9 @@ The important point is not the exact table names. The important point is that th
 - Ownership/auth remains simulated only. If the sample needs user or tenant identity, use seeded/fake current-user and current-tenant context on server records.
 - Durable Task/workflow integration should be additive: link sessions to workflow/entity records when useful, but do not let orchestration runtime IDs become the primary session key.
 - `ConversationId`, `threadId`, `runId`, Durable Task IDs, and workflow IDs stay correlation-only.
+- Keep one `/chat` route even after model picker exists; the transport seam is per-request metadata, not a per-model endpoint matrix.
+- The relevant MAF routing seam is `ChatClientAgentRunOptions.ChatClientFactory`; `ChatOptions.ModelId` can accompany the request but does not replace provider-specific client selection for OpenAI/Azure.
+- The relevant MAF context seam is `CompactionProvider` plus ordered compaction strategies; keeping both that and `ContextWindowChatClient` long-term would double-trim the history.
 
 ### Identifier boundaries
 
@@ -273,12 +321,14 @@ The important point is not the exact table names. The important point is that th
 - durable attachment/blob storage
 - cross-device session authority
 - real auth or real tenant isolation
+- a client-side tokenizer or client-side model-aware compaction policy
 
 **Still deferred after the next session milestones**
 - replay/collaboration features such as mid-run join, participant cursors, or fine-grained event journaling
 - making browser storage lossless
 - treating orchestration runtime IDs as product-facing session identity
 - reviving the old multi-endpoint AG-UI server shape
+- multiplying `/chat` into one endpoint per model
 
 ## 10. Key code touchpoints
 
@@ -286,8 +336,10 @@ The important point is not the exact table names. The important point is that th
 - `.issues/260321_aguidojo-roadmap.md` - canonical roadmap and phase ordering
 - `AGUIDojo.AppHost/AppHost.cs` - Aspire wiring between client and server
 - `AGUIDojoClient/Program.cs` - Blazor Server BFF setup, direct `/chat` client, YARP proxy setup
+- `AGUIDojoClient/Services/AGUIChatClientFactory.cs` - current AG-UI transport client creation; future forwarded model metadata likely attaches here or in a thin wrapper around it
 - `AGUIDojoServer/Program.cs` - `/api/*` endpoints and unified `app.MapAGUI("/chat", ...)`
 - `AGUIDojoServer/ChatClientAgentFactory.cs` - unified tool registry and wrapper pipeline
+- `AGUIDojoServer/ContextWindowChatClient.cs` - current fixed message-cap wrapper that the research points toward replacing with server-side compaction
 - `AGUIDojoServer/ToolResultStreamingChatClient.cs` - tool-result streaming bridge
 - `AGUIDojoServer/Multimodal/MultimodalAttachmentAgent.cs` - attachment resolution into multimodal model input
 - `AGUIDojoClient/Services/AgentStreamingService.cs` - direct AG-UI streaming, approvals, notifications, and the current history-skipping bug

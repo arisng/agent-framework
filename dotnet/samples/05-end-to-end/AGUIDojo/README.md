@@ -71,12 +71,34 @@ Artifacts appear on demand from the unified stream:
 - **Data grid** → tabbed table artifact
 - **Charts / forms / weather** → message or canvas rendering via `ToolComponentRegistry`
 
+## Model and context-window direction
+
+Today the sample still behaves as a **single-model server**:
+
+- `ChatClientAgentFactory` creates one provider-bound `ChatClient` from startup configuration (`OPENAI_MODEL` or Azure deployment) and shares it across sessions.
+- `AGUIDojoClient` does not yet expose a per-session model picker.
+- `AGUIDojoServer` currently uses `ContextWindowChatClient` with a fixed 80 non-system-message cap before model execution.
+
+Intended direction for the unified `/chat` route:
+
+- keep one `POST /chat`; model choice should travel as request metadata on that route, not as separate per-model endpoints
+- treat model selection as a per-session preference once server-owned sessions exist, with the client mainly caching and displaying the current choice
+- send full active-branch history from the client and keep context-window / compaction policy on the server
+- use MAF seams for transport, per-request chat-client selection, and compaction rather than client-side token counting or history slicing
+- replace the fixed message cap over time with model-aware compaction so switching to smaller-context models can be handled safely
+
+Related docs:
+
+- [System design](./.docs/system-design.md)
+- [Implementation plan](./.docs/implementation-plan.md)
+- [Research: AGUIDojo LLM picker architecture and MAF alignment](./.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md)
+
 ## Running locally
 
 ### Prerequisites
 
 - .NET 10 SDK
-- One configured model provider for `AGUIDojoServer`
+- One configured model provider for `AGUIDojoServer` (the current sample still uses one process-wide default model)
 
 Example server environment:
 
@@ -134,3 +156,5 @@ Try these in the chat UI:
 - Business APIs still flow through YARP on the client.
 - AG-UI streaming still goes directly from client to server to avoid proxy buffering.
 - Session metadata may retain a route hint for existing worktree state, but all new traffic is sent to `/chat`.
+- Today the effective model is chosen at server startup; the per-session model picker described in `.docs/system-design.md` and `.docs/implementation-plan.md` is target architecture, not current behavior.
+- The context-window direction is full-history submission plus server-side compaction; the existing fixed message cap is a transitional implementation.

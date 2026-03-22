@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This is the consolidated execution plan for evolving the AGUIDojo sample. It supersedes the older v1/v2/v3 implementation-plan sprawl and is aligned to the current roadmap (`.issues/260321_aguidojo-roadmap.md`), the current README, and the unified `POST /chat` implementation. It is an execution playbook, not a duplicate system design.
+This is the consolidated execution plan for evolving the AGUIDojo sample. It supersedes the older v1/v2/v3 implementation-plan sprawl and is aligned to the current roadmap (`.issues/260321_aguidojo-roadmap.md`), the current README, the unified `POST /chat` implementation, and the current model-picker / context-window research. It is an execution playbook, not a duplicate system design.
+
+The current research baseline for model selection, model-aware compaction, and MAF integration is captured in `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`.
 
 The plan should stay synchronized with the sample as each phase lands. README, roadmap notes, and implementation must describe the same architecture and sequencing.
 
@@ -12,6 +14,10 @@ The plan should stay synchronized with the sample as each phase lands. README, r
 - **Auth and identity stay simulated.** Use seeded or fake current-user/current-tenant context when needed; do not turn this into a real auth rollout plan.
 - **SQLite is the sample persistence choice.** Keep the model relational and portable to SQL Server or PostgreSQL later.
 - **Browser storage becomes secondary over time.** `localStorage` and IndexedDB remain useful for cache, drafts, and best-effort import, not as the long-term system of record.
+- **Single `/chat` route stays.** Model selection must travel on the existing route as request metadata; do not split AGUIDojo into one endpoint per model.
+- **Server owns context budgeting.** The client may expose a model picker, but token counting, compaction, and downgrade safety stay server-side.
+- **Use MAF seams where they exist.** Prefer AG-UI forwarded/request metadata, `ChatClientFactory`, and `CompactionProvider` / pipeline compaction over bespoke transport shapes.
+- **Model metadata is application-owned.** MAF does not ship a model registry or context-window catalog; keep AGUIDojo's catalog small and sample-scoped.
 - **Validation stays pragmatic.** Prefer focused server tests plus lightweight manual validation. A broader `AGUIDojoClient.Tests` strategy is deferred.
 - **Replay and collaboration are optional.** Defer replay, multi-device collaboration, fine-grained event journaling, and similar features unless they directly unblock the foundation.
 - **Runtime IDs are not business IDs.** AG-UI `threadId`, `runId`, `ConversationId`, Durable Task IDs, and workflow instance IDs remain correlation/runtime references.
@@ -26,6 +32,8 @@ The plan should stay synchronized with the sample as each phase lands. README, r
 - Conversation state already has a branching shape in the client, but that branching state is still client-owned.
 - Browser persistence today uses `localStorage` for metadata/active-session hints and IndexedDB for conversation trees.
 - `AGUIDojoServer` hosts `/chat` plus business APIs, but it does **not** yet own a Chat Sessions module or a primary chat-session store.
+- The server currently chooses one model at startup (`OPENAI_MODEL` or Azure deployment) and all sessions share that provider-bound client.
+- Context trimming currently relies on `ContextWindowChatClient`, a fixed 80 non-system-message wrapper rather than a model-aware token policy.
 
 ### Blocking gaps
 
@@ -45,11 +53,21 @@ The plan should stay synchronized with the sample as each phase lands. README, r
    - There is no canonical create/list/get/archive session API surface.
    - Cross-device resume, durable hydration, archival, and server-authoritative linking to workflows or business entities are therefore not in place.
 
+4. **There is no per-session model picker or model-aware context policy yet.**
+   - No model catalog or `/api/models` contract exists yet.
+   - The `/chat` transport does not yet carry a session-selected model.
+   - `ChatClientAgentFactory` binds a single provider client at startup.
+   - `ContextWindowChatClient` is a fixed message cap, not a model-aware compaction pipeline.
+
 ## Guiding principles
 
 - **Fix continuity before durability.** Do not harden persistence around already-truncated turn submission.
 - **Move ownership to the server incrementally.** Keep the sample runnable while shifting the source of truth from client/browser to server/SQLite.
 - **Preserve the canonical branching model.** Do not flatten conversation history into a single transcript just to simplify storage.
+- **Keep one `/chat` route.** Model selection is request/session metadata, not endpoint topology.
+- **Send full branch, compact on the server.** The client should not become the model-aware tokenizer or compaction engine.
+- **Separate preference from execution.** The client can express a preferred model; the server decides which provider client actually serves the turn and records the outcome.
+- **Use MAF seams before custom protocol.** Transport metadata, `ChatClientFactory`, and `CompactionProvider` should do most of the work; AGUIDojo only fills the gaps.
 - **Persist enough fidelity for the current sample.** Text-only storage is not enough once approvals, tools, data content, and artifacts matter.
 - **Keep business identity separate from runtime correlation.** Session identity must not collapse into AG-UI or workflow runtime IDs.
 - **Prefer thin, portable foundations.** Use the simplest SQLite-backed relational model that can grow cleanly into SQL Server/PostgreSQL later.
@@ -75,12 +93,14 @@ Make the unified `/chat` path reliably stateful by always sending the full activ
   - any other re-entry path that resumes the same session branch
 - Treat `ConversationId` and AG-UI thread/run IDs as correlation only, not as permission to omit prior history.
 - If prompt-size management is needed later, handle it with an explicit server-side context-window policy, not client-side skipping.
+- Treat this full-history invariant as the prerequisite for any later model-picker or server-side compaction work.
 
 **Acceptance / validation**
 
 - A multi-turn conversation on `/chat` retains prior instructions and decisions across second and later turns.
 - Approval, rejection, retry, and edit-and-regenerate paths continue from the same full branch context.
 - Lightweight regression validation covers at least one ordinary multi-turn flow and one re-entry flow.
+- The invariant is clear: the server sees the whole active branch and is free to compact it later under explicit policy.
 
 **Notable risks / dependencies**
 
@@ -106,12 +126,15 @@ Move primary session ownership to `AGUIDojoServer` so the sample has a server-is
 - Shift hydration and session listing toward the server-authoritative index.
 - Keep browser storage as cache/draft/import support rather than the owner of identity.
 - Keep the initial model thin: metadata, lifecycle status, timestamps, and enough server linkage to support later phases.
+- Add a small model catalog / registry endpoint (sample-scoped, likely config-backed) so the client can render a future model picker without hardcoding model facts in the browser.
+- Leave room in session summary/detail contracts for selected-model metadata as soon as server-owned session identity exists.
 
 **Acceptance / validation**
 
 - New sessions receive a server-owned session ID.
 - Refresh or a second browser can recover the server session list without depending on prior browser metadata.
 - Archive behavior is represented by the server lifecycle, not only client-side removal.
+- The server contracts are ready to surface selected-model metadata once the picker lands.
 - Validation remains lightweight: focused server/API checks plus a small end-to-end smoke pass.
 
 **Notable risks / dependencies**
@@ -135,6 +158,9 @@ Persist the server-owned conversation as the canonical branching graph, with eno
   - structured/data content used by current artifacts
   - approval-related message context
   - future multimodal/tool extensibility where practical
+- Introduce per-turn model preference transport on the existing `/chat` route using request metadata / forwarded properties.
+- Route provider-bound clients per request on the server (for example via `ChatClientFactory` and a model-keyed client cache) so different sessions can target different models without multiple endpoints.
+- Persist enough model metadata to know which model served assistant turns when that becomes useful for audit and rehydration.
 - Keep `ConversationId`, `threadId`, `runId`, Durable Task IDs, and workflow IDs as linked correlations, not primary keys.
 - Rehydrate the client from server-owned branch state first; browser data becomes optional cache/import input.
 
@@ -143,11 +169,13 @@ Persist the server-owned conversation as the canonical branching graph, with eno
 - Edit-and-regenerate creates a durable alternate branch that survives refresh.
 - Reloading a session restores the active branch correctly.
 - The persisted model keeps enough fidelity for current tool and artifact flows to rehydrate without collapsing to plain text only.
+- Different sessions can request different models through the same `/chat` endpoint once the picker lands.
 
 **Notable risks / dependencies**
 
 - Rich message storage can sprawl quickly; persist what the sample needs now, not every possible future payload.
 - Browser-to-server import should be best-effort only; do not block on lossless migration from old local formats.
+- `ChatOptions.ModelId` alone is not sufficient for provider-bound OpenAI/Azure clients; routing has to swap the underlying client, not only annotate the request.
 
 ### Phase 3 -- Persist approvals, audit, artifacts, and session projections
 
@@ -159,6 +187,9 @@ Make server persistence useful for the richer AGUIDojo experience, not just for 
 
 - Persist approval requests, decisions, and key decision metadata.
 - Persist audit entries and important timestamps tied to approvals, tool actions, and session lifecycle.
+- Replace or supersede `ContextWindowChatClient` with a server-side compaction pipeline once the sample is ready for model-aware context management.
+- Use MAF compaction seams (`CompactionProvider` plus ordered strategies such as tool-result compaction, summarization, sliding window, and truncation) so switching from larger- to smaller-context models is handled server-side.
+- Persist model-switch and compaction audit facts where they materially help explainability/debuggability.
 - Persist session-scoped artifact/projection state for the surfaces that matter in the current sample, such as:
   - plans
   - recipe/shared state
@@ -172,12 +203,14 @@ Make server persistence useful for the richer AGUIDojo experience, not just for 
 
 - Reloading a session can restore approval and audit context without relying on the original browser tab.
 - Core artifact surfaces reopen with meaningful state instead of only message text.
+- Switching to a smaller model does not depend on client-side history slicing; the server compacts or fails explicitly within policy.
 - Validation remains pragmatic: targeted server checks and focused manual walkthroughs.
 
 **Notable risks / dependencies**
 
 - Artifact scope can balloon; prioritize current sample surfaces over generic replay architecture.
 - Avoid turning this phase into a full event-sourcing or perfect-replay effort.
+- Avoid double compaction by leaving both `ContextWindowChatClient` and a new compaction pipeline active longer than necessary.
 
 ### Phase 4 -- Add simulated ownership and workflow/entity links
 
@@ -217,6 +250,7 @@ Finish the transition to a server-owned sample foundation and keep the operation
 
 - Demote browser storage to cache, draft support, offline convenience, and best-effort import/recovery only.
 - Document the SQLite-backed persistence model and how it maps cleanly to SQL Server/PostgreSQL later.
+- Document the model catalog and context-window policy at the same level as the persistence portability story.
 - Clarify minimal operational expectations for local data lifecycle, reset, and inspection.
 - Update README, roadmap notes, and implementation-facing docs as each phase lands so the sample story stays current.
 - Reconfirm which optional replay/collaboration capabilities remain deferred.
@@ -238,9 +272,21 @@ Finish the transition to a server-owned sample foundation and keep the operation
   - Primary business session ID is server-issued.
   - `ConversationId`, AG-UI thread/run IDs, Durable Task IDs, and workflow IDs are stored only as correlations or links.
 
+- **Model catalog and selection**
+  - Selected model is per-session in UX terms, but server-authoritative in architecture terms.
+  - Keep the catalog small and sample-scoped (hardcoded or configuration-backed is fine for AGUIDojo).
+
 - **Persistence boundary**
   - SQLite is the system of record for AGUIDojo sample scope.
   - Keep schema choices portable: avoid coupling the domain model to SQLite-only behavior where possible.
+
+- **Transport and routing**
+  - Preferred transport seam is AG-UI forwarded/request metadata on `/chat`; if the current `AGUIChatClient` cannot pass it directly, add a thin AGUIDojo extension rather than new endpoints.
+  - `ChatOptions.ModelId` is useful metadata but not sufficient on its own for OpenAI/Azure model switching; pair it with a model-keyed `IChatClient` cache via `ChatClientFactory`.
+
+- **Context-window policy**
+  - Replace client-side history slicing and fixed message caps with full-history submission plus server-side compaction.
+  - `ContextWindowChatClient` is transitional; the target is `CompactionProvider` / `PipelineCompactionStrategy` with model-aware thresholds and summarization/truncation backstops.
 
 - **Browser transition strategy**
   - Continue reading existing browser-local data only as a convenience or best-effort import source during rollout.
@@ -270,13 +316,15 @@ Finish the transition to a server-owned sample foundation and keep the operation
 
 ## Open questions / decisions to revisit
 
-1. What is the thinnest Chat Sessions API and SQLite schema that keeps the sample simple while staying portable later?
+1. What is the thinnest Chat Sessions API and SQLite schema that keeps the sample simple while staying portable later, including selected-model metadata?
 2. Should session creation be explicit before first prompt, or should the first `/chat` turn create the server session implicitly?
-3. What exact rich-message shape is sufficient for the current sample without over-designing for future multimodal cases?
-4. Which artifact surfaces must be durable in the first rich-persistence milestone, and which can remain derived or deferred?
+3. What exact rich-message and model/compaction metadata are sufficient for the current sample without over-designing for future multimodal cases?
+4. Which artifact surfaces and audit facts (including model-switch / compaction events) must be durable in the first rich-persistence milestone, and which can remain derived or deferred?
 5. How much of today's browser-local data is worth importing once server persistence exists?
-6. If the same server-owned session changes from multiple browsers later, should conflicts auto-branch, reject stale writes, or use another lightweight rule?
-7. What minimum README/roadmap/ops updates should be required at the end of every phase to prevent drift?
+6. What is the thinnest client-side transport change needed to send model preference on `/chat` — extend `AGUIChatClient`, wrap it, or use another small request-metadata seam?
+7. What safety margin should drive model-aware compaction thresholds for the sample's supported models?
+8. If the same server-owned session changes from multiple browsers later, should conflicts auto-branch, reject stale writes, or use another lightweight rule?
+9. What minimum README/roadmap/ops updates should be required at the end of every phase to prevent drift?
 
 ## Definition of done for the consolidated plan
 
@@ -284,9 +332,12 @@ The consolidated plan is complete when AGUIDojo can be evolved phase by phase wi
 
 - `/chat` always preserves within-session continuity by sending full active-branch history.
 - The server owns chat session identity and lifecycle through a Chat Sessions module.
+- Per-session model preference can be expressed on the single `/chat` route without multiplying endpoints.
+- The server routes model requests and owns context-window policy through compaction, not client-side history slicing.
 - SQLite is the sample system of record, with a portable relational model.
 - Canonical branching conversation state lives on the server with enough fidelity for the current sample.
 - Approvals, audit, and key artifact/projection state are durably recoverable.
+- Selected/effective model and material model-switch / compaction facts are recoverable at the level the sample needs.
 - Ownership and integration links are modeled as simulated sample concerns, not real auth plumbing.
 - Browser storage is secondary.
 - Optional replay/collaboration features remain deferred unless they become foundational.
