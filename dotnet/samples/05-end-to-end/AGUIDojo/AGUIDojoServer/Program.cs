@@ -40,12 +40,16 @@
 using System.Text;
 using AGUIDojoServer;
 using AGUIDojoServer.Api;
+using AGUIDojoServer.ChatSessions;
+using AGUIDojoServer.Data;
+using AGUIDojoServer.Models;
 using AGUIDojoServer.Services;
 using AGUIDojoServer.Tools;
 using Microsoft.Agents.AI.Hosting.AGUI.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpLogging;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -296,6 +300,7 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 // Register in-memory file storage for multimodal attachments
 builder.Services.AddSingleton<IFileStorageService, InMemoryFileStorageService>();
+builder.Services.AddSingleton<IModelRegistry, ModelRegistry>();
 
 // Register DI-compatible AI Tool classes as Singleton
 // Tools use IHttpContextAccessor to resolve scoped services at execution time (Q1.15-Q1.18)
@@ -309,6 +314,10 @@ builder.Services.AddSingleton<ChatClientAgentFactory>();
 
 // Register IChatClient for lightweight LLM calls (e.g., session title generation)
 builder.Services.AddSingleton<IChatClient>(sp => sp.GetRequiredService<ChatClientAgentFactory>().GetChatClient());
+
+builder.Services.AddDbContext<ChatSessionsDbContext>(options =>
+    options.UseSqlite("Data Source=aguidojo-sessions.db"));
+builder.Services.AddScoped<ChatSessionService>();
 
 // Add health checks for operational monitoring
 // Health checks verify:
@@ -340,6 +349,12 @@ builder.Services.AddHealthChecks()
     }, tags: ["ready"]);
 
 WebApplication app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    ChatSessionsDbContext db = scope.ServiceProvider.GetRequiredService<ChatSessionsDbContext>();
+    await db.Database.EnsureCreatedAsync();
+}
 
 // -----------------------------------------------------------------------------
 // ERROR HANDLING MIDDLEWARE
@@ -449,6 +464,7 @@ app.UseHttpLogging();
 // -----------------------------------------------------------------------------
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<ChatSessionMiddleware>();
 
 // Map health check endpoint for operational monitoring
 // Returns aggregate status of all health checks
@@ -462,6 +478,8 @@ apiGroup.MapWeatherEndpoints();
 apiGroup.MapEmailEndpoints();
 apiGroup.MapTitleEndpoints();
 apiGroup.MapFileEndpoints();
+apiGroup.MapModelsEndpoints();
+apiGroup.MapChatSessionEndpoints();
 
 // Map development-only authentication endpoints
 // AuthEndpoints.MapAuthEndpoints checks IsDevelopment() internally and returns early if not Dev
