@@ -1,5 +1,7 @@
 # AGUIDojo Sample
 
+<!-- MY CUSTOMIZATION POINT: align sample doc links with the current AGUIDojo session research set -->
+
 AGUIDojo is a full end-to-end sample that now uses a **single AG-UI route** on the server: `POST /chat`.
 The client keeps per-session UI state locally and renders plans, approvals, recipe state,
 document previews, charts, forms, and data grids from the unified event stream.
@@ -89,9 +91,19 @@ Intended direction for the unified `/chat` route:
 
 Related docs:
 
+- [Docs index](./.docs/README.md)
 - [System design](./.docs/system-design.md)
 - [Implementation plan](./.docs/implementation-plan.md)
 - [Research: AGUIDojo LLM picker architecture and MAF alignment](./.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md)
+- [Research: Server-side persistence for chat session](./.docs/research/server-side-persistence-for-chat-session.md)
+- [Research: Copilot CLI session context and instruction patterns](./.docs/research/copilot-cli-session-context-and-instruction-patterns.md)
+- [Research: Copilot CLI public repo grounding](./.docs/research/copilot-cli-public-repo-grounding.md)
+- [Research: Copilot CLI session state schema reference](./.docs/research/copilot-cli-session-state-schema.md)
+- [Research: Copilot CLI session topology](./.docs/research/copilot-cli-session-topology.md)
+
+The Copilot CLI research links ground durable-session topology and inspectable session surfaces. They are
+reference material, not a directive to mirror Copilot CLI's `~/.copilot/` filesystem or exact session
+schema inside AGUIDojo.
 
 ## Running locally
 

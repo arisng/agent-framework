@@ -1,10 +1,14 @@
 # AGUIDojo implementation plan
 
+<!-- MY CUSTOMIZATION POINT: refine the session rollout guidance with newer Copilot CLI session research -->
+
 ## Purpose
 
 This is the consolidated execution plan for evolving the AGUIDojo sample. It supersedes the older v1/v2/v3 implementation-plan sprawl and the retired long-form roadmap issue. It stays aligned with the current README, the consolidated system design, the unified `POST /chat` implementation, and the current model-picker / context-window / Copilot-overlap research set. It is an execution playbook, not a duplicate system design.
 
-The current research baseline for model selection, model-aware compaction, persistence boundaries, MAF integration, and overlapping Copilot CLI product patterns is captured in `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`, and `.docs/research/copilot-cli-public-repo-grounding.md`.
+The current research baseline for model selection, model-aware compaction, persistence boundaries, MAF integration, and overlapping Copilot CLI product patterns is captured in `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`, `.docs/research/copilot-cli-public-repo-grounding.md`, `.docs/research/copilot-cli-session-state-schema.md`, and `.docs/research/copilot-cli-session-topology.md`.
+
+The Copilot CLI research is a product-pattern reference, not a storage contract. AGUIDojo should adopt the durable-session, requested-versus-effective model, checkpointed-compaction, and catalog-plus-workspace inspection-surface lessons without copying Copilot CLI's local filesystem layout or exact SQLite/file schema.
 
 The plan should stay synchronized with the sample as each phase lands. README, system design, supporting research, and implementation must describe the same architecture and sequencing.
 
@@ -125,6 +129,9 @@ Move primary session ownership to `AGUIDojoServer` so the sample has a server-is
   - list sessions
   - get session summary/detail
   - archive session
+- Keep session summary list-friendly: server ID, user-facing title/summary, lifecycle status, created/updated timestamps, primary subject link, and preferred-model metadata when available.
+- Keep session detail thin but support-worthy: summary fields plus stable correlation links, latest material approval/model/compaction facts, and counts or pointers for plans, checkpoints, audit entries, and session-scoped artifacts/files.
+- Do not inline full message trees, full audit streams, or heavy artifact/file payloads in the root session detail contract; fetch them through dedicated read models or sub-resources only when the sample needs them.
 - Let the first persisted `/chat` turn create the server session implicitly when no server-owned session exists yet; blank drafts can remain client-local before first send.
 - Have the server issue the primary business session ID on first persisted turn.
 - Shift hydration and session listing toward the server-authoritative index.
@@ -139,6 +146,7 @@ Move primary session ownership to `AGUIDojoServer` so the sample has a server-is
 - The first persisted prompt against a new draft yields a server-owned session ID.
 - Refresh or a second browser can recover the server session list without depending on prior browser metadata.
 - Session summary/detail is useful for recovery and basic support inspection, not only session-list UX.
+- Session summary/detail exposes enough recovery/support metadata to inspect a session without loading the full conversation graph or artifact payloads.
 - Archive behavior is represented by the server lifecycle, not only client-side removal.
 - The server contracts are ready to surface selected-model metadata once the picker lands.
 - Validation remains lightweight: focused server/API checks plus a small end-to-end smoke pass.
@@ -147,6 +155,7 @@ Move primary session ownership to `AGUIDojoServer` so the sample has a server-is
 
 - Do not over-engineer the module into a repo-wide platform component.
 - The API contract must keep the current `/chat` sample simple to run locally.
+- Do not turn Copilot CLI's `workspace.yaml`, `events.jsonl`, `plan.md`, `checkpoints/`, or `files/` layout into an AGUIDojo storage contract; carry forward the product patterns, not the exact local serialization.
 
 ### Phase 2 -- Persist the canonical branching conversation with rich message fidelity
 
@@ -195,14 +204,17 @@ Make server persistence useful for the richer AGUIDojo experience, not just for 
 
 - Persist approval requests, decisions, and key decision metadata.
 - Persist audit entries and important timestamps tied to approvals, tool actions, and session lifecycle.
+- Persist session-scoped support records separately from the root session row: current plan state, compaction checkpoints, session-scoped artifact snapshots/projections, and durable references to session-scoped files or derived documents when they matter for rehydration or debugging.
 - Replace or supersede `ContextWindowChatClient` with a server-side compaction pipeline once the sample is ready for model-aware context management.
 - Use MAF compaction seams (`CompactionProvider` plus ordered strategies such as tool-result compaction, summarization, sliding window, and truncation) so switching from larger- to smaller-context models is handled server-side.
 - Trigger auto-compaction from conservative model-tiered safe-input budgets and run it as queued/background server work where possible; do not mirror Copilot CLI's public ~95% trigger because AGUIDojo needs more reserve for tool outputs, approvals, and richer artifacts.
-- Persist session diagnostics as part of the durable artifact story: model-switch facts, compaction checkpoints/summaries, linked correlation IDs, and enough before/after token estimates to explain behavior during debugging.
+- Persist session diagnostics as structured audit/support records: model-switch facts, compaction checkpoints/summaries, linked correlation IDs, strategy/outcome metadata, and enough before/after token estimates to explain behavior during debugging.
+- Keep the root session detail API thin by surfacing the latest facts, counts, and pointers, while deeper inspection reads audit timelines, checkpoints, plans, and file/artifact references from dedicated projections or sub-resources.
+- Prefer queryable relational audit/checkpoint/artifact records over copying Copilot CLI's raw `events.jsonl` or per-session directory shape; add raw journaling later only if implementation proves it materially helpful.
 - Persist session-scoped artifact/projection state for the surfaces that matter in the current sample, such as:
-  - plans
+  - plans and plan checkpoints/snapshots
   - recipe/shared state
-  - document state and preview/diff context
+  - document state, preview/diff context, and session-scoped file/document references that materially affect resume or support flows
   - data grid projections
   - other current session artifacts that need durable rehydration
 - Define which projections are canonical state versus durable snapshots derived from message history.
@@ -215,6 +227,7 @@ Make server persistence useful for the richer AGUIDojo experience, not just for 
 - Switching to a smaller model does not depend on client-side history slicing; the server compacts or fails explicitly within policy.
 - Compaction produces inspectable checkpoint/audit artifacts without rewriting away the canonical branch history.
 - If a model fallback or switch occurs, the persisted session can explain preferred versus effective model at the level needed for support/debug.
+- Session detail plus dedicated inspection reads can expose current plan state, recent checkpoints, and session-scoped files/artifacts without relying on browser-local state or ad hoc database spelunking.
 - Validation remains pragmatic: targeted server checks and focused manual walkthroughs.
 
 **Notable risks / dependencies**
@@ -223,6 +236,7 @@ Make server persistence useful for the richer AGUIDojo experience, not just for 
 - Avoid turning this phase into a full event-sourcing or perfect-replay effort.
 - Avoid double compaction by leaving both `ContextWindowChatClient` and a new compaction pipeline active longer than necessary.
 - Do not cargo-cult Copilot CLI's exact ~95% trigger; AGUIDojo's richer session shape needs more headroom.
+- Avoid cargo-culting Copilot CLI's exact local session folders, lock files, or append-only log format; AGUIDojo should pick the thinnest server-owned representation that still supports inspection and recovery.
 
 ### Phase 4 -- Add simulated ownership and workflow/entity links
 
@@ -266,7 +280,9 @@ Finish the transition to a server-owned sample foundation and keep the operation
 - Document the SQL-first, relational, cloud-vendor-agnostic persistence model, including SQLite as a local convenience and SQL Server/PostgreSQL as the natural modular-monolith targets.
 - Document the model catalog and context-window policy at the same level as the persistence portability story.
 - Clarify minimal operational expectations for local data lifecycle, reset, session inspection, and support/debug artifact capture.
+- Document the minimal inspection surfaces exposed by the server (summary/detail plus audit/checkpoint/artifact/file views or equivalent read models) and how they support local debugging.
 - Document how to inspect persisted audit/model-routing/compaction facts locally so debugging does not depend on browser storage or ad hoc database spelunking.
+- Clarify that AGUIDojo's inspection story is server/query-surface based rather than a copy of Copilot CLI's `~/.copilot/session-state` filesystem layout.
 - Update README, system design, implementation-facing docs, and any changed research notes as each phase lands so the sample story stays current.
 - Reconfirm which optional replay/collaboration capabilities remain deferred.
 
@@ -288,6 +304,17 @@ Finish the transition to a server-owned sample foundation and keep the operation
   - Blank drafts may stay client-local until the first persisted `/chat` turn creates the canonical server session.
   - `ConversationId`, AG-UI thread/run IDs, Durable Task IDs, and workflow IDs are stored only as correlations or links.
   - Session summary/detail should expose enough lifecycle and correlation metadata to act as a recovery/support artifact, not only a list-row DTO.
+
+- **Session summary/detail and inspection surfaces**
+  - Summary view should stay list-friendly: server ID, title/summary, lifecycle status, created/updated timestamps, primary subject link, preferred-model metadata when set, and a small last-activity hint.
+  - Detail view should add stable correlation links plus the latest recovery/support facts such as recent approval state, last effective-model divergence, latest compaction/checkpoint info, active plan presence, and counts or pointers for checkpoints, audit entries, and session-scoped artifacts/files.
+  - Heavy conversation graphs, full audit histories, checkpoint bodies, and artifact/file payloads should stay out of the root session DTO and come from dedicated read models or sub-resources when needed.
+  - If instruction visibility is added later, surface active source labels and trust state as metadata rather than full instruction bodies.
+
+- **Copilot CLI grounding as reference, not replica**
+  - Use the Copilot CLI research to justify durable session identity, requested-versus-effective model separation, checkpointed compaction, session-scoped plans/checkpoints/files as inspectable concepts, and support/debug projections.
+  - Do not replicate `workspace.yaml`, `events.jsonl`, `plan.md`, `checkpoints/index.md`, `files/`, lock files, or per-session local databases as AGUIDojo contracts.
+  - Prefer relational audit/checkpoint/artifact/file-reference records and server-owned inspection endpoints/query surfaces; add raw journals or filesystem exports only if a later phase proves they help.
 
 - **Model catalog and selection**
   - Selected model is per-session in UX terms, but server-authoritative in architecture terms.
@@ -351,7 +378,10 @@ These questions are now resolved enough to guide implementation. If later code w
 1. **Thinnest Chat Sessions API and schema**
    - Start with a SQL-first relational model centered on `chat_sessions`, canonical branching message-node storage, subject/entity links, audit events, and durable artifact/projection records.
    - Keep the initial server API thin: list sessions, get summary/detail, archive session, and let `/chat` create the canonical session on first persisted turn.
+   - Keep summary/detail layered: summary/list fields stay small, while detail adds correlation links plus the latest support/debug facts and counts or pointers for plans, checkpoints, audit entries, and session-scoped artifacts/files.
+   - Full audit/checkpoint/file bodies should remain separate read models or sub-resources rather than bloating the root session DTO.
    - Store `preferredModelId` on the session summary/detail model, and `effectiveModelId` on assistant turns or audit events rather than bloating the session root with provider-specific detail.
+   - Treat the Copilot CLI session-state schema reference and session-topology note as grounding for inspectable session surfaces and the catalog-plus-workspace split, not as a storage blueprint; AGUIDojo should not replicate `workspace.yaml`, `events.jsonl`, `plan.md`, or per-session folders as its contract.
 
 2. **Session creation behavior**
    - The default UX should keep blank drafts local and create the server-owned session implicitly on the first persisted `/chat` turn.
@@ -362,7 +392,7 @@ These questions are now resolved enough to guide implementation. If later code w
    - Avoid provider-specific transient payloads, chunk-level stream trivia, and speculative multimodal fields that the sample does not yet use.
 
 4. **First durable artifact and audit scope**
-   - The first rich-persistence milestone should durably preserve approvals and decisions, audit entries, plan state, recipe/shared state, document preview/diff context, data-grid projections, material model-switch / compaction events, and the core diagnostics/support facts needed to inspect a session later.
+   - The first rich-persistence milestone should durably preserve approvals and decisions, audit entries, plan state, checkpoint summaries, recipe/shared state, document preview/diff context, session-scoped file/document references, data-grid projections, material model-switch / compaction events, and the core diagnostics/support facts needed to inspect a session later.
    - Chart/form demo outputs and other purely re-renderable surfaces can remain derived or deferred unless later implementation proves they hold unique state worth saving.
 
 5. **Browser-local import scope**
@@ -388,8 +418,13 @@ These questions are now resolved enough to guide implementation. If later code w
    - No separate long-form roadmap document should be kept in parallel with the implementation plan.
 
 10. **Future instruction-like feature guardrails**
-    - Defer workspace/project/session instruction layering until the durable session foundation exists.
-    - When instruction-like features are added, ship them with deterministic source ordering, visible active sources/labels, trust confirmation for workspace-derived content, and hard server-policy precedence over user/workspace instructions.
+     - Defer workspace/project/session instruction layering until the durable session foundation exists.
+     - When instruction-like features are added, ship them with deterministic source ordering, visible active sources/labels, trust confirmation for workspace-derived content, and hard server-policy precedence over user/workspace instructions.
+
+11. **Operational inspection surfaces**
+    - Keep the root session API thin: session detail surfaces the latest support/debug facts plus counts or pointers for plans, checkpoints, audit entries, and session-scoped artifacts/files.
+    - Provide deeper inspection through dedicated query/projection surfaces rather than stuffing full event streams or artifact payloads into the session row.
+    - Local debugging should depend on those server-owned reads and normal database inspection, not on browser-local state or a Copilot-style filesystem tree.
 
 ## Definition of done for the consolidated plan
 
@@ -404,6 +439,7 @@ The consolidated plan is complete when AGUIDojo can be evolved phase by phase wi
 - Canonical branching conversation state lives on the server with enough fidelity for the current sample.
 - Approvals, audit, and key artifact/projection state are durably recoverable.
 - Durable session state also serves recovery/support needs: audit, model-routing facts, compaction checkpoints, and correlation links are recoverable without browser-local state.
+- Thin session summary/detail plus dedicated inspection reads expose current plan/checkpoint/artifact/file state without depending on browser-local storage or a copied Copilot-style session filesystem.
 - Selected/effective model and material model-switch / compaction facts are recoverable at the level the sample needs.
 - Ownership and integration links are modeled as simulated sample concerns, not real auth plumbing.
 - Browser storage is secondary.

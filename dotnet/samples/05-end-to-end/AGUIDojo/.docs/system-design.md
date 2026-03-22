@@ -1,8 +1,10 @@
 # AGUIDojo system design
 
+<!-- MY CUSTOMIZATION POINT: align durable-session references with the schema reference and topology note -->
+
 This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
 
-For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap research that informs this design—including the repo-grounded validation pass—see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`, and `.docs/research/copilot-cli-public-repo-grounding.md`.
+For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap research that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference and session-topology note—see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`, `.docs/research/copilot-cli-public-repo-grounding.md`, `.docs/research/copilot-cli-session-state-schema.md`, and `.docs/research/copilot-cli-session-topology.md`.
 
 ## 1. Scope and status
 
@@ -18,7 +20,8 @@ For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap 
 **TARGET**
 - Phase 0 fixes multi-turn continuity by sending full active-branch history on every `/chat` turn.
 - Phase 1+ moves primary session ownership into `AGUIDojoServer` via a Chat Sessions module backed by a SQL-first, relational-first store. SQLite may remain useful for local sample runs, but SQL Server or PostgreSQL are the natural modular-monolith targets.
-- Server-owned session records are more than transcript storage: durable session identity, approvals, audit/support artifacts, and compaction checkpoints become part of the product surface.
+- Server-owned session records are more than transcript storage: AGUIDojo needs both a read-optimized catalog/index surface for list/resume/search and a richer session-detail/workspace surface for approvals, plans, checkpoints, files/artifacts, audit facts, and compaction/debug history.
+- Copilot CLI's recent public-doc research plus the companion schema reference and topology note are useful mainly as a topology lesson: separate a central session catalog/index from richer per-session detail/workspace surfaces, but do not copy the literal `~/.copilot/session-state/<id>/...` filesystem layout into AGUIDojo. In this sample, both surfaces stay server-owned and SQL-first.
 - AGUIDojo remains a chat module inside a modular monolith: chat sessions link to business-module subjects (start with Todo), while business data stays owned by those modules.
 - Per-session model preference becomes part of session metadata and later part of server-owned session records; requested/preferred model and effective model stay distinct facts.
 - `/chat` remains the only AG-UI route; requested model should travel as per-request metadata on that route rather than spawning per-model endpoints.
@@ -187,7 +190,7 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 **TARGET**
 - Browser persistence becomes cache, draft, and best-effort import support only.
 - Durable session ownership moves to the server, and the durable session becomes a support/debug artifact as well as resume state.
-- Server-owned session records eventually hold requested-model metadata, effective-model facts, compaction checkpoints, and audit/support artifacts rather than only a flattened transcript.
+- Server-owned session records eventually hold catalog fields for list/resume/search plus durable detail/workspace surfaces for requested-model metadata, effective-model facts, plan state, checkpoints, files/artifacts, runtime correlations, and audit/support artifacts rather than only a flattened transcript.
 
 ## 6. Critical continuity bug and why it matters
 
@@ -244,15 +247,26 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 - Active instruction sources and trust decisions should be visible in diagnostics/UI and, when they materially affect behavior, persisted as session/audit facts.
 - Uploaded files, fetched URLs, and future workspace/project instruction content are untrusted inputs until explicitly approved.
 
+### Target durable session topology
+
+- The paired Copilot CLI session-state schema reference in `.docs/research/copilot-cli-session-state-schema.md` and session-topology note in `.docs/research/copilot-cli-session-topology.md` support a useful framing already hinted at by the public-repo and context-pattern research: the product appears to combine a central session catalog/index with richer per-session workspace artifacts. AGUIDojo should borrow that separation of concerns, not the on-disk folder layout.
+- For AGUIDojo, that means two related server-owned surfaces:
+  1. **Catalog/index surface** — read-optimized summary data for list/resume/search/ops views. This is where session identity, title/summary, created/updated timestamps, archive state, primary business-subject link, preferred model, and lightweight status/count fields belong.
+  2. **Session detail/workspace surface** — the richer durable record needed to reconstruct and explain the session: canonical branching conversation history, plan snapshots, compaction checkpoints, approval records, file/artifact references, audit facts/events, and runtime correlations.
+- Plans, checkpoints, files/artifacts, audit facts, and correlation links are not optional extras around the transcript. They are part of the durable session topology because they explain how the session reached its current state and what support/debug tooling must be able to recover later.
+- In a SQL-first sample, the catalog/index surface can be a projection or subset of the richer detail/workspace surface. If a summary/search projection drifts, AGUIDojo should be able to rebuild it from durable detail records rather than from browser state.
+- The operational split should follow the same shape: list/search/resume APIs read the catalog, while session detail/debug/export surfaces read the richer workspace view. That keeps the system supportable without importing Copilot CLI's local filesystem conventions into the server design.
+
 ### Phase shape
 
 **Phase 0**
 - Fix full-history turns on `/chat`.
 
 **Phase 1**
-- Add a Chat Sessions module with list/get/archive APIs and implicit creation on the first persisted `/chat` turn.
+- Add a Chat Sessions module with list/get summary-detail/archive APIs and implicit creation on the first persisted `/chat` turn.
 - Move primary business session ID issuance from the client to the server.
 - Use a SQL-first relational store for sample scope. SQLite may remain a local convenience, while SQL Server or PostgreSQL are the natural modular-monolith targets.
+- Start with a small session catalog projection for list/resume/search and a richer detail contract for session inspection rather than treating transcript storage as the only API shape.
 - Add room for model metadata in the server-owned session contract and expose a small model catalog for the future picker.
 - Start with a primary business-subject link (for example `Todo`) so one Todo/business flow can have many related chat sessions without turning chat into an isolated persistence island.
 
@@ -265,7 +279,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 - Persist enough metadata to distinguish requested/preferred model from the effective model that actually served assistant turns.
 
 **Phase 3**
-- Persist approvals, audit entries, support/debug artifacts, and session artifact projections/snapshots.
+- Persist approvals, audit entries, support/debug artifacts, plan/checkpoint surfaces, file/artifact references, correlation links, and session artifact projections/snapshots.
 - Replace the fixed message-cap wrapper with a checkpointed, model-aware compaction pipeline when the sample is ready to make context policy durable and explainable.
 - Capture model-switch, effective-model, compaction, and trust/approval events in audit/projection state where that materially helps the sample.
 - If workspace/project-sourced guidance becomes a feature, surface active instruction sources and trust decisions before allowing that guidance to influence execution.
@@ -285,6 +299,8 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 | Concern | CURRENT | TARGET |
 | --- | --- | --- |
 | Session identity | client-generated, effectively browser-owned | server-issued business session ID plus durable support/audit surface |
+| Session catalog / resume surface | browser metadata list only | server-owned SQL summary/read model for list/resume/search/ops views |
+| Session detail / workspace surface | client conversation tree plus transient canvas/session state | durable server detail surface for branch history, plans, checkpoints, files/artifacts, approvals, audit facts, and runtime correlations |
 | Model preference | no per-session setting; one server startup model for all sessions | per-session requested/preferred model owned by server records and cached in the client UI |
 | Effective model | implicit process-wide startup model for all turns | per-turn or audit fact recorded by the server when known |
 | Conversation graph | client-only `ConversationTree` | server-owned branching graph in SQL-backed Chat Sessions storage |
@@ -293,23 +309,29 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 | Approval history | transient UI/session state | durable approval records |
 | Audit trail | transient UI/session state | durable audit/support records for approvals, model switches, compaction, and trust |
 | Artifact state | client projection only | server snapshots/projections with client cache |
+| Correlation links | transient `ConversationId` and runtime IDs in live client state | durable linked records for `ConversationId`, `threadId`, `runId`, workflow IDs, and related logs/traces when useful |
 | Instruction sources / trust | not modeled as durable behavior | deterministic, visible server-owned metadata if workspace/project guidance is added |
 | Browser storage | convenience persistence | cache/import only |
 
 ### Practical sample-scope store
 
-A pragmatic SQL-backed Chat Sessions module can stay small and still demonstrate the right boundary. SQLite is still fine for local/sample execution, but the model should read naturally against SQL Server or PostgreSQL too:
-- `ChatSession` (including server-issued identity, requested/preferred model metadata, and primary business-subject link fields)
-- `ConversationNode` or equivalent parent-linked message record
-- `ApprovalDecision`
-- `AuditEvent` (including effective-model, trust/approval, and support/debug facts)
-- `CompactionCheckpoint` or equivalent summary/checkpoint record tied to the canonical branch
-- `ArtifactProjection` / `ArtifactSnapshot`
-- `RuntimeLink`
+A pragmatic SQL-backed Chat Sessions module can stay small and still demonstrate the right boundary. SQLite is still fine for local/sample execution, but the model should read naturally against SQL Server or PostgreSQL too. Following the catalog-plus-workspace framing in `.docs/research/copilot-cli-session-state-schema.md` and `.docs/research/copilot-cli-session-topology.md`, think in terms of a read-optimized session catalog plus a richer detail/workspace surface, but keep both server-owned and relational instead of copying a per-session local folder tree:
+- **Catalog/index records or projections**
+  - `ChatSession` (server-issued identity, title/summary, requested/preferred model metadata, archive state, last-activity fields, and primary business-subject link fields)
+  - optional search/read-model projection if list/search needs more than raw `ChatSession`
+- **Detail/workspace records**
+  - `ConversationNode` or equivalent parent-linked message record
+  - `PlanSnapshot` / `PlanState`
+  - `ApprovalDecision`
+  - `AuditEvent` (including effective-model, trust/approval, and support/debug facts)
+  - `CompactionCheckpoint` or equivalent summary/checkpoint record tied to the canonical branch
+  - `ArtifactProjection` / `ArtifactSnapshot`
+  - `SessionFile` / artifact-file metadata for uploaded or generated files
+  - `RuntimeLink`
 
 Start simple: a session can point at a primary business subject (for example `Todo`), and many sessions can point at the same subject so one Todo/business flow can have many related chats.
 
-The important point is not the exact table names. The important point is that the server, not the browser, becomes the owner of the durable business session, while Todo/business data remains owned by its module.
+The important point is not the exact table names. The important point is that the server, not the browser, becomes the owner of the durable business session, while Todo/business data remains owned by its module. The catalog/detail split should make support, resume, and debugging first-class without forcing AGUIDojo to mimic Copilot CLI's local filesystem layout.
 
 ## 8. Integration boundaries
 
