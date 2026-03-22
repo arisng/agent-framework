@@ -4,14 +4,14 @@
 
 The best fit for AGUIDojo is still **not** to keep browser storage as the source of truth, and it is still **not** to make Durable Task entity state the product-level chat database.
 
-However, after reviewing the current Microsoft Agent Framework (.NET) repo more closely, I would **not** jump straight to a fully custom Chat Sessions implementation either. MAF already gives us a meaningful server-side persistence stack to lean on: `AgentSessionStore` / `AIHostAgent` / `WithSessionStore` for restoring serializable agent sessions, `ChatHistoryProvider` for canonical message history, and a shipped `CosmosChatHistoryProvider` plus `CosmosCheckpointStore` package for durable history and workflow checkpoints.[18][20][21]
+However, after reviewing the current Microsoft Agent Framework (.NET) repo more closely, the main conclusion changes in one important way: **SQL should be the recommended default, not Cosmos/NoSQL.** MAF already gives AGUIDojo the right seams to build on — `AgentSessionStore` for serializable session restoration, `ChatHistoryProvider` for canonical message history, and the AG-UI hosting boundary around `/chat` — but those seams are **storage-agnostic**. They require durable persistence and ordered history, not a document database.[18][20][22]
 
-The important limitation is that AG-UI hosting does not wire those pieces together out of the box today, and the repo does **not** ship a durable `AgentSessionStore` implementation for AG-UI/ASP.NET Core. `MapAGUI` forwards `threadId` and `runId`, but ADR 0010 explicitly says applications currently own thread persistence; A2A is the place in this repo that actually auto-wraps agents with `AIHostAgent` and `AgentSessionStore`.[18][22]
+That matters because AGUIDojo is intended to sit inside a modular monolith whose business modules already lean relational and whose nearby design docs already assume SQLite for sample scope with portability to SQL Server or PostgreSQL later.[23][24] In that environment, the default persistence choice should align with the rest of the application:
 
-So the strategic recommendation becomes two-step:
+- **recommended default**: application-owned relational Chat Sessions storage, backed by the monolith's primary SQL database family, with `AgentSessionStore` and any `ChatHistoryProvider` implementation adapted to that relational store
+- **optional variant**: Cosmos/NoSQL only when a deployment already standardizes on it and is comfortable treating it as an implementation detail for linear history or checkpoints rather than the architectural default[21]
 
-- **maintenance-first default**: adopt a MAF-native server persistence path first — wrap the unified `/chat` agent with server session restoration, persist `AgentSession`, and use a `ChatHistoryProvider` backend (preferably `CosmosChatHistoryProvider` if Cosmos is acceptable) plus thin AGUIDojo-specific projections for metadata, auth, approvals, and artifacts
-- **domain-first escalation path**: only build the larger relational Chat Sessions module if AGUIDojo proves it needs first-class branching history, broader business queryability, or richer non-message projections than MAF's session/history abstractions model naturally[20][21][22]
+The important limitation is still not a NoSQL requirement; it is an integration gap. AG-UI hosting does not wire these pieces together out of the box today, and the repo does **not** ship a durable `AgentSessionStore` implementation for AG-UI/ASP.NET Core. `MapAGUI` forwards `threadId` and `runId`, but ADR 0010 explicitly says applications currently own thread persistence; A2A is the place in this repo that actually auto-wraps agents with `AIHostAgent` and `AgentSessionStore`.[18][22]
 
 That recommendation matters because AGUIDojo sessions are already broader than plain text chat. A session currently carries:
 
@@ -126,19 +126,21 @@ MAF is not blank on this problem. The repo already ships most of the primitives 
 
 `AgentSessionStore` defines the contract for saving and loading serialized `AgentSession` instances, `AIHostAgent` wraps an existing agent so it can restore and save those sessions, and `HostedAgentBuilderExtensions` exposes `WithInMemorySessionStore()` and `WithSessionStore(...)` as the official registration points.[18]
 
-That is not a full product chat module, but it is a real framework-supported seam for server-side conversation persistence. The repo also includes `NoopAgentSessionStore` for stateless hosting, but the only bundled stateful store is in-memory, and its own remarks explicitly say production scenarios should use a durable store such as Redis, SQL Server, or Cosmos DB.[18]
+That is not a full product chat module, but it is a real framework-supported seam for server-side conversation persistence. The repo also includes `NoopAgentSessionStore` for stateless hosting, but the only bundled stateful store is in-memory, and its remarks list several durable production options — including Redis, SQL Server, and Cosmos DB — rather than prescribing NoSQL. For AGUIDojo, that is a signal to plug the seam into the same relational infrastructure family the rest of the modular monolith already expects.[18][23][24]
 
 ### 2. A first-class chat history seam
 
 `ChatClientAgent` already separates **session identity** from **chat history storage**. When the underlying AI service does not manage history server-side, the agent uses `ChatHistoryProvider` to fetch, store, truncate, summarize, or archive messages, and the serialized `AgentSession` can contain either conversation history directly or a reference to externally stored history.[20]
 
-This is important because it means AGUIDojo does **not** need to invent its own message-persistence abstraction just to get a server-authoritative transcript. MAF already provides that abstraction.
+This is important because `ChatHistoryProvider` defines behavior, not database shape. It needs ordered message persistence and retrieval plus optional truncation, summarization, or archival; those requirements map cleanly to relational tables with sequence numbers, timestamps, and JSON payload columns just as well as to a document store. AGUIDojo therefore does **not** need to invent its own abstraction, and it also does **not** need NoSQL just to satisfy the framework seam.[20]
 
-### 3. A shipped production-oriented store
+### 3. A shipped optional Cosmos example
 
 The `Microsoft.Agents.AI.CosmosNoSql` package already ships `CosmosChatHistoryProvider`, helper extensions like `WithCosmosDBChatHistoryProvider(...)`, and `CosmosCheckpointStore` for workflow checkpoints.[21]
 
-That makes Cosmos DB the closest thing in the repo to an out-of-the-box, low-maintenance durable history solution. It even supports tenant/user/conversation routing and message TTL configuration. The trade-off is that it models **linear chat history and checkpoint storage**, not a relational business aggregate with first-class branching/session projections.[21]
+That is useful because it proves MAF expects pluggable durable history and checkpoint providers. But it should be read as an optional implementation family, not as a signal that AGUIDojo must choose Cosmos DB or NoSQL. For AGUIDojo's intended modular-monolith architecture — where nearby docs already assume SQLite for sample scope and portability to SQL Server or PostgreSQL later — the stronger default is still relational application storage.[21][23][24]
+
+Its trade-off also remains the same: it models **linear chat history and checkpoint storage**, not a relational business aggregate with first-class branching/session projections.[21]
 
 ### 4. The current AG-UI gap
 
@@ -152,47 +154,38 @@ If AGUIDojo were willing to change hosting models entirely, Durable Agents / Azu
 
 ### Core decision
 
-Treat the detailed relational Chat Sessions module in the rest of this document as the **escalation path**, not the first implementation step.
+For AGUIDojo, the default implementation path should be an application-owned **relational Chat Sessions module**, not a Cosmos-first thin shim and not Durable Task storage as the product database. That matches the nearby AGUIDojo docs, which already assume a SQLite-backed sample that stays portable to SQL Server or PostgreSQL later.[23][24]
 
-The first implementation step I would take now is a **MAF-native server persistence layer**:
+Use MAF's abstractions, but back them with the same SQL-oriented persistence family as the rest of the modular monolith:
 
-- restore and save `AgentSession` on the server using `AIHostAgent` / `AgentSessionStore`
-- keep message persistence behind `ChatHistoryProvider`
-- use `CosmosChatHistoryProvider` and `CosmosCheckpointStore` if Cosmos DB is an acceptable platform choice
-- keep only thin AGUIDojo-owned server projections for session metadata, ownership, titles, approvals, artifact indexes, and authorization boundaries[20][21][22]
+- load and save `AgentSession` in a SQL-backed `AgentSessionStore`
+- persist canonical message history through a SQL-backed `ChatHistoryProvider` implementation or directly through relational message tables that the provider reads and writes
+- keep `MapAGUI("/chat", ...)` as the transport boundary only; application code around it is still responsible for session restore/save
+- keep Todo/business data in the Todo module; the chat module stores links, history, approvals, artifacts, and audit, not duplicate business ownership[18][20][22][23][24]
 
-Then, only if AGUIDojo outgrows that shape, introduce a dedicated Chat Sessions module with the richer relational model described below.
+In framework terms, the relevant MAF seams remain useful, but they do **not** force a NoSQL choice:
 
-In framework terms, persistence still belongs in application/hosting infrastructure around the agent, not inside the AG-UI transport layer and not inside unrelated business modules.[18]
+- `AgentSessionStore` only saves and loads serialized session state by conversation id
+- `ChatHistoryProvider` only requires ordered retrieval and storage plus optional truncation, summarization, or archival
+- ADR 0010 says AG-UI applications manage thread persistence today, which means the application chooses the backing store[18][20][22]
 
 ### Recommended storage stack
 
-**Maintenance-first option**
+**SQL-first default**
 
-- `AgentSessionStore` implementation in durable storage (application-owned today)
-- `ChatHistoryProvider` for canonical linear message history
-- `CosmosChatHistoryProvider` when Cosmos DB is acceptable, because it already ships with MAF
-- `CosmosCheckpointStore` for workflow checkpoints if workflow durability is needed
-- a thin projection store for session list/title/ownership/approvals/artifact metadata[20][21][22]
+- **SQLite** for sample scope, kept relational and portable to **SQL Server or PostgreSQL** for the modular-monolith target[23][24]
+- `chat_sessions` and related relational tables as the authoritative system of record
+- SQL-backed `AgentSessionStore` for serializable agent/session restoration
+- SQL-backed `ChatHistoryProvider` or equivalent relational message persistence for canonical history
+- JSON columns for rich `ChatMessage`/`AIContent` payloads and flexible artifact payloads
+- blob/object storage only for large attachments or generated files
+- **optional Redis** only for cache or resumable stream transport, never as the canonical session store[11][15][16]
 
-**Domain-first option**
+**Optional NoSQL variant**
 
-If AGUIDojo later proves it needs a product-facing chat aggregate that is more queryable than MAF's native linear history model, use the modular monolith's primary relational database.
+If a specific deployment already standardizes on Cosmos DB and mostly wants linear history/checkpoint storage, `CosmosChatHistoryProvider` and `CosmosCheckpointStore` are valid optional implementations.[21]
 
-If the future monolith already standardizes on SQL Server, use SQL Server. If the choice is still open, PostgreSQL is also an excellent fit. The key requirement is:
-
-- strong transactional behavior
-- first-class indexing
-- JSON column support
-- mature backup/retention tooling
-- easy joins to business aggregates and workflow link tables
-
-Use:
-
-- **relational tables** for core metadata, ownership, links, approvals, and indexes
-- **JSON columns** for full `ChatMessage`/`AIContent` payloads and flexible artifact payloads
-- **blob/object storage** for large attachments or generated files
-- **optional Redis** only for cache and resumable stream transport, not for canonical session storage[11][15][16]
+But for AGUIDojo's intended modular-monolith shape, they should be treated as provider choices, not as the design center. Business-facing session metadata, Todo links, approvals, audit, and cross-module queries still fit better in relational storage.[21][23][24]
 
 ### High-level architecture
 
@@ -202,30 +195,35 @@ Browser / Device A, B
   v
 AGUIDojoClient (BFF + UI cache)
   |- POST /chat                            -> AG-UI route + session restore/save adapter
-  |- GET/POST /api/chat-sessions/*         -> thin session/projection API
+  |- GET/POST /api/chat-sessions/*         -> server-owned session API
   \- IndexedDB/localStorage                -> secondary cache only
 
 AGUIDojoServer / Modular Monolith
+  |- Chat Sessions module                  -> session aggregate, projections, auth boundary
   |- AIHostAgent-style session adapter     -> get/create/save AgentSession
-  |- ChatClientAgent + wrappers            -> unified AG-UI agent pipeline
-  |- ChatHistoryProvider                   -> canonical message persistence
-  |- Projection/metadata store             -> title, owner, approvals, artifacts, list views
-  \- Workflow integration facade           -> links durable workflow/run ids
+  |- ChatHistoryProvider                   -> canonical history seam
+  |- Todo module facade                    -> load/update Todo as current user
+  \- Workflow integration facade           -> correlation ids only
 
 Persistence
-  |- CosmosChatHistoryProvider (preferred if acceptable) -> chat history
-  |- CosmosCheckpointStore (optional)                    -> workflow checkpoints
-  |- Projection store                                    -> metadata + business-facing lookups
-  \- Browser storage                                     -> local cache only
+  |- Primary relational DB
+  |    |- SQLite for sample scope
+  |    |- SQL Server or PostgreSQL for monolith deployments
+  |    |- chat_sessions / chat_message_nodes / approvals / audit / artifacts
+  |    \- todos and other business tables
+  |- Optional blob/object storage          -> attachments/generated files
+  |- Optional workflow checkpoint store    -> runtime durability
+  \- Browser storage                       -> local cache only
 
-Long-term escalation (optional)
-  |- Dedicated Chat Sessions module        -> branching graph, business links, richer projections
-  \- Primary relational DB + blob store    -> if the MAF-native path becomes too limiting
+Optional provider swap
+  \- Cosmos/NoSQL ChatHistoryProvider      -> only if a deployment already prefers it
 ```
 
-## If AGUIDojo outgrows the MAF-native path: recommended domain model
+This architecture keeps the product-facing chat record in the same relational universe as the business modules it supports, while still using MAF seams where they help.[18][20][23][24]
 
-The most important design choice, **if** a full custom module is needed, is to model chat as a **business aggregate**, not just a transport session.
+## Recommended domain model for the SQL-first path
+
+The most important design choice is to model chat as a **business aggregate inside the modular monolith**, not just as a transport session. In AGUIDojo's expected direction, the guiding example is the Todo module: a user can have multiple related chats around the same Todo or business flow, and agents act on that Todo data on behalf of the current user.[23][24]
 
 ### 1. `chat_sessions`
 
@@ -236,6 +234,9 @@ Suggested fields:
 - `id`
 - `tenant_id`
 - `owner_user_id`
+- `subject_module_name` (for example `Todo`)
+- `subject_entity_type` (for example `Todo`)
+- `subject_entity_id` (for example the Todo id)
 - `title`
 - `status`
 - `created_at`
@@ -252,31 +253,26 @@ Why this matters:
 
 - the session is the top-level aggregate for cross-device resume
 - `active_leaf_message_id` preserves current branch selection
-- runtime ids are stored as correlations, not treated as the canonical identity
-- internal durable agent/workflow sessions can be created and resumed independently of the top-level product chat session[18]
+- the subject columns make the business context explicit without collapsing it into runtime ids
+- one Todo/business flow can have **many** chat sessions because many rows can point at the same subject id
+- `owner_user_id` makes it clear the agent is acting on Todo data on behalf of the current user
+- runtime ids are stored as correlations, not treated as the canonical identity[18][23][24]
 
 ### 2. `chat_session_links`
 
-A generic association table that lets the chat system attach to business modules without hard-coding the domain too early.
+If AGUIDojo later needs a session to reference more than one business record, add a separate link table rather than turning the primary session row into an unstructured blob.
 
 Suggested fields:
 
 - `session_id`
-- `link_type` (`owner`, `subject`, `workflow`, `case`, `order`, `ticket`, etc.)
+- `link_type` (`primary_subject`, `related_workflow`, `attachment_owner`, etc.)
 - `module_name`
 - `entity_type`
 - `entity_id`
 - `relationship_role`
 - `created_at`
 
-This lets AGUIDojo evolve into a modular monolith where a chat session can be associated with:
-
-- a user
-- a business workflow
-- a business aggregate in another module
-- an external case or request id
-
-If later a specific integration becomes central, a dedicated typed table can sit beside this generic one.
+For the near-term AGUIDojo direction, the important case is still simple and relational: many chat sessions can be linked to the same Todo, and those links should be indexed for list pages, authorization checks, and business queries.[23][24]
 
 ### 2a. `chat_session_participants` or `chat_session_cursors` (future-safe)
 
@@ -458,11 +454,11 @@ That separation mirrors the existing `ContextWindowChatClient` idea on the serve
 
 ## Workflow and modular-monolith integration
 
-If AGUIDojo grows into the full Chat Sessions module path, this becomes the most important architectural boundary for the future system.
+If AGUIDojo follows the SQL-first path, this becomes the most important architectural boundary for the future system.
 
 ### Recommended rule
 
-Treat the chat session as a **business-facing record** that may participate in workflows, but do not make the workflow runtime itself the canonical chat store.
+Treat the chat session as a **business-facing record owned by the AGUIDojo module and linked to a business subject**. For the clearest near-term example, one `Todo` can have many related chat sessions, while the `Todo` aggregate remains the source of truth for Todo data.
 
 ### Why
 
@@ -480,34 +476,28 @@ The workflow research adds an important identity boundary:
 - workflow state has its own `WorkflowSession.SessionId` plus checkpoint chain
 - AG-UI transport has `threadId` and `runId`
 
-Those identities overlap conceptually, but they should not be collapsed into one storage identity. The application-level `ChatSession` should remain the stable product-facing aggregate, while agent sessions, workflow sessions, and transport ids remain linked execution references.[18]
+Those identities overlap conceptually, but they should not be collapsed into one storage identity. The application-level `ChatSession` should remain the stable product-facing aggregate, while Todo ids, agent sessions, workflow sessions, and transport ids remain linked but distinct references.[18]
 
-That makes them ideal for:
+That separation is especially important for AGUIDojo's intended modular monolith:
 
-- long-running agentic business workflows
-- resumable approval steps
-- execution recovery
-- streaming durability
-
-But the chat record still needs to be easily queryable by:
-
-- business modules
-- admin/reporting features
-- authorization checks
-- user profile/session screens
-- analytics and compliance exports
+- business modules want SQL queries and transactions against familiar tables
+- agents should read or mutate Todo data through Todo module services on behalf of the current user
+- other modules should not need to understand AG-UI or Durable Task internals just to answer "show me all chats for Todo 123" or "what approvals were raised while this user worked that Todo?"[23][24]
 
 ### Best integration pattern
 
-Use a **hybrid model**:
+Use a **hybrid relational model**:
 
-1. `chat_sessions` remains the product/business system of record.
-2. When a session launches or joins a workflow, persist correlation ids on the session:
+1. `todos` remains the system of record for Todo/business data.
+2. `chat_sessions` remains the system of record for chat identity, history, approvals, artifacts, and audit.
+3. Link sessions to the business flow using indexed relational subject fields or link rows so that **one Todo can have many chat sessions**.
+4. Resolve the current user and the linked Todo before the agent runs tools; the agent acts through Todo application services on behalf of that user, not by bypassing business rules.
+5. When a session launches or joins a workflow, persist correlation ids on the session:
    - `workflow_instance_id`
    - `durable_agent_session_id`
    - `agui_thread_id`
-3. Persist workflow-specific checkpoints and process state in the durable runtime.
-4. Publish outbox/domain events from the chat module when important events occur:
+6. Persist workflow-specific checkpoints and process state in the durable runtime.
+7. Publish outbox/domain events from the chat module when important events occur:
    - session created
    - message appended
    - approval requested
@@ -515,9 +505,9 @@ Use a **hybrid model**:
    - artifact updated
    - workflow linked
    - session archived
-5. Let business modules subscribe internally to those events instead of reading runtime internals directly.
+8. Let business modules subscribe internally to those events instead of reading runtime internals directly.
 
-This is the cleanest path for a modular monolith because it avoids coupling every module to AG-UI or Durable Task storage internals while still enabling agentic workflow capabilities.[14]
+This is the cleanest path for a modular monolith because it keeps business data in the business module, keeps chat data in the chat module, and still makes cross-module SQL queries, authorization checks, and audit/reporting straightforward.[14][23][24]
 
 It also matches the sample/workflow split already present in the repo: workflow/business payloads such as ticket ids or research tasks travel as workflow data, while conversation/session identity is managed separately.[18]
 
@@ -546,7 +536,7 @@ This keeps cross-device replay simple:
 
 ## Recommended API shape
 
-Once AGUIDojo introduces the thin session/projection layer — and especially if it later graduates to the full Chat Sessions module — the server APIs should stay compatible with the current split between `/api/*` business endpoints and the unified `/chat` route.[1][12][13]
+Once AGUIDojo introduces the server-owned session layer, the server APIs should stay compatible with the current split between `/api/*` business endpoints and the unified `/chat` route.[1][12][13]
 
 Recommended new server APIs:
 
@@ -588,29 +578,33 @@ Before changing persistence semantics, fix the within-session continuity issue b
 
 Without that, the new server store will be fed already-truncated turn context.
 
-### Phase 1: introduce server session identity and MAF-native session restoration
+### Phase 1: introduce server session identity and SQL-backed session restoration
 
 Add the minimum server-side session layer first:
 
 - create/list/get/archive session metadata APIs
 - store owner user id and timestamps
 - move session-id creation to the server
-- wrap `/chat` handling with `AIHostAgent` / `AgentSessionStore` semantics rather than relying on browser state
-- choose a `ChatHistoryProvider` backend; if Cosmos is acceptable, start with the shipped provider instead of inventing a custom message store
-- generate titles server-side from canonical session history instead of client-posted excerpts[20][21][22]
+- link a new session to the relevant business subject (start with Todo id / business flow id)
+- wrap `/chat` handling with `AIHostAgent` / `AgentSessionStore` semantics, but back the store with relational persistence rather than browser state
+- generate titles server-side from canonical session history instead of client-posted excerpts[18][20][22][23][24]
+
+The nearby AGUIDojo docs already assume SQLite for sample scope and portability to SQL Server/PostgreSQL later, so this phase should follow that same relational boundary rather than introducing a separate NoSQL-first subsystem.[23][24]
 
 The current `/api/title` endpoint is a natural precursor that can later read from stored session messages rather than receiving an ad hoc request payload.[12]
 
-### Phase 2: if needed, graduate to a dedicated canonical conversation graph
+### Phase 2: persist the canonical conversation in SQL
 
 On every user turn:
 
-- append the user message node
-- persist the assistant/tool outputs as nodes
+- append the user message node/row
+- persist the assistant/tool outputs as nodes or ordered message records
 - update active leaf
 - update last activity/title snippets
 
-Keep browser persistence, but convert it into a cache.
+If AGUIDojo uses `ChatHistoryProvider`, implement it against those relational tables or projections. The framework seam does not require NoSQL; it only requires durable ordered history.[20]
+
+Keep browser persistence, but convert it into a cache. If a deployment later wants Cosmos for mostly linear history, that can remain an optional provider swap, not the basis of the domain model.[21]
 
 ### Phase 3: persist approvals, audit, and artifacts
 
@@ -623,13 +617,14 @@ Move these surfaces off of client-only state:
 
 This is the step that unlocks real cross-device continuity for the non-chat parts of the experience.
 
-### Phase 4: add workflow and business links
+### Phase 4: deepen Todo/workflow integration
 
 Introduce:
 
-- `chat_session_links`
+- indexed Todo/business-flow links so one Todo can be associated with many chat sessions
 - workflow correlation ids
 - outbox/domain events
+- current-user authorization checks at the chat/Todo boundary
 
 At this point the session becomes a first-class module in the broader modular monolith.
 
@@ -653,36 +648,38 @@ Also define explicit rules for:
 
 If implementation started next, I would make these choices immediately:
 
-1. **Start with MAF-native session/history abstractions before building custom tables.**
-   - Prefer `AgentSessionStore` + `AIHostAgent` + `ChatHistoryProvider` first.
+1. **Default to relational storage in the same database family as the business modules.**
+   - SQLite for sample scope; SQL Server or PostgreSQL for the modular-monolith target.[23][24]
 
-2. **If low maintenance is the priority and Cosmos is acceptable, use the shipped Cosmos provider first.**
-   - `CosmosChatHistoryProvider` and `CosmosCheckpointStore` are the only production-oriented storage implementations already in the repo.
+2. **Use MAF's session/history seams, but back them with SQL.**
+   - `AgentSessionStore` and `ChatHistoryProvider` are useful abstractions, not a reason to prefer NoSQL.[18][20]
 
-3. **Preserve the conversation as a branching graph only if product requirements truly need it.**
-   - MAF's built-in history providers model linear message history, so branching is the main reason to graduate to a custom module.
+3. **Make the business subject part of session identity from the beginning.**
+   - Start with the Todo example: one Todo can have many related chat sessions.
 
-4. **Store full message payload JSON, not just text.**
+4. **Treat agents as acting on business data on behalf of the current user.**
+   - Resolve Todo access and mutations through Todo module services, not through raw chat persistence.
+
+5. **Store full message payload JSON, not just text.**
    - The current browser DTO shape is not sufficient.
 
-5. **Separate canonical history from runtime summaries.**
+6. **Separate canonical history from runtime summaries.**
    - Summaries are derived artifacts.
 
-6. **Treat workflow ids and durable agent ids as correlation ids, not primary identities.**
+7. **Treat workflow ids and durable agent ids as correlation ids, not primary identities.**
 
-7. **Keep Redis optional and scoped to stream delivery/cache.**
+8. **Keep Cosmos/NoSQL optional only.**
+   - Use it if a specific deployment already prefers it and linear history is enough; do not make it the architectural default.[21]
+
+9. **Keep Redis optional and scoped to stream delivery/cache.**
    - Never as the only durable store.
 
-8. **Add `tenant_id`, `owner_user_id`, and concurrency/version fields from the beginning.**
-   - Even if the first iteration only stores thin server projections.
+10. **Add `tenant_id`, `owner_user_id`, and concurrency/version fields from the beginning.**
 
-9. **Use the hosting/application layer as the persistence seam.**
-   - This aligns with `AgentSessionStore` / `WithSessionStore` instead of overloading AG-UI transport.
+11. **Use the hosting/application layer as the persistence seam.**
+    - This aligns with `AgentSessionStore` / `WithSessionStore` instead of overloading AG-UI transport.
 
-10. **Emit outbox/domain events from the chat module only if/when the full custom module exists.**
-    - A thin MAF-native projection layer may not need this immediately.
-
-11. **Enforce auth and tenant checks at the chat/session boundary as soon as identity lands.**
+12. **Enforce auth and tenant checks at the chat/session boundary as soon as identity lands.**
     - `/chat` currently runs without mandatory auth by default, so server-side primary persistence must be introduced together with ownership checks, not as a later afterthought.[19]
 
 ## Decision matrix
@@ -691,43 +688,45 @@ If implementation started next, I would make these choices immediately:
 | --- | --- | --- |
 | Browser localStorage + IndexedDB as primary | Poor | Not cross-device, lossy, client-trust based, weak for business integration |
 | Durable Task entity/checkpoint storage as primary | Weak to moderate | Good for execution durability, poor as business-queryable product record, TTL/runtime-centric |
-| Switch to Durable Agents / Azure Functions as the primary hosting model | Moderate | Closest thing in the repo to turnkey server-side durability, but it is a hosting-model change and still runtime-centric |
-| MAF-native `AgentSessionStore` + `ChatHistoryProvider` + `CosmosChatHistoryProvider` + thin projections | Best near-term / maintenance-first | Reuses framework seams and a shipped durable provider, but still requires AGUI `/chat` integration and does not model branching/product projections automatically |
-| Dedicated relational Chat Sessions module + JSON payloads + optional durable runtime integration | Best long-term / domain-first | Best when branching history, broad queryability, and cross-module joins are first-class requirements |
+| Switch to Durable Agents / Azure Functions as the primary hosting model | Moderate | Closer to turnkey server durability, but it is a hosting-model change and still runtime-centric |
+| SQL-backed Chat Sessions module using `AgentSessionStore` / `ChatHistoryProvider` seams | Best default | Cloud-vendor-agnostic, consistent with nearby AGUIDojo docs, and a natural fit for Todo/business modules already using SQL |
+| Cosmos/NoSQL-backed `ChatHistoryProvider` plus relational business projections | Situational / optional | Valid if a deployment already standardizes on Cosmos and mostly wants linear history, but weaker as the default for a SQL-backed modular monolith |
 
 ## Final recommendation
 
-The best strategic move is **not** "Durable Task as the primary database" and it is also **not** "build a full custom chat store immediately."
+The best strategic move is **to make AGUIDojo's primary persistence relational and application-owned from the start.**
 
-The best next move is:
+Use a SQL-backed Chat Sessions module as the system of record — SQLite for sample scope, kept portable to SQL Server or PostgreSQL for the modular-monolith target — and plug MAF into that boundary:
 
-**Use MAF's built-in session/history abstractions first: integrate `AIHostAgent` / `AgentSessionStore` into AGUIDojo's `/chat` handling, back canonical message history with `ChatHistoryProvider` — preferably `CosmosChatHistoryProvider` if Cosmos is acceptable — and keep only thin AGUIDojo-owned projection storage for session metadata, ownership, approvals, artifacts, and authorization boundaries.**
+**Integrate `AIHostAgent` / `AgentSessionStore` into AGUIDojo's `/chat` handling, back canonical message history with relational storage behind `ChatHistoryProvider` or equivalent SQL tables, keep `MapAGUI` as the transport boundary only, and link each session to the current user and the relevant business subject (starting with the Todo module, where one Todo can have many related chat sessions).**[18][20][22][23][24]
 
-Then, only if AGUIDojo proves it needs first-class branching graphs, richer product projections, or broader relational business queries than MAF's native session/history model can support, evolve that thin layer into the larger Chat Sessions module described in this document.[20][21][22]
+Cosmos/NoSQL remains a valid optional provider choice if a specific deployment already prefers it, but it is not required and should not drive the default architecture.[21]
 
 That sequence is the best match for:
 
-- reducing maintenance by reusing framework-supported persistence seams first
-- getting server-authoritative persistence sooner
-- keeping Durable Task/workflow persistence in its proper execution-layer role
-- leaving a clean upgrade path if AGUIDojo later needs a full product-facing chat module
+- cloud-vendor-agnostic deployment
+- consistency with AGUIDojo docs that already lean SQLite/relational
+- easy joins and authorization boundaries with SQL-backed business modules
+- using MAF seams without overloading Durable Task or AG-UI transport
+- leaving room for optional Cosmos/NoSQL or workflow-specific stores later if a deployment truly benefits
 
-If AGUIDojo is willing to change hosting models instead of extending the current ASP.NET Core `MapAGUI` path, Durable Agents is the other low-custom-code path worth evaluating separately. For the **current** AGUIDojo architecture, though, the thin AG-UI shim plus MAF-native history providers is the lower-friction path.[6][21][22]
+If AGUIDojo is willing to change hosting models instead of extending the current ASP.NET Core `MapAGUI` path, Durable Agents is still worth evaluating separately. For the **current** AGUIDojo architecture, though, SQL-first persistence plus a thin AG-UI integration layer is the lower-friction path.[6][22][23][24]
 
 ## Confidence assessment
 
-Confidence is **high** on the framework boundary and on the recommended first step:
+Confidence is **high** on the framework boundary and on the SQL-first recommendation:
 
 - current AGUIDojo code clearly shows the browser cache is incomplete as a primary store
-- current MAF code clearly provides `AgentSessionStore`, `AIHostAgent`, `ChatHistoryProvider`, and a shipped `CosmosChatHistoryProvider`
+- current MAF code clearly provides `AgentSessionStore`, `AIHostAgent`, and `ChatHistoryProvider`, and those seams do not prescribe NoSQL
 - current AG-UI hosting code clearly does **not** wire session load/save automatically
-- current A2A hosting code clearly demonstrates the intended session restoration pattern
+- ADR 0010 clearly leaves thread persistence to the application today
+- nearby AGUIDojo docs clearly point toward SQLite now and SQL Server/PostgreSQL portability later
 - local Durable Task code clearly shows a runtime-oriented durable model with TTL and checkpoint semantics
 
-Confidence is **medium** on whether AGUIDojo can stay on the MAF-native path permanently:
+Confidence is **medium** on the exact long-term message shape:
 
-- that depends on whether AGUIDojo truly needs first-class branching history, broader business queryability, and richer artifact projections than linear message history provides
-- current client state suggests it might, but that should be proven before paying the full custom-storage cost
+- that depends on whether AGUIDojo truly needs first-class branching history and richer artifact projections than linear message history provides
+- the current client state and Todo/business-flow direction suggest it probably does, but that should still be proven as implementation lands
 
 ## Footnotes
 
@@ -774,3 +773,7 @@ Confidence is **medium** on whether AGUIDojo can stay on the MAF-native path per
 [21] `dotnet/src/Microsoft.Agents.AI.CosmosNoSql/Microsoft.Agents.AI.CosmosNoSql.csproj`, `dotnet/src/Microsoft.Agents.AI.CosmosNoSql/CosmosChatHistoryProvider.cs`, `dotnet/src/Microsoft.Agents.AI.CosmosNoSql/CosmosDBChatExtensions.cs`, `dotnet/src/Microsoft.Agents.AI.CosmosNoSql/CosmosCheckpointStore.cs`, `dotnet/src/Microsoft.Agents.AI.CosmosNoSql/CosmosDBWorkflowExtensions.cs`
 
 [22] `dotnet/src/Microsoft.Agents.AI.Hosting.A2A/AIAgentExtensions.cs`, `dotnet/src/Microsoft.Agents.AI.Hosting.AGUI.AspNetCore/AGUIEndpointRouteBuilderExtensions.cs`, `docs/decisions/0010-ag-ui-support.md`
+
+[23] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/system-design.md`
+
+[24] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan.md`
