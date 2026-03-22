@@ -72,9 +72,6 @@ public sealed record SessionState
     /// <summary>Gets the AG-UI conversation identifier.</summary>
     public string? ConversationId { get; init; }
 
-    /// <summary>Gets the count of messages already sent with stateful context.</summary>
-    public int StatefulMessageCount { get; init; }
-
     /// <summary>Gets the pending approval request, if any.</summary>
     public PendingApproval? PendingApproval { get; init; }
 

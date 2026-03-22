@@ -387,6 +387,16 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
             IChatClient chatClient = _chatClientFactory.CreateClient();
             context.ChatOptions.ConversationId = GetSessionState(sessionId).ConversationId;
+
+            // Restore the AG-UI thread ID into ChatOptions so AGUIChatClient reuses
+            // the same thread across turns (ConversationId is always null due to
+            // AGUIChatClient's full-history protocol clearing).
+            if (!string.IsNullOrEmpty(context.AguiThreadId))
+            {
+                context.ChatOptions.AdditionalProperties ??= [];
+                context.ChatOptions.AdditionalProperties["agui_thread_id"] = context.AguiThreadId;
+            }
+
             bool hasApprovalResponses;
 
             do
@@ -429,7 +439,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                         try
                         {
                             await foreach (var update in chatClient.GetStreamingResponseAsync(
-                                session.Messages.Skip(session.StatefulMessageCount),
+                                session.Messages,
                                 context.ChatOptions,
                                 responseCancellation.Token))
                             {
@@ -561,6 +571,14 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                 context.ChatOptions.ConversationId = update.ConversationId;
                                 _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, update.ConversationId));
 
+                                // Capture the AG-UI thread ID from the first update and store
+                                // it on the context for cross-turn reuse.
+                                if (update.AdditionalProperties?.TryGetValue("agui_thread_id", out string? aguiThreadId) is true
+                                    && !string.IsNullOrEmpty(aguiThreadId))
+                                {
+                                    context.AguiThreadId = aguiThreadId;
+                                }
+
                                 if (update.AuthorName is not null)
                                 {
                                     _dispatcher.Dispatch(new SessionActions.SetAuthorNameAction(sessionId, update.AuthorName));
@@ -677,19 +695,11 @@ public sealed class AgentStreamingService : IAgentStreamingService
                         hasApprovalResponses = false;
                         context.ChatOptions.ConversationId = null;
                         _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, null));
-                        _dispatcher.Dispatch(new SessionActions.SetStatefulCountAction(sessionId, GetSessionState(sessionId).Messages.Count));
                     }
                     else
                     {
                         hasApprovalResponses = true;
                     }
-                }
-                else if (!encounteredError)
-                {
-                    SessionState session = GetSessionState(sessionId);
-                    _dispatcher.Dispatch(new SessionActions.SetStatefulCountAction(
-                        sessionId,
-                        session.ConversationId is not null ? session.Messages.Count : 0));
                 }
 
                 if (sawDocumentPreview && GetSessionState(sessionId).CurrentDocumentState is not null)
@@ -864,7 +874,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
         SessionStreamingContext context = GetOrCreateContext(sessionId);
         context.ChatOptions.ConversationId = null;
         _dispatcher.Dispatch(new SessionActions.SetConversationIdAction(sessionId, null));
-        _dispatcher.Dispatch(new SessionActions.SetStatefulCountAction(sessionId, GetSessionState(sessionId).Messages.Count));
+        context.AguiThreadId = null;
+        context.ChatOptions.AdditionalProperties?.Remove("agui_thread_id");
         context.LastDiffBefore = null;
         context.LastDiffAfter = null;
         context.LastDiffTitle = "State Diff";

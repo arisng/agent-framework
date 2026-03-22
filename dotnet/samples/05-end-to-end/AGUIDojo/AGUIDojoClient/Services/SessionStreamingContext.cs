@@ -35,6 +35,13 @@ public sealed class SessionStreamingContext : IDisposable
     public ChatOptions ChatOptions { get; } = new();
 
     /// <summary>
+    /// Gets or sets the AG-UI thread ID for cross-turn continuity.
+    /// AGUIChatClient clears ConversationId on every response (full-history protocol),
+    /// so this field preserves the thread identity across turns.
+    /// </summary>
+    public string? AguiThreadId { get; set; }
+
+    /// <summary>
     /// Gets or sets the pending approval task source for the active stream.
     /// </summary>
     public TaskCompletionSource<bool>? ApprovalTaskSource { get; set; }
@@ -92,6 +99,7 @@ public sealed class SessionStreamingContext : IDisposable
     {
         this.CancelCurrentResponse();
         this.ChatOptions.ConversationId = null;
+        this.AguiThreadId = null;
         this.SeenFunctionCallIds.Clear();
         this.SeenFunctionResultCallIds.Clear();
         this.FunctionCallIdToToolName.Clear();

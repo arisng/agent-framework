@@ -275,24 +275,19 @@ public static class SessionReducers
             state,
             action.SessionId,
             session => session with
-            {
-                Tree = new(),
-                CurrentResponseMessage = null,
-                ConversationId = null,
-                StatefulMessageCount = 0,
-                PendingApproval = null,
-                PendingUndo = null,
-            },
+                {
+                    Tree = new(),
+                    CurrentResponseMessage = null,
+                    ConversationId = null,
+                    PendingApproval = null,
+                    PendingUndo = null,
+                },
             metadata => UpdateActivity(
                 metadata,
                 action.OccurredAt,
                 hasPendingApproval: false,
                 status: SessionStatus.Created,
                 unreadCount: 0));
-
-    [ReducerMethod]
-    public static SessionManagerState OnSetStatefulCount(SessionManagerState state, SessionActions.SetStatefulCountAction action) =>
-        UpdateSessionState(state, action.SessionId, session => session with { StatefulMessageCount = action.Count });
 
     [ReducerMethod]
     public static SessionManagerState OnTrimMessages(SessionManagerState state, SessionActions.TrimMessagesAction action) =>
@@ -456,7 +451,6 @@ public static class SessionReducers
                 {
                     Tree = session.Tree.BranchAt(node.ParentId, editedMessage),
                     ConversationId = null,
-                    StatefulMessageCount = 0,
                 };
             });
 

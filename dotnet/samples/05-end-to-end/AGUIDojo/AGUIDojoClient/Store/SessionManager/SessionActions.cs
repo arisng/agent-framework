@@ -43,8 +43,6 @@ public static class SessionActions
 
     public sealed record ClearMessagesAction(string SessionId, DateTimeOffset? OccurredAt = null);
 
-    public sealed record SetStatefulCountAction(string SessionId, int Count);
-
     public sealed record TrimMessagesAction(string SessionId, int KeepCount);
 
     public sealed record SetRunningAction(string SessionId, bool IsRunning);
