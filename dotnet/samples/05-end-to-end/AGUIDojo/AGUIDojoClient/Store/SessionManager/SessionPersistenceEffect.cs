@@ -14,6 +14,8 @@ public sealed class SessionPersistenceEffect : IDisposable
 {
     private readonly IState<SessionManagerState> _sessionStore;
     private readonly ISessionPersistenceService _persistence;
+    private readonly ISessionApiService _sessionApiService;
+    private readonly ILogger<SessionPersistenceEffect> _logger;
 
     /// <summary>Debounce handle for conversation saves.</summary>
     private CancellationTokenSource? _debounceCts;
@@ -21,10 +23,16 @@ public sealed class SessionPersistenceEffect : IDisposable
     /// <summary>Debounce interval for IndexedDB writes.</summary>
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(500);
 
-    public SessionPersistenceEffect(IState<SessionManagerState> sessionStore, ISessionPersistenceService persistence)
+    public SessionPersistenceEffect(
+        IState<SessionManagerState> sessionStore,
+        ISessionPersistenceService persistence,
+        ISessionApiService sessionApiService,
+        ILogger<SessionPersistenceEffect> logger)
     {
         _sessionStore = sessionStore;
         _persistence = persistence;
+        _sessionApiService = sessionApiService;
+        _logger = logger;
     }
 
     public void Dispose()
@@ -74,10 +82,13 @@ public sealed class SessionPersistenceEffect : IDisposable
         => SaveActiveSessionAndMetadataAsync(action.SessionId);
 
     [EffectMethod]
-    public async Task OnArchiveSession(SessionActions.ArchiveSessionAction action, IDispatcher _)
+    public async Task OnArchiveSession(SessionActions.ArchiveSessionAction action, IDispatcher dispatcher)
     {
         await _persistence.DeleteConversationAsync(action.SessionId);
         await SaveAllMetadataAsync();
+        // Fire-and-forget: server sync is best-effort. If the browser tab closes before
+        // this completes, the server session stays active until a future reconciliation.
+        _ = ArchiveSessionOnServerAsync(action.SessionId);
     }
 
     [EffectMethod]
@@ -148,5 +159,21 @@ public sealed class SessionPersistenceEffect : IDisposable
     {
         await _persistence.SaveActiveSessionIdAsync(sessionId);
         await SaveAllMetadataAsync();
+    }
+
+    private async Task ArchiveSessionOnServerAsync(string sessionId)
+    {
+        try
+        {
+            bool archived = await _sessionApiService.ArchiveSessionAsync(sessionId);
+            if (!archived)
+            {
+                _logger.LogWarning("Server archive sync did not succeed for session {SessionId}.", sessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Server archive sync failed for session {SessionId}.", sessionId);
+        }
     }
 }

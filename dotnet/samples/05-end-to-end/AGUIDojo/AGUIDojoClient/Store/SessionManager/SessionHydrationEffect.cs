@@ -12,10 +12,17 @@ namespace AGUIDojoClient.Store.SessionManager;
 public sealed class SessionHydrationEffect
 {
     private readonly ISessionPersistenceService _persistence;
+    private readonly ISessionApiService _sessionApiService;
+    private readonly ILogger<SessionHydrationEffect> _logger;
 
-    public SessionHydrationEffect(ISessionPersistenceService persistence)
+    public SessionHydrationEffect(
+        ISessionPersistenceService persistence,
+        ISessionApiService sessionApiService,
+        ILogger<SessionHydrationEffect> logger)
     {
         _persistence = persistence;
+        _sessionApiService = sessionApiService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -27,48 +34,103 @@ public sealed class SessionHydrationEffect
     {
         // Step 1: Load metadata from localStorage
         var metadataDtos = await _persistence.LoadMetadataAsync();
-        if (metadataDtos is null || metadataDtos.Count == 0)
-        {
-            return; // Nothing persisted — keep default state
-        }
 
         // Step 2: Load active session ID from localStorage
         string? activeSessionId = await _persistence.LoadActiveSessionIdAsync();
 
         // Step 3: Reconstruct SessionEntry objects
-        var sessions = new Dictionary<string, SessionEntry>();
+        var sessions = new Dictionary<string, SessionEntry>(StringComparer.Ordinal);
 
-        foreach (var dto in metadataDtos)
+        if (metadataDtos is not null)
         {
-            SessionMetadata metadata = dto.ToMetadata();
-
-            // Reset transient statuses to Completed on reload
-            metadata = metadata with
+            foreach (var dto in metadataDtos)
             {
-                Status = metadata.Status switch
+                SessionMetadata metadata = ResetTransientMetadata(dto.ToMetadata());
+
+                // Load conversation tree from IndexedDB
+                ConversationTree? tree = await _persistence.LoadConversationAsync(dto.Id);
+                var sessionState = new SessionState
                 {
-                    SessionStatus.Streaming => SessionStatus.Completed,
-                    SessionStatus.Background => SessionStatus.Completed,
-                    SessionStatus.Active => SessionStatus.Completed,
-                    _ => metadata.Status,
-                },
-                UnreadCount = 0,
-                HasPendingApproval = false,
-            };
+                    Tree = tree ?? new ConversationTree(),
+                };
 
-            // Load conversation tree from IndexedDB
-            ConversationTree? tree = await _persistence.LoadConversationAsync(dto.Id);
-            var sessionState = new SessionState
+                sessions[dto.Id] = new SessionEntry(metadata, sessionState);
+            }
+        }
+
+        // Step 4: Merge in server-owned sessions that do not exist in browser storage
+        try
+        {
+            List<ServerSessionSummary>? serverSessions = await _sessionApiService.ListSessionsAsync();
+            if (serverSessions is not null)
             {
-                Tree = tree ?? new ConversationTree(),
-            };
+                foreach (ServerSessionSummary serverSession in serverSessions)
+                {
+                    if (sessions.ContainsKey(serverSession.Id))
+                    {
+                        continue;
+                    }
 
-            sessions[dto.Id] = new SessionEntry(metadata, sessionState);
+                    sessions[serverSession.Id] = CreateServerSessionEntry(serverSession);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load server session list during hydration. Falling back to browser storage only.");
         }
 
         if (sessions.Count > 0)
         {
             dispatcher.Dispatch(new SessionActions.HydrateSessionsAction(sessions, activeSessionId));
         }
+    }
+
+    private static SessionMetadata ResetTransientMetadata(SessionMetadata metadata) => metadata with
+    {
+        Status = metadata.Status switch
+        {
+            SessionStatus.Streaming => SessionStatus.Completed,
+            SessionStatus.Background => SessionStatus.Completed,
+            SessionStatus.Active => SessionStatus.Completed,
+            _ => metadata.Status,
+        },
+        UnreadCount = 0,
+        HasPendingApproval = false,
+    };
+
+    private static SessionEntry CreateServerSessionEntry(ServerSessionSummary serverSession)
+    {
+        DateTimeOffset createdAt = serverSession.CreatedAt == default ? DateTimeOffset.UtcNow : serverSession.CreatedAt;
+        DateTimeOffset lastActivityAt = serverSession.LastActivityAt == default ? createdAt : serverSession.LastActivityAt;
+
+        return new SessionEntry(
+            new SessionMetadata
+            {
+                Id = serverSession.Id,
+                Title = string.IsNullOrWhiteSpace(serverSession.Title) ? SessionMetadata.DefaultTitle : serverSession.Title,
+                EndpointPath = SessionMetadata.DefaultEndpointPath,
+                Status = MapServerStatus(serverSession.Status),
+                CreatedAt = createdAt,
+                LastActivityAt = lastActivityAt,
+                UnreadCount = 0,
+                HasPendingApproval = false,
+            },
+            new SessionState());
+    }
+
+    private static SessionStatus MapServerStatus(string? status)
+    {
+        if (Enum.TryParse<SessionStatus>(status, ignoreCase: true, out SessionStatus parsedStatus))
+        {
+            return parsedStatus switch
+            {
+                SessionStatus.Archived => SessionStatus.Archived,
+                SessionStatus.Error => SessionStatus.Error,
+                _ => SessionStatus.Completed,
+            };
+        }
+
+        return SessionStatus.Completed;
     }
 }

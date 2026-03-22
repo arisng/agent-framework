@@ -86,6 +86,7 @@ builder.Services.AddScoped<IThemeService, ThemeService>();
 
 // Register SessionPersistenceService for browser-based session storage (localStorage + IndexedDB)
 builder.Services.AddScoped<ISessionPersistenceService, SessionPersistenceService>();
+builder.Services.AddScoped<ISessionApiService, SessionApiService>();
 
 // -----------------------------------------------------------------------------
 // BACKEND CONNECTION CONFIGURATION
@@ -279,6 +280,26 @@ builder.Services.AddProblemDetails(options =>
 //
 // Resilience: Retry + circuit breaker for idempotent REST GET requests.
 // Unlike the SSE client above, REST API calls are safe to retry on transient failures.
+builder.Services.AddHttpClient("business-api")
+    .AddResilienceHandler("business-api-resilience", pipeline =>
+    {
+        pipeline.AddRetry(new HttpRetryStrategyOptions
+        {
+            MaxRetryAttempts = 3,
+            BackoffType = DelayBackoffType.Exponential,
+            Delay = TimeSpan.FromSeconds(1),
+            UseJitter = true,
+        });
+
+        pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+        {
+            FailureRatio = 0.5,
+            SamplingDuration = TimeSpan.FromSeconds(30),
+            MinimumThroughput = 5,
+            BreakDuration = TimeSpan.FromSeconds(30),
+        });
+    });
+
 builder.Services.AddHttpClient<IWeatherApiClient, WeatherApiClient>()
     .AddResilienceHandler("weather-api-resilience", pipeline =>
     {
