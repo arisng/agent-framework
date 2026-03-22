@@ -10,8 +10,8 @@ namespace AGUIDojoServer.HumanInTheLoop;
 
 /// <summary>
 /// A delegating agent that handles function approval requests on the server side.
-/// Transforms FunctionApprovalRequestContent to the AG-UI request_approval tool call pattern,
-/// and transforms approval responses back to FunctionApprovalResponseContent.
+/// Transforms ToolApprovalRequestContent to the AG-UI request_approval tool call pattern,
+/// and transforms approval responses back to ToolApprovalResponseContent.
 /// </summary>
 internal sealed class ServerFunctionApprovalAgent : DelegatingAIAgent
 {
@@ -70,7 +70,7 @@ internal sealed class ServerFunctionApprovalAgent : DelegatingAIAgent
     }
 
 #pragma warning disable MEAI001 // Type is for evaluation purposes only
-    private static FunctionApprovalRequestContent ConvertToolCallToApprovalRequest(FunctionCallContent toolCall, JsonSerializerOptions jsonSerializerOptions)
+    private static ToolApprovalRequestContent ConvertToolCallToApprovalRequest(FunctionCallContent toolCall, JsonSerializerOptions jsonSerializerOptions)
     {
         if (toolCall.Name != "request_approval" || toolCall.Arguments == null)
         {
@@ -92,15 +92,15 @@ internal sealed class ServerFunctionApprovalAgent : DelegatingAIAgent
             ? args.Deserialize<Dictionary<string, object?>>(jsonSerializerOptions)
             : null;
 
-        return new FunctionApprovalRequestContent(
-            id: request.ApprovalId,
+        return new ToolApprovalRequestContent(
+            requestId: request.ApprovalId,
             new FunctionCallContent(
                 callId: request.ApprovalId,
                 name: request.FunctionName,
                 arguments: functionArgs));
     }
 
-    private static FunctionApprovalResponseContent ConvertToolResultToApprovalResponse(FunctionResultContent result, FunctionApprovalRequestContent approval, JsonSerializerOptions jsonSerializerOptions)
+    private static ToolApprovalResponseContent ConvertToolResultToApprovalResponse(FunctionResultContent result, ToolApprovalRequestContent approval, JsonSerializerOptions jsonSerializerOptions)
     {
         var approvalResponse = result.Result is JsonElement je
             ? je.Deserialize<ApprovalResponse>(jsonSerializerOptions)
@@ -144,7 +144,7 @@ internal sealed class ServerFunctionApprovalAgent : DelegatingAIAgent
         List<ChatMessage>? result = null;
 
 #pragma warning disable MEAI001 // Type is for evaluation purposes only
-        Dictionary<string, FunctionApprovalRequestContent> trackedRequestApprovalToolCalls = new();
+        Dictionary<string, ToolApprovalRequestContent> trackedRequestApprovalToolCalls = new();
         for (int messageIndex = 0; messageIndex < messages.Count; messageIndex++)
         {
             var message = messages[messageIndex];
@@ -204,11 +204,11 @@ internal sealed class ServerFunctionApprovalAgent : DelegatingAIAgent
         {
             var content = update.Contents[i];
 #pragma warning disable MEAI001 // Type is for evaluation purposes only
-            if (content is FunctionApprovalRequestContent request)
+            if (content is ToolApprovalRequestContent request)
             {
                 updatedContents ??= [.. update.Contents];
-                var functionCall = request.FunctionCall;
-                var approvalId = request.Id;
+                var functionCall = (FunctionCallContent)request.ToolCall;
+                var approvalId = request.RequestId;
 
                 var approvalData = new ApprovalRequest
                 {
