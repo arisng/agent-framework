@@ -9,7 +9,8 @@ This folder now keeps only the current, consolidated documentation for
 - `implementation-plan.md` - active execution plan and rollout sequence
 - `research/aguidojo-llm-picker-architecture-and-maf-alignment.md` - model picker, routing, and compaction research
 - `research/server-side-persistence-for-chat-session.md` - persistence boundary and storage-direction research
-- `research/copilot-cli-session-context-and-instruction-patterns.md` - Copilot CLI overlap analysis for sessions, model UX, compaction, and instruction safety
+- `research/copilot-cli-session-context-and-instruction-patterns.md` - public-docs overlap analysis for sessions, model UX, compaction, and instruction safety
+- `research/copilot-cli-public-repo-grounding.md` - public-repo grounding pass for durable sessions, model routing, compaction, instruction visibility, and trust boundaries
 
 ## Documentation stance
 
