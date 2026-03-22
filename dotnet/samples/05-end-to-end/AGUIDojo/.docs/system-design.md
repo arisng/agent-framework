@@ -1,8 +1,8 @@
 # AGUIDojo system design
 
-This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the roadmap is targeting next.
+This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
 
-For the supporting model-picker, persistence, and MAF boundary research that informs this design, see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md` and `.docs/research/server-side-persistence-for-chat-session.md`.
+For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap research that informs this design, see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, and `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`.
 
 ## 1. Scope and status
 
@@ -339,7 +339,7 @@ The important point is not the exact table names. The important point is that th
 ## 10. Key code touchpoints
 
 - `README.md` - live sample summary and current topology
-- `.issues/260321_aguidojo-roadmap.md` - canonical roadmap and phase ordering
+- `.docs/implementation-plan.md` - active phase ordering, rollout decisions, and resolved design choices
 - `AGUIDojo.AppHost/AppHost.cs` - Aspire wiring between client and server
 - `AGUIDojoClient/Program.cs` - Blazor Server BFF setup, direct `/chat` client, YARP proxy setup
 - `AGUIDojoClient/Services/AGUIChatClientFactory.cs` - current AG-UI transport client creation; future forwarded model metadata likely attaches here or in a thin wrapper around it

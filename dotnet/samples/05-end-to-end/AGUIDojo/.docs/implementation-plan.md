@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This is the consolidated execution plan for evolving the AGUIDojo sample. It supersedes the older v1/v2/v3 implementation-plan sprawl and is aligned to the current roadmap (`.issues/260321_aguidojo-roadmap.md`), the current README, the unified `POST /chat` implementation, and the current model-picker / context-window research. It is an execution playbook, not a duplicate system design.
+This is the consolidated execution plan for evolving the AGUIDojo sample. It supersedes the older v1/v2/v3 implementation-plan sprawl and the retired long-form roadmap issue. It stays aligned with the current README, the consolidated system design, the unified `POST /chat` implementation, and the current model-picker / context-window / Copilot-overlap research. It is an execution playbook, not a duplicate system design.
 
-The current research baseline for model selection, model-aware compaction, persistence boundaries, and MAF integration is captured in `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md` and `.docs/research/server-side-persistence-for-chat-session.md`.
+The current research baseline for model selection, model-aware compaction, persistence boundaries, MAF integration, and overlapping Copilot CLI product patterns is captured in `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, and `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`.
 
-The plan should stay synchronized with the sample as each phase lands. README, roadmap notes, and implementation must describe the same architecture and sequencing.
+The plan should stay synchronized with the sample as each phase lands. README, system design, supporting research, and implementation must describe the same architecture and sequencing.
 
 ## Scope guardrails
 
@@ -73,7 +73,7 @@ The plan should stay synchronized with the sample as each phase lands. README, r
 - **Keep business identity separate from runtime correlation.** Session identity must not collapse into AG-UI or workflow runtime IDs.
 - **Keep chat and business ownership separate.** Start with Todo as the anchor: one Todo can have many related chat sessions, and agents should act on business data through module/application services on behalf of the current user.
 - **Prefer thin, portable foundations.** Use the simplest SQL-backed relational model that can grow cleanly across SQLite, SQL Server, and PostgreSQL.
-- **Keep docs aligned as code lands.** Each phase should leave README, roadmap notes, and implementation in agreement.
+- **Keep docs aligned as code lands.** Each phase should leave README, system design, implementation-plan decisions, and any touched research notes in agreement.
 
 ## Phased plan
 
@@ -119,12 +119,12 @@ Move primary session ownership to `AGUIDojoServer` so the sample has a server-is
 
 - Add a Chat Sessions module inside `AGUIDojoServer`.
 - Back it with a SQL-first relational store aligned with the modular monolith's primary database family; SQLite may remain the local/sample option, but SQL Server or PostgreSQL should be natural fits for the same model.
-- Introduce minimal session lifecycle APIs, such as:
-  - create session
+- Introduce minimal session lifecycle APIs centered on recovery and archival:
   - list sessions
   - get session summary/detail
   - archive session
-- Have the server issue the primary business session ID.
+- Let the first persisted `/chat` turn create the server session implicitly when no server-owned session exists yet; blank drafts can remain client-local before first send.
+- Have the server issue the primary business session ID on first persisted turn.
 - Shift hydration and session listing toward the server-authoritative index.
 - Keep browser storage as cache/draft/import support rather than the owner of identity.
 - Keep the initial model thin: metadata, lifecycle status, timestamps, and enough server linkage to support later phases.
@@ -134,7 +134,7 @@ Move primary session ownership to `AGUIDojoServer` so the sample has a server-is
 
 **Acceptance / validation**
 
-- New sessions receive a server-owned session ID.
+- The first persisted prompt against a new draft yields a server-owned session ID.
 - Refresh or a second browser can recover the server session list without depending on prior browser metadata.
 - Archive behavior is represented by the server lifecycle, not only client-side removal.
 - The server contracts are ready to surface selected-model metadata once the picker lands.
@@ -257,7 +257,7 @@ Finish the transition to a server-owned sample foundation and keep the operation
 - Document the SQL-first, relational, cloud-vendor-agnostic persistence model, including SQLite as a local convenience and SQL Server/PostgreSQL as the natural modular-monolith targets.
 - Document the model catalog and context-window policy at the same level as the persistence portability story.
 - Clarify minimal operational expectations for local data lifecycle, reset, and inspection.
-- Update README, roadmap notes, and implementation-facing docs as each phase lands so the sample story stays current.
+- Update README, system design, implementation-facing docs, and any changed research notes as each phase lands so the sample story stays current.
 - Reconfirm which optional replay/collaboration capabilities remain deferred.
 
 **Acceptance / validation**
@@ -275,10 +275,12 @@ Finish the transition to a server-owned sample foundation and keep the operation
 
 - **Session identity model**
   - Primary business session ID is server-issued.
+  - Blank drafts may stay client-local until the first persisted `/chat` turn creates the canonical server session.
   - `ConversationId`, AG-UI thread/run IDs, Durable Task IDs, and workflow IDs are stored only as correlations or links.
 
 - **Model catalog and selection**
   - Selected model is per-session in UX terms, but server-authoritative in architecture terms.
+  - Persist the session's `preferredModelId`, and record `effectiveModelId` on assistant turns or audit facts when that becomes useful.
   - Keep the catalog small and sample-scoped (hardcoded or configuration-backed is fine for AGUIDojo).
 
 - **Persistence boundary**
@@ -297,14 +299,19 @@ Finish the transition to a server-owned sample foundation and keep the operation
 - **Context-window policy**
   - Replace client-side history slicing and fixed message caps with full-history submission plus server-side compaction.
   - `ContextWindowChatClient` is transitional; the target is `CompactionProvider` / `PipelineCompactionStrategy` with model-aware thresholds and summarization/truncation backstops.
+  - Compact against a safe input budget after subtracting output and system/tool reserve, with earlier thresholds (roughly 75-85% by model tier) rather than a last-minute hard-limit trigger.
 
 - **Browser transition strategy**
   - Continue reading existing browser-local data only as a convenience or best-effort import source during rollout.
-  - Do not promise lossless migration from the current local format.
+  - Import only the session metadata and message history worth preserving when the server has no canonical copy yet; do not promise lossless migration from the current local format.
 
 - **Message fidelity**
   - The current lightweight browser tree format is a useful cache, not a sufficient canonical model.
   - Server persistence should keep enough structure to support approvals, tools, artifacts, and branching without flattening the experience.
+
+- **Instruction layering and prompt safety**
+  - If AGUIDojo later adds project, module, or session instruction files, define a deterministic merge order and surface the active instruction sources in the UI or diagnostics.
+  - Treat fetched URLs, uploaded files, and user-authored instruction content as untrusted context; they must not silently override server policy or system instructions.
 
 - **Validation strategy**
   - Favor focused server tests and pragmatic manual checks over broad new test infrastructure.
@@ -312,8 +319,8 @@ Finish the transition to a server-owned sample foundation and keep the operation
 
 - **Documentation discipline**
   - This consolidated plan is the active playbook.
-  - Older v1/v2/v3 implementation-plan documents should be treated as historical context, not the current execution source.
-  - README, roadmap, and implementation notes should be updated when a phase materially changes the sample story.
+  - Older v1/v2/v3 implementation-plan documents and the retired roadmap issue should be treated as historical context, not the current execution source.
+  - README, system design, implementation notes, and any changed research docs should be updated when a phase materially changes the sample story.
 
 ## Deferred work
 
@@ -324,17 +331,47 @@ Finish the transition to a server-owned sample foundation and keep the operation
 - Repo-wide platformization of AGUIDojo persistence/session concepts.
 - Any feature work that depends on durability but does not help establish the foundation first.
 
-## Open questions / decisions to revisit
+## Resolved design decisions from the March 2026 analysis pass
 
-1. What is the thinnest Chat Sessions API and SQL-first schema that keeps the sample simple while staying portable across SQLite, SQL Server, and PostgreSQL, including selected-model metadata?
-2. Should session creation be explicit before first prompt, or should the first `/chat` turn create the server session implicitly?
-3. What exact rich-message and model/compaction metadata are sufficient for the current sample without over-designing for future multimodal cases?
-4. Which artifact surfaces and audit facts (including model-switch / compaction events) must be durable in the first rich-persistence milestone, and which can remain derived or deferred?
-5. How much of today's browser-local data is worth importing once server persistence exists?
-6. What is the thinnest client-side transport change needed to send model preference on `/chat` — extend `AGUIChatClient`, wrap it, or use another small request-metadata seam?
-7. What safety margin should drive model-aware compaction thresholds for the sample's supported models?
-8. If the same server-owned session changes from multiple browsers later, should conflicts auto-branch, reject stale writes, or use another lightweight rule?
-9. What minimum README/roadmap/ops updates should be required at the end of every phase to prevent drift?
+These questions are now resolved enough to guide implementation. If later code work disproves one of these choices, update this section rather than reviving a second long-form roadmap document.
+
+1. **Thinnest Chat Sessions API and schema**
+   - Start with a SQL-first relational model centered on `chat_sessions`, canonical branching message-node storage, subject/entity links, audit events, and durable artifact/projection records.
+   - Keep the initial server API thin: list sessions, get summary/detail, archive session, and let `/chat` create the canonical session on first persisted turn.
+   - Store `preferredModelId` on the session summary/detail model, and `effectiveModelId` on assistant turns or audit events rather than bloating the session root with provider-specific detail.
+
+2. **Session creation behavior**
+   - The default UX should keep blank drafts local and create the server-owned session implicitly on the first persisted `/chat` turn.
+   - A separate explicit create endpoint is deferred unless a later workflow truly needs server-owned empty drafts before the first message.
+
+3. **Rich-message and model/compaction metadata scope**
+   - Persist the current sample's real needs: role/text/author identity, structured `AIContent`, tool call/result linkage, approval context, requested/effective model IDs, compaction summary references, and before/after token estimates where they materially aid debugging.
+   - Avoid provider-specific transient payloads, chunk-level stream trivia, and speculative multimodal fields that the sample does not yet use.
+
+4. **First durable artifact and audit scope**
+   - The first rich-persistence milestone should durably preserve approvals and decisions, audit entries, plan state, recipe/shared state, document preview/diff context, data-grid projections, and material model-switch / compaction events.
+   - Chart/form demo outputs and other purely re-renderable surfaces can remain derived or deferred unless later implementation proves they hold unique state worth saving.
+
+5. **Browser-local import scope**
+   - Import only the metadata and message history worth preserving when the server does not already own the session, plus selected-model metadata if the client has it by then.
+   - Do not import transient streaming state, unread counts, pending-approval badges, `StatefulMessageCount`, or promise lossless artifact migration from the existing local cache format.
+
+6. **Thinnest client transport change for model preference**
+   - Add a small AGUIDojo-specific wrapper or extension around `AGUIChatClient` / its factory so the client can populate forwarded request metadata such as `modelId`.
+   - Do not fork the AG-UI protocol and do not add per-model chat endpoints.
+
+7. **Compaction safety margin**
+   - Compute a safe input budget per model: `context window - reserved output - system/tool reserve`.
+   - Compact earlier than the model hard limit, using a practical starting policy of about 85% for large-window models, 80% for medium-window models, and 75% for smaller-window models.
+
+8. **Concurrent cross-device writes**
+   - Use optimistic concurrency as the default rule.
+   - If a submitted parent leaf is stale, auto-branch conversation writes instead of silently overwriting prior turns.
+   - Reject stale metadata/projection writes with refetch-and-retry rather than hidden merges.
+
+9. **Minimum documentation and ops updates per phase**
+   - When a phase materially changes the sample story, update the root AGUIDojo README, `.docs/system-design.md`, this implementation plan, and any research or operational note whose assumptions changed.
+   - No separate long-form roadmap document should be kept in parallel with the implementation plan.
 
 ## Definition of done for the consolidated plan
 
@@ -352,4 +389,4 @@ The consolidated plan is complete when AGUIDojo can be evolved phase by phase wi
 - Ownership and integration links are modeled as simulated sample concerns, not real auth plumbing.
 - Browser storage is secondary.
 - Optional replay/collaboration features remain deferred unless they become foundational.
-- README, roadmap, and implementation remain aligned, so AGUIDojo has one current story instead of another round of v1/v2/v3 plan sprawl.
+- README, system design, implementation plan, and supporting research remain aligned, so AGUIDojo has one current story instead of another round of v1/v2/v3 plan sprawl.
