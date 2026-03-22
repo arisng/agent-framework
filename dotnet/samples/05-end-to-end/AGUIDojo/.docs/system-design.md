@@ -2,7 +2,7 @@
 
 This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the roadmap is targeting next.
 
-For the supporting model-picker and MAF correlation research that informs this design, see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`.
+For the supporting model-picker, persistence, and MAF boundary research that informs this design, see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md` and `.docs/research/server-side-persistence-for-chat-session.md`.
 
 ## 1. Scope and status
 
@@ -17,7 +17,8 @@ For the supporting model-picker and MAF correlation research that informs this d
 
 **TARGET**
 - Phase 0 fixes multi-turn continuity by sending full active-branch history on every `/chat` turn.
-- Phase 1+ moves primary session ownership into `AGUIDojoServer` via a Chat Sessions module backed by SQLite for sample scope.
+- Phase 1+ moves primary session ownership into `AGUIDojoServer` via a Chat Sessions module backed by a SQL-first, relational-first store. SQLite may remain useful for local sample runs, but SQL Server or PostgreSQL are the natural modular-monolith targets.
+- AGUIDojo remains a chat module inside a modular monolith: chat sessions link to business-module subjects (start with Todo), while business data stays owned by those modules.
 - Per-session model preference becomes part of session metadata and later part of server-owned session records.
 - `/chat` remains the only AG-UI route; requested model should travel as per-request metadata on that route rather than spawning per-model endpoints.
 - Context-window policy moves fully server-side: the client sends the full active branch, the server selects the effective model, and compaction/trimming happens on the server.
@@ -236,8 +237,9 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 **Phase 1**
 - Add a Chat Sessions module with create/list/get/archive semantics.
 - Move primary business session ID issuance from the client to the server.
-- Use SQLite for sample scope, but keep the schema relational and portable to SQL Server or PostgreSQL later.
+- Use a SQL-first relational store for sample scope. SQLite may remain a local convenience, while SQL Server or PostgreSQL are the natural modular-monolith targets.
 - Add room for model metadata in the server-owned session contract and expose a small model catalog for the future picker.
+- Start with a primary business-subject link (for example `Todo`) so one Todo/business flow can have many related chat sessions without turning chat into an isolated persistence island.
 
 **Phase 2**
 - Persist the canonical branching conversation graph on the server.
@@ -259,7 +261,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 
 **Phase 5**
 - Fully demote browser storage to cache/import behavior.
-- Keep the SQLite-first sample model portable to SQL Server or PostgreSQL later.
+- Keep the Chat Sessions model SQL-first, relational, and cloud-vendor agnostic; SQLite may remain a local convenience, while SQL Server or PostgreSQL are the natural modular-monolith targets.
 - Keep README and internal design notes aligned with the architecture that is actually implemented.
 
 ### Practical target data ownership
@@ -268,7 +270,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 | --- | --- | --- |
 | Session identity | client-generated, effectively browser-owned | server-issued business session ID |
 | Model preference | no per-session setting; one server startup model for all sessions | per-session preference owned by server records and cached in the client UI |
-| Conversation graph | client-only `ConversationTree` | server-owned branching graph in SQLite |
+| Conversation graph | client-only `ConversationTree` | server-owned branching graph in SQL-backed Chat Sessions storage |
 | Context-window policy | client skip heuristic plus fixed 80-message server cap | full-history submission plus server-owned, model-aware compaction |
 | Message fidelity | good live state, lossy browser persistence | durable message payloads with tool/state context |
 | Approval history | transient UI/session state | durable approval records |
@@ -278,15 +280,17 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 
 ### Practical sample-scope store
 
-A pragmatic SQLite-backed module can stay small and still demonstrate the right boundary:
-- `ChatSession` (including selected-model metadata)
+A pragmatic SQL-backed Chat Sessions module can stay small and still demonstrate the right boundary. SQLite is still fine for local/sample execution, but the model should read naturally against SQL Server or PostgreSQL too:
+- `ChatSession` (including selected-model metadata and primary business-subject link fields)
 - `ConversationNode` or equivalent parent-linked message record
 - `ApprovalDecision`
 - `AuditEvent` (including model-switch / compaction events if persisted)
 - `ArtifactProjection` / `ArtifactSnapshot`
 - `RuntimeLink`
 
-The important point is not the exact table names. The important point is that the server, not the browser, becomes the owner of the durable business session.
+Start simple: a session can point at a primary business subject (for example `Todo`), and many sessions can point at the same subject so one Todo/business flow can have many related chats.
+
+The important point is not the exact table names. The important point is that the server, not the browser, becomes the owner of the durable business session, while Todo/business data remains owned by its module.
 
 ## 8. Integration boundaries
 
@@ -298,6 +302,8 @@ The important point is not the exact table names. The important point is that th
 
 **TARGET**
 - Ownership/auth remains simulated only. If the sample needs user or tenant identity, use seeded/fake current-user and current-tenant context on server records.
+- AGUIDojo should behave as a chat module inside the modular monolith: business entities such as Todo stay in their owning modules, and chat-linked agent actions go through module/application services on behalf of the current user.
+- Start with Todo as the anchor example: one Todo/business flow can have many related chat sessions, while the Todo aggregate remains the source of truth for Todo data.
 - Durable Task/workflow integration should be additive: link sessions to workflow/entity records when useful, but do not let orchestration runtime IDs become the primary session key.
 - `ConversationId`, `threadId`, `runId`, Durable Task IDs, and workflow IDs stay correlation-only.
 - Keep one `/chat` route even after model picker exists; the transport seam is per-request metadata, not a per-model endpoint matrix.
@@ -317,7 +323,7 @@ The important point is not the exact table names. The important point is that th
 
 **Not current**
 - a server-owned Chat Sessions API
-- SQLite-backed primary session storage
+- server-owned SQL-backed primary session store
 - durable attachment/blob storage
 - cross-device session authority
 - real auth or real tenant isolation

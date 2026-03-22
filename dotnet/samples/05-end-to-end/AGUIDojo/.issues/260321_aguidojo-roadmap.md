@@ -1,6 +1,6 @@
 ---
 date: 2026-03-21
-type: Feedbacks
+type: Roadmap
 status: Open
 ---
 
@@ -16,7 +16,8 @@ The first priority remains the verified within-session memory bug on the unified
 
 - **Scope stays inside AGUIDojo** under `dotnet/samples/05-end-to-end/AGUIDojo`; this is not a repo-wide platform plan.
 - **Auth/identity is simulated only** for this roadmap. If ownership or authorization needs to appear, model it as seeded or fake current-user and current-tenant context inside the sample. Do **not** plan real auth flows, token issuance, tenant onboarding, or production identity plumbing here.
-- **SQLite is the sample persistence choice** to keep AGUIDojo lightweight to run and easy to reason about. The relational model should stay portable so the same concepts can later map to SQL Server or PostgreSQL.
+- **SQL-first, relational-first persistence is the default** so AGUIDojo stays cloud-vendor agnostic and aligned with the surrounding modular monolith. SQLite may remain useful for local sample runs, but SQL Server or PostgreSQL are the natural modular-monolith targets.
+- **AGUIDojo is intended to evolve as a module inside a modular monolith.** Chat sessions link to business-module subjects (start with Todo), while business data stays owned by those modules.
 - **Browser storage is secondary**. `localStorage` and IndexedDB remain useful as cache, draft storage, or best-effort import sources, but not as the primary business record.
 - **Model picker is a standard AGUIDojo chat feature**, but the model catalog, routing rules, and budget math stay sample-local. Do **not** turn this issue into a repo-wide model-routing abstraction.
 - **Context-window budgeting and compaction are server-owned concerns**. The client may display the selected model, budget hints, or warnings, but it must not trim canonical history, summarize turns, or enforce token budgets on its own.
@@ -115,12 +116,14 @@ AGUIDojo should add a **server-owned Chat Sessions module** inside `AGUIDojoServ
 - workflow and business links
 - simulated ownership context
 
-For sample scope, the system of record should be **SQLite**. The schema should remain relational and portable so it can later map cleanly to SQL Server or PostgreSQL without rethinking the domain model.
+For target architecture, the system of record should be an application-owned **SQL-first relational store**. SQLite may remain a local/sample convenience, but SQL Server or PostgreSQL are the natural modular-monolith targets and the model should map cleanly across that family without rethinking the domain boundary.
 
 Key boundary decisions:
 
 - the **server** issues and owns the primary business session ID and the authoritative selected model state
 - browser storage becomes **cache and import only**
+- chat sessions link to business subjects (start with Todo) so one Todo/business flow can have many related chats
+- agents act on business data through module/application services on behalf of the current user
 - the canonical conversation stays a **branching graph**, not a flattened transcript
 - context-window budgeting and compaction policy are evaluated on the **server** using model metadata and token estimation
 - rich message payloads and artifact/governance state become first-class server data over time
@@ -128,18 +131,18 @@ Key boundary decisions:
 
 ## Sample-wide maturity / gap matrix
 
-| Area | Current shape | Gap / risk | Roadmap stance |
-| --- | --- | --- | --- |
-| Conversational continuity | Unified `/chat` route is in place, but later turns can be sliced by `StatefulMessageCount`. | The sample loses within-session memory and misuses the transport contract. | Fix first by always sending full active-branch history. |
-| Model selection / routing | Chat behaves as though one startup-selected model is enough for the sample. | No standard model picker, per-session model state, or server-owned model routing. | Treat model picker as standard chat capability in Phase 1 once continuity is stable. |
-| Context-window budgeting and compaction | History limits are coarse and not model-specific. | Budgets can under- or over-preserve context, and client heuristics can break continuity. | Move to server-owned, model-specific token budgets and compaction tiers in Phase 2. |
-| Session ownership | Session lifecycle is effectively client-owned. | No server-authoritative create/list/get/archive model or server-issued primary session ID. | Add a server-owned Chat Sessions module before deepening realism work. |
-| Persistence model | Browser persistence uses `localStorage` + IndexedDB and is lossy. | No cross-device continuity, incomplete artifact/governance durability, weak auditability, and no durable selected-model state. | Use SQLite as AGUIDojo's system of record and keep browser storage secondary. |
-| Runtime correlation | `ConversationId`, AG-UI run and thread IDs, and future workflow IDs are available. | Easy to conflate runtime IDs with business identity. | Store them as correlation and runtime references only. |
-| MAF leverage and gaps | MAF already offers routing and compaction seams AGUIDojo can consume. | AGUIDojo does not yet wire them end to end and still needs sample-local registry/threshold/persistence decisions. | Use the seams, but keep the missing pieces explicit and sample-scoped. |
-| Artifact and governance state | Plans, approvals, recipe state, document previews, charts, grids, and notifications exist in the UI flow. | They are not yet durably modeled as first-class server session data, and compaction decisions are not yet part of the audit story. | Persist these after the base session and context policy foundations are in place. |
-| Backend and domain realism | Business endpoints and tool wrappers exist, but ownership and integration boundaries are still informal. | The sample can become unrealistic if domain linking grows without durable session and model foundations. | Sequence workflow and entity linking after continuity, session ownership, and model-aware persistence are established. |
-| Documentation and operations | README reflects the unified sample, while some older internal notes lag. | Execution can drift if docs, terminology, model configuration, and operational guidance do not match the intended architecture. | Keep docs and operational guidance aligned as each phase lands. |
+| Area                                    | Current shape                                                                                             | Gap / risk                                                                                                                         | Roadmap stance                                                                                                         |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Conversational continuity               | Unified `/chat` route is in place, but later turns can be sliced by `StatefulMessageCount`.               | The sample loses within-session memory and misuses the transport contract.                                                         | Fix first by always sending full active-branch history.                                                                |
+| Model selection / routing               | Chat behaves as though one startup-selected model is enough for the sample.                               | No standard model picker, per-session model state, or server-owned model routing.                                                  | Treat model picker as standard chat capability in Phase 1 once continuity is stable.                                   |
+| Context-window budgeting and compaction | History limits are coarse and not model-specific.                                                         | Budgets can under- or over-preserve context, and client heuristics can break continuity.                                           | Move to server-owned, model-specific token budgets and compaction tiers in Phase 2.                                    |
+| Session ownership                       | Session lifecycle is effectively client-owned.                                                            | No server-authoritative create/list/get/archive model or server-issued primary session ID.                                         | Add a server-owned Chat Sessions module before deepening realism work.                                                 |
+| Persistence model                       | Browser persistence uses `localStorage` + IndexedDB and is lossy.                                         | No cross-device continuity, incomplete artifact/governance durability, weak auditability, and no durable selected-model state.     | Use a SQL-first relational Chat Sessions store, keep browser storage secondary, and treat SQLite as local convenience rather than the architectural center. |
+| Runtime correlation                     | `ConversationId`, AG-UI run and thread IDs, and future workflow IDs are available.                        | Easy to conflate runtime IDs with business identity.                                                                               | Store them as correlation and runtime references only.                                                                 |
+| MAF leverage and gaps                   | MAF already offers routing and compaction seams AGUIDojo can consume.                                     | AGUIDojo does not yet wire them end to end and still needs sample-local registry/threshold/persistence decisions.                  | Use the seams, but keep the missing pieces explicit and sample-scoped.                                                 |
+| Artifact and governance state           | Plans, approvals, recipe state, document previews, charts, grids, and notifications exist in the UI flow. | They are not yet durably modeled as first-class server session data, and compaction decisions are not yet part of the audit story. | Persist these after the base session and context policy foundations are in place.                                      |
+| Backend and domain realism              | Business endpoints and tool wrappers exist, but ownership and integration boundaries are still informal.  | The sample can become unrealistic if domain linking grows without durable session and model foundations.                           | Sequence workflow and entity linking after continuity, session ownership, and model-aware persistence are established. |
+| Documentation and operations            | README reflects the unified sample, while some older internal notes lag.                                  | Execution can drift if docs, terminology, model configuration, and operational guidance do not match the intended architecture.    | Keep docs and operational guidance aligned as each phase lands.                                                        |
 
 ## Phased roadmap
 
@@ -155,8 +158,10 @@ Key boundary decisions:
 
 - Add a Chat Sessions module in `AGUIDojoServer`.
 - Support create, list, get, and archive semantics for chat sessions.
+- Use a SQL-first relational store aligned with the modular monolith; SQLite may remain a local/sample option, but SQL Server or PostgreSQL are the natural targets for the same model.
 - Move primary session-id issuance from client-side generation to the server.
 - Include the selected model in server-owned session metadata from day one, even if the first milestone only supports a small curated catalog.
+- Model chat sessions as chat-module records linked to business subjects; start with Todo, where one Todo/business flow can have many related chat sessions.
 - Add a sample-local model catalog/registry that defines model ID, display name, deployment/provider key, context window, reserved output budget, capability flags, and default compaction tier.
 - Expose server APIs for session hydration and available models so the standard chat UI can render and persist model selection.
 - Wire the client model picker as part of normal chat controls after Phase 0 lands, but keep the server authoritative over allowed models and default selection.
@@ -186,13 +191,15 @@ Key boundary decisions:
 
 - Model simulated current-user and current-tenant ownership on server records and APIs.
 - Add session links to workflows and business entities where that helps the sample become more realistic.
+- Make the first business-subject example explicit: one Todo/business flow can have many related chat sessions.
+- Route chat-driven reads and mutations through the owning module/application services on behalf of the current user.
 - Expose lightweight integration points or events if helpful for AGUIDojo's modular-monolith direction.
 - Keep all auth and identity behavior explicitly simulated. Do **not** turn this phase into real authentication or tenant plumbing.
 
 ### Phase 5 -- Operationalize portability, cache behavior, and roadmap alignment
 
 - Fully demote browser persistence to cache, offline convenience, and import support.
-- Document how the SQLite-backed sample model maps to SQL Server or PostgreSQL later.
+- Document the SQL-first, relational, cloud-vendor-agnostic model, including SQLite as a local convenience and SQL Server/PostgreSQL as the natural modular-monolith targets.
 - Document how new models are added, how default model selection works, and how context-window/compaction budgets are derived in AGUIDojo scope.
 - Decide which optional reconnect, replay, and collaboration features remain deferred.
 - Update README, issue notes, and operational guidance so the sample story stays aligned with the implemented architecture.
@@ -206,7 +213,8 @@ This rewrite should be considered actionable only if future execution can procee
 - [ ] The within-session memory and continuity bug on `/chat` is the **first** implementation priority.
 - [ ] The roadmap treats model picker as a **standard chat capability** backed by server-owned session state, not as an advanced afterthought.
 - [ ] The roadmap calls for a **server-owned Chat Sessions module** as the primary business session owner.
-- [ ] **SQLite** is the persistence choice for AGUIDojo sample scope, while the model stays relational and portable to SQL Server and PostgreSQL later.
+- [ ] The roadmap frames AGUIDojo as a chat module inside a modular monolith: one Todo/business flow can have many related chat sessions, while agents act on business data through module/application services on behalf of the current user.
+- [ ] A **SQL-first relational store** is the default persistence direction; SQLite may remain a local/sample option, while SQL Server and PostgreSQL are natural modular-monolith targets.
 - [ ] Browser storage is treated as cache and import support only, not the primary source of truth.
 - [ ] Context-window budgeting is **model-specific and server-owned**, with explicit reserve/safety-margin thinking rather than fixed client history limits.
 - [ ] Compaction and summarization policy are **server-owned**, with MAF seams used where they already fit the sample.
@@ -221,7 +229,7 @@ This rewrite should be considered actionable only if future execution can procee
 1. What is the thinnest model catalog/registry shape that keeps AGUIDojo simple while still carrying context-window, output reserve, capability flags, and deployment routing?
 2. When model switches happen mid-session, should AGUIDojo compact immediately, branch automatically, or block the switch until the next turn if the new model budget would be exceeded?
 3. How much compaction detail needs to be durably recorded for sample auditability without turning AGUIDojo into a full observability platform?
-4. What is the thinnest Chat Sessions abstraction that keeps SQLite simple in the sample while remaining portable to SQL Server or PostgreSQL later?
+4. What is the thinnest Chat Sessions abstraction that keeps the SQL-first model simple in the sample, including SQLite locally, while remaining portable to SQL Server or PostgreSQL later?
 5. How should simulated current-user and current-tenant context appear in server APIs and persisted chat-session records without turning into real auth plumbing?
 6. How much of today's lossy browser-local session data should be imported into the server store once the Chat Sessions module exists?
 7. For concurrent cross-device changes later, should stale writes auto-branch by default or produce an explicit conflict?
@@ -244,6 +252,7 @@ This rewrite should be considered actionable only if future execution can procee
 
 - `README.md`
 - `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`
+- `.docs/research/server-side-persistence-for-chat-session.md`
 - `AGUIDojoClient/Program.cs`
 - `AGUIDojoClient/Components/Pages/Chat/Chat.razor`
 - `AGUIDojoClient/Services/AgentStreamingService.cs`
