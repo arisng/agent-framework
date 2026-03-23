@@ -57,6 +57,9 @@ Priority: medium
 - The artifact should be displayable either in the current message list/context pane or in the canvas pane.
 - The UI should allow toggling an artifact between ContextPane and CanvasPane without disrupting chat focus.
 - This is a core AG-UI/agentic-workspace experience gap rather than a plain chat-message bug.
+- Attached images and files should survive refresh instead of degrading into an "Attachment unavailable" placeholder.
+- The placeholder currently survives reload, but the underlying attachment content disappears after the server restarts, which makes the message feel partially broken.
+- This suggests artifact persistence or attachment rehydration is not durable enough across reloads or server restarts.
 - For example: A chart or plan or data grid generated as an artifact in a message should be viewable in the context pane but also movable to the canvas for persistent reference without losing the user's place in the chat. In addition, we can also enhance the management of these artifacts visualization by adding new property to enforce the place where the artifact should be rendered by default (context pane vs canvas) and add a toggle button to move the artifact between these two places. And also a new property to enforce the artifact must only be rendered in the canvas and never in the context pane, this is for the cases like the mermaid diagrams that require more space to be visualized.
 
 ## Group 6: Repository hygiene and ownership
@@ -69,9 +72,10 @@ Priority: medium
 ## Suggested backlog order
 
 1. Fix session duplication on refresh.
-2. Fix composer clearing after send.
-3. Restore thought-toggle behavior.
-4. Clean up message layout and markdown readability.
-5. Stabilize confidence/session UI state after refresh.
-6. Add artifact rendering and toggle support.
-7. Remove leftover Microsoft copyright headers from AGUIDojo-owned code.
+2. Fix attachment persistence across refresh and server restart.
+3. Fix composer clearing after send.
+4. Restore thought-toggle behavior.
+5. Clean up message layout and markdown readability.
+6. Stabilize confidence/session UI state after refresh.
+7. Add artifact rendering and toggle support.
+8. Remove leftover Microsoft copyright headers from AGUIDojo-owned code.
