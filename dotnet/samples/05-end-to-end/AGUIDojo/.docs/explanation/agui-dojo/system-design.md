@@ -2,7 +2,7 @@
 
 This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
 
-For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap material that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference and session-topology note—see [AGUIDojo LLM picker architecture and MAF alignment](./aguidojo-llm-picker-architecture-and-maf-alignment.md), [server-side primary persistence for AGUIDojo chat sessions](./server-side-persistence-for-chat-session.md), [Copilot CLI patterns relevant to AGUIDojo](./copilot/copilot-cli-session-context-and-instruction-patterns.md), [Copilot CLI public repo grounding for AGUIDojo](./copilot/copilot-cli-public-repo-grounding.md), [Copilot CLI session state schema reference](../reference/copilot-cli-session-state-schema.md), and [Copilot CLI session topology and orchestration layer](./copilot/copilot-cli-session-topology.md).
+For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap material that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference and session-topology note—see [AGUIDojo LLM picker architecture and MAF alignment](./aguidojo-llm-picker-architecture-and-maf-alignment.md), [server-side primary persistence for AGUIDojo chat sessions](./server-side-persistence-for-chat-session.md), [Copilot CLI patterns relevant to AGUIDojo](../copilot/copilot-cli-session-context-and-instruction-patterns.md), [Copilot CLI public repo grounding for AGUIDojo](../copilot/copilot-cli-public-repo-grounding.md), [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md), and [Copilot CLI session topology and orchestration layer](../copilot/copilot-cli-session-topology.md).
 
 ## 1. Scope and status
 
@@ -247,7 +247,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 
 ### Target durable session topology
 
-- The paired [Copilot CLI session state schema reference](../reference/copilot-cli-session-state-schema.md) and [session-topology note](./copilot/copilot-cli-session-topology.md) support a useful framing already hinted at by the public-repo and context-pattern research: the product appears to combine a central session catalog/index with richer per-session workspace artifacts. AGUIDojo should borrow that separation of concerns, not the on-disk folder layout.
+- The paired [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md) and [session-topology note](../copilot/copilot-cli-session-topology.md) support a useful framing already hinted at by the public-repo and context-pattern research: the product appears to combine a central session catalog/index with richer per-session workspace artifacts. AGUIDojo should borrow that separation of concerns, not the on-disk folder layout.
 - For AGUIDojo, that means two related server-owned surfaces:
   1. **Catalog/index surface** — read-optimized summary data for list/resume/search/ops views. This is where session identity, title/summary, created/updated timestamps, archive state, primary business-subject link, preferred model, and lightweight status/count fields belong.
   2. **Session detail/workspace surface** — the richer durable record needed to reconstruct and explain the session: canonical branching conversation history, plan snapshots, compaction checkpoints, approval records, file/artifact references, audit facts/events, and runtime correlations.
@@ -313,7 +313,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 
 ### Practical sample-scope store
 
-A pragmatic SQL-backed Chat Sessions module can stay small and still demonstrate the right boundary. SQLite is still fine for local/sample execution, but the model should read naturally against SQL Server or PostgreSQL too. Following the catalog-plus-workspace framing in the [Copilot CLI session state schema reference](../reference/copilot-cli-session-state-schema.md) and [Copilot CLI session topology note](./copilot/copilot-cli-session-topology.md), think in terms of a read-optimized session catalog plus a richer detail/workspace surface, but keep both server-owned and relational instead of copying a per-session local folder tree:
+A pragmatic SQL-backed Chat Sessions module can stay small and still demonstrate the right boundary. SQLite is still fine for local/sample execution, but the model should read naturally against SQL Server or PostgreSQL too. Following the catalog-plus-workspace framing in the [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md) and [Copilot CLI session topology note](../copilot/copilot-cli-session-topology.md), think in terms of a read-optimized session catalog plus a richer detail/workspace surface, but keep both server-owned and relational instead of copying a per-session local folder tree:
 - **Catalog/index records or projections**
   - `ChatSession` (server-issued identity, title/summary, requested/preferred model metadata, archive state, last-activity fields, and primary business-subject link fields)
   - optional search/read-model projection if list/search needs more than raw `ChatSession`
@@ -379,7 +379,7 @@ The important point is not the exact table names. The important point is that th
 ## 10. Key code touchpoints
 
 - `README.md` - live sample summary and current topology
-- [Implementation plan](../how-to/implementation-plan.md) - active phase ordering, rollout decisions, and resolved design choices
+- [Roadmap issue](../../../.issues/260323_aguidojo-durable-chat-sessions-foundation.md) - active phase ordering, rollout decisions, and resolved design choices
 - `AGUIDojo.AppHost/AppHost.cs` - Aspire wiring between client and server
 - `AGUIDojoClient/Program.cs` - Blazor Server BFF setup, direct `/chat` client, YARP proxy setup
 - `AGUIDojoClient/Services/AGUIChatClientFactory.cs` - current AG-UI transport client creation; future forwarded model metadata likely attaches here or in a thin wrapper around it

@@ -6,7 +6,7 @@
 
 The Copilot CLI persists session state in `~/.copilot/`, a structured directory tree that combines a central SQLite catalog (`session-store.db`), per-session workspaces under `session-state/<uuid>/`, and supporting files for configuration, plugins, logs, and MCP integration. This document is a descriptive reference for the session-related schemas, file formats, and naming conventions that were directly observable in that tree during the March 2026 inspection window.
 
-For the higher-level topology interpretation and the transferable AGUIDojo lessons, pair this note with [Copilot CLI session topology and orchestration layer](../explanation/copilot/copilot-cli-session-topology.md). The useful takeaway for AGUIDojo is inspectable session surfaces, not literal copying of Copilot CLI's local layout or exact schema.
+For the higher-level topology interpretation and the transferable AGUIDojo lessons, pair this note with [Copilot CLI session topology and orchestration layer](../../explanation/copilot/copilot-cli-session-topology.md). The useful takeaway for AGUIDojo is inspectable session surfaces, not literal copying of Copilot CLI's local layout or exact schema.
 
 Evidence quality is tagged throughout and summarized in the [Evidence Quality](#evidence-quality) section at the end. Three tiers are used:
 

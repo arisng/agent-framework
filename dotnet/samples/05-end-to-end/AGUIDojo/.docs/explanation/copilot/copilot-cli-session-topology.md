@@ -2,7 +2,7 @@
 
 > **Last verified**: Copilot CLI v1.0.10 (March 2026) — empirical filesystem inspection on Windows + official GitHub Docs (`github/docs`)
 > **Audience**: Developers reasoning about orchestration layers and inspectable session surfaces, including AGUIDojo.
-> **Related**: [Copilot CLI Session State Schema Reference](../../reference/copilot-cli-session-state-schema.md)
+> **Related**: [Copilot CLI Session State Schema Reference](../../reference/copilot/copilot-cli-session-state-schema.md)
 
 ---
 

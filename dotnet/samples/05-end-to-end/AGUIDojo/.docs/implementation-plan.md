@@ -1,5 +1,5 @@
 # AGUIDojo implementation plan
 
-This document moved to [how-to/implementation-plan.md](./how-to/implementation-plan.md).
+This legacy path now points to [how-to/implementation-plan.md](./how-to/implementation-plan.md).
 
-Use the canonical copy there. This compatibility page exists so existing issue and note links continue to resolve.
+The active roadmap is tracked in [AGUIDojo durable chat sessions foundation](../.issues/260323_aguidojo-durable-chat-sessions-foundation.md). This compatibility page exists so older links continue to resolve.
