@@ -1,7 +1,5 @@
 # AGUIDojo implementation plan
 
-<!-- MY CUSTOMIZATION POINT: refine the session rollout guidance with newer Copilot CLI session research -->
-
 ## Purpose
 
 This is the consolidated execution plan for evolving the AGUIDojo sample. It supersedes the older v1/v2/v3 implementation-plan sprawl and the retired long-form roadmap issue. It stays aligned with the current README, the consolidated system design, the unified `POST /chat` implementation, and the current model-picker / context-window / Copilot-overlap research set. It is an execution playbook, not a duplicate system design.

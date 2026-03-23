@@ -1,7 +1,5 @@
 # AGUIDojo docs
 
-<!-- MY CUSTOMIZATION POINT: keep the active AGUIDojo research index aligned with current session research notes -->
-
 This folder now keeps only the current, consolidated documentation for
 `dotnet/samples/05-end-to-end/AGUIDojo`.
 

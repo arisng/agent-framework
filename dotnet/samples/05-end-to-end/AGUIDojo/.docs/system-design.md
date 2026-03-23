@@ -1,7 +1,5 @@
 # AGUIDojo system design
 
-<!-- MY CUSTOMIZATION POINT: align durable-session references with the schema reference and topology note -->
-
 This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
 
 For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap research that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference and session-topology note—see `.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md`, `.docs/research/server-side-persistence-for-chat-session.md`, `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`, `.docs/research/copilot-cli-public-repo-grounding.md`, `.docs/research/copilot-cli-session-state-schema.md`, and `.docs/research/copilot-cli-session-topology.md`.
