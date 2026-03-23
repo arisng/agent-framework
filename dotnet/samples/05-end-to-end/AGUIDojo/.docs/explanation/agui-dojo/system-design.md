@@ -53,7 +53,7 @@ AGUIDojoServer (Minimal API)
 - `AGUIDojoClient` is intentionally a BFF. It owns UI composition and forwards business API traffic through YARP, but `/chat` bypasses YARP so SSE streaming is not buffered.
 - `AGUIDojoServer` maps `/api/*` business endpoints and one `app.MapAGUI("/chat", ...)` endpoint backed by a single unified agent.
 - `AGUIDojo.AppHost` injects the server URL twice: once for the direct `/chat` client and once for the YARP backend destination.
-- Multimodal support is thin but real: files are uploaded through `/api/files`, stored in-memory, and resolved into `DataContent` by `MultimodalAttachmentAgent` before model execution.
+- Multimodal support is thin but real: files are uploaded through `/api/files`, stored durably in the server SQLite database with retention cleanup, and resolved into `DataContent` by `MultimodalAttachmentAgent` before model execution.
 
 **CURRENT AG-UI feature coverage**
 AGUIDojo folds the legacy feature demos into one route. Today that unified pipeline covers:
@@ -182,7 +182,7 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
   - Hydrated sessions reset transient statuses back to `Completed`, clear unread counts, and clear pending approvals.
 - Session archive/delete is still client-side cleanup: the client marks metadata as archived and deletes the local conversation record. There is no server archive API yet.
 - Browser storage is therefore **not** a system of record. It cannot provide authoritative history, cross-device resume, or durable governance/audit data.
-- Attachment persistence is also temporary today: uploaded files live in an in-memory file store, so attachments disappear after a server restart.
+- Attachment persistence now survives ordinary server restarts: uploaded files live in a SQLite-backed attachment table, while browser-stored message markers continue to reference them through `/api/files/{id}` until the server-side retention window expires.
 - There is no per-session model preference or compaction state to restore; the effective model is simply whatever the server process was configured with at startup.
 
 **TARGET**
