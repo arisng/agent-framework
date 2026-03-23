@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using AGUIDojoClient.Models;
+﻿using AGUIDojoClient.Models;
 using AGUIDojoClient.Services;
 using Microsoft.Extensions.AI;
 
@@ -11,11 +9,17 @@ namespace AGUIDojoClient.Store.SessionManager;
 /// </summary>
 public static class SessionActions
 {
-    public sealed record CreateSessionAction(string SessionId, string? Title = null, string EndpointPath = SessionMetadata.DefaultEndpointPath, bool MakeActive = true, DateTimeOffset? CreatedAt = null);
+    public sealed record CreateSessionAction(
+        string SessionId,
+        string? Title = null,
+        string EndpointPath = SessionMetadata.DefaultEndpointPath,
+        bool MakeActive = true,
+        DateTimeOffset? CreatedAt = null,
+        string? AguiThreadId = null);
 
     public sealed record SetActiveSessionAction(string SessionId);
 
-    public sealed record ArchiveSessionAction(string SessionId);
+    public sealed record ArchiveSessionAction(string SessionId, string? ServerSessionId = null, string? AguiThreadId = null);
 
     public sealed record SetSessionTitleAction(string SessionId, string Title);
 
@@ -28,6 +32,8 @@ public static class SessionActions
     public sealed record UpdateResponseMessageAction(string SessionId, ChatMessage? ResponseMessage);
 
     public sealed record SetConversationIdAction(string SessionId, string? ConversationId);
+
+    public sealed record SetSessionCorrelationAction(string SessionId, string? AguiThreadId = null, string? ServerSessionId = null);
 
     public sealed record SetPendingApprovalAction(string SessionId, PendingApproval? PendingApproval);
 
@@ -70,6 +76,12 @@ public static class SessionActions
     public sealed record SetDataGridArtifactAction(string SessionId, DataGridResult DataGrid);
 
     public sealed record SetActiveArtifactAction(string SessionId, ArtifactType ArtifactType);
+
+    public sealed record UpsertToolArtifactAction(string SessionId, ToolArtifactState Artifact, bool MakeActive = true);
+
+    public sealed record RemoveToolArtifactAction(string SessionId, string ArtifactId);
+
+    public sealed record SetActiveToolArtifactAction(string SessionId, string ArtifactId);
 
     public sealed record EditAndRegenerateAction(string SessionId, int MessageIndex, string NewText);
 

@@ -3,11 +3,14 @@
 @using System.Linq
 @using AGUIDojoClient.Helpers
 @using AGUIDojoClient.Services
+@using AGUIDojoClient.Store.SessionManager
 @using System.Text.Json
 
 @inject IMarkdownService MarkdownService
 @inject IToolComponentRegistry ToolRegistry
 @inject IObservabilityService ObservabilityService
+@inject IState<SessionManagerState> SessionStore
+@inject IDispatcher Dispatcher
 
 @if (Message.Role == ChatRole.User)
 {
@@ -51,23 +54,24 @@
         }
         else
         {
-            <div class="user-message">
-                @{
-                    var attachments = MessageAttachmentMarkers.Extract(Message.Text);
-                }
+            <div class="user-message-row">
+                <div class="user-message">
+                    @{
+                        var attachments = MessageAttachmentMarkers.Extract(Message.Text);
+                    }
 
-                @if (attachments.Count > 0)
-                {
-                    <div class="user-message-images">
-                        @foreach (var att in attachments)
-                        {
-                            <img src="/api/files/@att.Id" alt="@att.FileName" class="user-attachment-image" loading="lazy" />
-                        }
-                    </div>
-                }
+                    @if (attachments.Count > 0)
+                    {
+                        <div class="user-message-images">
+                            @foreach (var att in attachments)
+                            {
+                                <img src="/api/files/@att.Id" alt="@att.FileName" class="user-attachment-image" loading="lazy" />
+                            }
+                        </div>
+                    }
 
-                @MessageAttachmentMarkers.Strip(Message.Text)
-
+                    <div class="user-message-body">@MessageAttachmentMarkers.Strip(Message.Text)</div>
+                </div>
                 <button class="edit-message-btn" @onclick="StartEdit" aria-label="Edit message" title="Edit message">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="14" height="14">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
@@ -120,10 +124,59 @@ else if (Message.Role == ChatRole.Assistant)
             var renderInfo = GetVisualComponentRenderInfo(resultContent);
             if (renderInfo is not null)
             {
-                <div class="visual-tool-result" aria-label="Tool result">
-                    <DynamicComponent Type="renderInfo.Value.ComponentType" 
-                                      Parameters="@(new Dictionary<string, object?> { { renderInfo.Value.ParameterName, renderInfo.Value.ParsedData } })" />
-                </div>
+                @if (ShouldRenderInCanvas(renderInfo))
+                {
+                    <div class="visual-tool-placeholder" aria-label="@($"{renderInfo.Title} artifact in canvas")">
+                        <div class="visual-tool-placeholder__header">
+                            <div class="visual-tool-placeholder__title">
+                                <LucideIcon Name="@ToolResultParser.GetToolIcon(renderInfo.ToolName)" Size="16" />
+                                <span>@renderInfo.Title</span>
+                            </div>
+                            <div class="visual-tool-placeholder__actions">
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          Size="ButtonSize.Small"
+                                          Class="visual-tool-placeholder__button"
+                                          OnClick="@(() => FocusCanvasArtifact(renderInfo.ArtifactId!))">
+                                    <LucideIcon Name="panel-right-open" Size="14" />
+                                    Focus canvas
+                                </BbButton>
+                                @if (renderInfo.Metadata.CanTogglePlacement && !renderInfo.Metadata.CanvasOnly)
+                                {
+                                    <BbButton Variant="ButtonVariant.Secondary"
+                                              Size="ButtonSize.Small"
+                                              Class="visual-tool-placeholder__button"
+                                              OnClick="@(() => MoveArtifactToContext(renderInfo.ArtifactId!))">
+                                        <LucideIcon Name="message-square-text" Size="14" />
+                                        Show inline
+                                    </BbButton>
+                                }
+                            </div>
+                        </div>
+                        <p class="visual-tool-placeholder__description">
+                            This artifact is pinned in the canvas workspace so you can keep reading the chat without losing it.
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="visual-tool-result" aria-label="Tool result">
+                        @if (renderInfo.Metadata.CanTogglePlacement && renderInfo.ArtifactId is not null)
+                        {
+                            <div class="visual-tool-result__toolbar">
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          Size="ButtonSize.Small"
+                                          Class="visual-tool-result__button"
+                                          OnClick="@(() => MoveArtifactToCanvas(renderInfo))">
+                                    <LucideIcon Name="panel-right-open" Size="14" />
+                                    Move to canvas
+                                </BbButton>
+                            </div>
+                        }
+
+                        <DynamicComponent Type="renderInfo.ComponentType"
+                                          Parameters="@(new Dictionary<string, object?> { { renderInfo.ParameterName, renderInfo.ParsedData } })" />
+                    </div>
+                }
             }
         }
     }
@@ -158,9 +211,7 @@ else if (Message.Role == ChatRole.Assistant)
                     </div>
                 }
             </div>
-            <div class="assistant-message-text markdown-content">
-                <div>@((MarkupString)MarkdownService.ToHtml(tc.Text!))</div>
-            </div>
+            <div class="assistant-message-text markdown-content">@((MarkupString)MarkdownService.ToHtml(tc.Text!))</div>
         </div>
     }
 }
@@ -288,7 +339,7 @@ else if (Message.Role == ChatRole.Assistant)
         // Check if tool has a visual component registered with MessageList location
         if (ToolRegistry.TryGetMetadata(toolName, out ToolMetadata? metadata))
         {
-            return metadata?.RenderLocation == RenderLocation.MessageList && metadata.IsVisual;
+            return metadata?.IsVisual == true;
         }
 
         return false;
@@ -299,12 +350,17 @@ else if (Message.Role == ChatRole.Assistant)
     /// </summary>
     /// <param name="resultContent">The function result content.</param>
     /// <returns>Rendering information including component type, parameter name, and parsed data; or null if not available.</returns>
-    private (Type ComponentType, string ParameterName, object? ParsedData)? GetVisualComponentRenderInfo(FunctionResultContent resultContent)
+    private ToolRenderInfo? GetVisualComponentRenderInfo(FunctionResultContent resultContent)
     {
         // Find the matching FunctionCallContent by CallId to get the actual tool name
         var toolName = GetToolNameFromCallId(resultContent.CallId);
 
         if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return null;
+        }
+
+        if (!ToolRegistry.TryGetMetadata(toolName, out ToolMetadata? metadata) || metadata is null || !metadata.IsVisual)
         {
             return null;
         }
@@ -322,13 +378,20 @@ else if (Message.Role == ChatRole.Assistant)
 
         // Parse result data using the same tool-name→data-type mapping as AssistantThought.
         // We must deserialize to the DATA type (e.g. WeatherInfo), NOT the COMPONENT type (e.g. WeatherDisplay).
-        object? parsedData = AssistantThought.TryParseToolResult(toolName, resultContent);
+        object? parsedData = ToolResultParser.TryParseToolResult(toolName, resultContent);
         if (parsedData is null)
         {
             return null;
         }
 
-        return (componentType, parameterName, parsedData);
+        return new ToolRenderInfo(
+            resultContent.CallId,
+            toolName,
+            componentType,
+            parameterName,
+            parsedData,
+            metadata,
+            ToolResultParser.GetArtifactTitle(toolName, parsedData));
     }
 
     /// <summary>
@@ -404,4 +467,56 @@ else if (Message.Role == ChatRole.Assistant)
         confidenceScore = default;
         return false;
     }
+
+    private SessionState ActiveSession => SessionSelectors.GetActiveState(SessionStore.Value);
+
+    private string ActiveSessionId => SessionSelectors.GetActiveMetadata(SessionStore.Value).Id;
+
+    private bool ShouldRenderInCanvas(ToolRenderInfo renderInfo)
+    {
+        if (renderInfo.Metadata.CanvasOnly)
+        {
+            return true;
+        }
+
+        return renderInfo.ArtifactId is not null && ActiveSession.ToolArtifacts.Any(artifact => artifact.ArtifactId == renderInfo.ArtifactId);
+    }
+
+    private void MoveArtifactToCanvas(ToolRenderInfo renderInfo)
+    {
+        if (renderInfo.ArtifactId is null)
+        {
+            return;
+        }
+
+        Dispatcher.Dispatch(new SessionActions.UpsertToolArtifactAction(
+            ActiveSessionId,
+            new ToolArtifactState
+            {
+                ArtifactId = renderInfo.ArtifactId,
+                ToolName = renderInfo.ToolName,
+                Title = renderInfo.Title,
+                ParsedData = renderInfo.ParsedData,
+                CanMoveToContext = renderInfo.Metadata.CanTogglePlacement && !renderInfo.Metadata.CanvasOnly,
+            }));
+    }
+
+    private void MoveArtifactToContext(string artifactId)
+    {
+        Dispatcher.Dispatch(new SessionActions.RemoveToolArtifactAction(ActiveSessionId, artifactId));
+    }
+
+    private void FocusCanvasArtifact(string artifactId)
+    {
+        Dispatcher.Dispatch(new SessionActions.SetActiveToolArtifactAction(ActiveSessionId, artifactId));
+    }
+
+    private sealed record ToolRenderInfo(
+        string? ArtifactId,
+        string ToolName,
+        Type ComponentType,
+        string ParameterName,
+        object ParsedData,
+        ToolMetadata Metadata,
+        string Title);
 }

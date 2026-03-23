@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using AGUIDojoClient.Models;
 using Fluxor;
 using Microsoft.Extensions.AI;
@@ -105,6 +103,18 @@ public static class SessionReducers
         return metadata.Status;
     }
 
+    private static bool HasVisibleArtifacts(ImmutableHashSet<ArtifactType> tabs) => tabs.Count > 0;
+
+    private static ArtifactType ResolveActiveArtifactOrFallback(ArtifactType activeType, ImmutableHashSet<ArtifactType> tabs)
+    {
+        if (activeType != ArtifactType.None && tabs.Contains(activeType))
+        {
+            return activeType;
+        }
+
+        return tabs.Count > 0 ? tabs.First() : ArtifactType.None;
+    }
+
     private static SessionMetadata UpdateActivity(
         SessionMetadata metadata,
         DateTimeOffset? occurredAt = null,
@@ -155,7 +165,12 @@ public static class SessionReducers
             return action.MakeActive ? state with { ActiveSessionId = action.SessionId } : state;
         }
 
-        SessionEntry entry = SessionManagerState.CreateSessionEntry(action.SessionId, action.Title, action.EndpointPath, action.CreatedAt);
+        SessionEntry entry = SessionManagerState.CreateSessionEntry(
+            action.SessionId,
+            action.Title,
+            action.EndpointPath,
+            action.CreatedAt,
+            action.AguiThreadId);
         ImmutableDictionary<string, SessionEntry> sessions = EnforceCapacity(state.Sessions).Add(action.SessionId, entry);
         return EnsureActiveSession(state with
         {
@@ -234,6 +249,20 @@ public static class SessionReducers
         UpdateSessionState(state, action.SessionId, session => session with { ConversationId = action.ConversationId });
 
     [ReducerMethod]
+    public static SessionManagerState OnSetSessionCorrelation(SessionManagerState state, SessionActions.SetSessionCorrelationAction action) =>
+        UpdateSession(
+            state,
+            action.SessionId,
+            entry => entry with
+            {
+                Metadata = entry.Metadata with
+                {
+                    AguiThreadId = string.IsNullOrWhiteSpace(action.AguiThreadId) ? entry.Metadata.AguiThreadId : action.AguiThreadId,
+                    ServerSessionId = string.IsNullOrWhiteSpace(action.ServerSessionId) ? entry.Metadata.ServerSessionId : action.ServerSessionId,
+                },
+            });
+
+    [ReducerMethod]
     public static SessionManagerState OnSetPendingApproval(SessionManagerState state, SessionActions.SetPendingApprovalAction action) =>
         UpdateSessionState(
             state,
@@ -281,9 +310,23 @@ public static class SessionReducers
                     ConversationId = null,
                     PendingApproval = null,
                     PendingUndo = null,
+                    CurrentRecipe = null,
+                    CurrentDocumentState = null,
+                    IsDocumentPreview = true,
+                    HasInteractiveArtifact = false,
+                    ActiveArtifactType = ArtifactType.None,
+                    DiffPreview = null,
+                    CurrentDataGrid = null,
+                    ToolArtifacts = ImmutableList<ToolArtifactState>.Empty,
+                    ActiveToolArtifactId = null,
+                    VisibleTabs = ImmutableHashSet<ArtifactType>.Empty,
                 },
             metadata => UpdateActivity(
-                metadata,
+                metadata with
+                {
+                    AguiThreadId = SessionMetadata.CreateAguiThreadId(),
+                    ServerSessionId = null,
+                },
                 action.OccurredAt,
                 hasPendingApproval: false,
                 status: SessionStatus.Created,
@@ -384,6 +427,8 @@ public static class SessionReducers
                 ActiveArtifactType = ArtifactType.None,
                 DiffPreview = null,
                 CurrentDataGrid = null,
+                ToolArtifacts = ImmutableList<ToolArtifactState>.Empty,
+                ActiveToolArtifactId = null,
                 VisibleTabs = ImmutableHashSet<ArtifactType>.Empty,
             });
 
@@ -431,6 +476,85 @@ public static class SessionReducers
                 }
 
                 return session with { ActiveArtifactType = action.ArtifactType };
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnUpsertToolArtifact(SessionManagerState state, SessionActions.UpsertToolArtifactAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session =>
+            {
+                int existingIndex = session.ToolArtifacts.FindIndex(artifact => artifact.ArtifactId == action.Artifact.ArtifactId);
+                ImmutableList<ToolArtifactState> artifacts = existingIndex >= 0
+                    ? session.ToolArtifacts.SetItem(existingIndex, action.Artifact)
+                    : session.ToolArtifacts.Add(action.Artifact);
+
+                ImmutableHashSet<ArtifactType> tabs = session.VisibleTabs.Add(ArtifactType.ToolResult);
+
+                return session with
+                {
+                    ToolArtifacts = artifacts,
+                    ActiveToolArtifactId = action.MakeActive
+                        ? action.Artifact.ArtifactId
+                        : session.ActiveToolArtifactId ?? action.Artifact.ArtifactId,
+                    VisibleTabs = tabs,
+                    HasInteractiveArtifact = HasVisibleArtifacts(tabs),
+                    ActiveArtifactType = action.MakeActive
+                        ? ArtifactType.ToolResult
+                        : ResolveActiveArtifactOrFallback(session.ActiveArtifactType, tabs),
+                };
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnRemoveToolArtifact(SessionManagerState state, SessionActions.RemoveToolArtifactAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session =>
+            {
+                ImmutableList<ToolArtifactState> artifacts = session.ToolArtifacts.RemoveAll(artifact => artifact.ArtifactId == action.ArtifactId);
+                ImmutableHashSet<ArtifactType> tabs = artifacts.Count > 0
+                    ? session.VisibleTabs
+                    : session.VisibleTabs.Remove(ArtifactType.ToolResult);
+
+                string? activeToolArtifactId = session.ActiveToolArtifactId == action.ArtifactId
+                    ? artifacts.LastOrDefault()?.ArtifactId
+                    : session.ActiveToolArtifactId;
+
+                ArtifactType activeArtifactType = session.ActiveArtifactType == ArtifactType.ToolResult && artifacts.Count == 0
+                    ? ResolveActiveArtifactOrFallback(ArtifactType.None, tabs)
+                    : ResolveActiveArtifactOrFallback(session.ActiveArtifactType, tabs);
+
+                return session with
+                {
+                    ToolArtifacts = artifacts,
+                    ActiveToolArtifactId = activeToolArtifactId,
+                    VisibleTabs = tabs,
+                    HasInteractiveArtifact = HasVisibleArtifacts(tabs),
+                    ActiveArtifactType = activeArtifactType,
+                };
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnSetActiveToolArtifact(SessionManagerState state, SessionActions.SetActiveToolArtifactAction action) =>
+        UpdateSessionState(
+            state,
+            action.SessionId,
+            session =>
+            {
+                if (!session.ToolArtifacts.Any(artifact => artifact.ArtifactId == action.ArtifactId))
+                {
+                    return session;
+                }
+
+                return session with
+                {
+                    ActiveToolArtifactId = action.ArtifactId,
+                    ActiveArtifactType = ArtifactType.ToolResult,
+                    VisibleTabs = session.VisibleTabs.Add(ArtifactType.ToolResult),
+                    HasInteractiveArtifact = true,
+                };
             });
 
     [ReducerMethod]

@@ -5,8 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace AGUIDojoServer.Api;
 
 /// <summary>
-/// In-memory file storage service for multimodal attachments.
-/// Stores uploaded files with automatic expiration after 1 hour.
+/// Storage service for multimodal attachments.
 /// </summary>
 public interface IFileStorageService
 {
@@ -33,7 +32,7 @@ internal sealed record FileUploadResponse(string Id, string FileName, string Con
 
 /// <summary>
 /// Thread-safe in-memory file storage with automatic expiration.
-/// Registered as Singleton in DI.
+/// Useful for tests and transient scenarios only.
 /// </summary>
 public sealed class InMemoryFileStorageService : IFileStorageService
 {
@@ -161,7 +160,7 @@ internal static class FileUploadEndpoints
           <rect width="320" height="180" fill="#f3f4f6"/>
           <rect x="16" y="16" width="288" height="148" rx="16" fill="#ffffff" stroke="#d1d5db"/>
           <text x="160" y="78" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#111827">Attachment unavailable</text>
-          <text x="160" y="106" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#6b7280">This image expired after the server restarted.</text>
+          <text x="160" y="106" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#6b7280">This image is no longer available from server storage.</text>
         </svg>
         """;
 }

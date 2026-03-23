@@ -1,11 +1,13 @@
 @* CanvasPane wrapper component for dual-pane artifact/work product area.
    Uses BB Tabs (controlled mode) bound to the active session state for dynamic tabbed artifact display. *@
 @using AGUIDojoClient.Models
+@using AGUIDojoClient.Services
 @using AGUIDojoClient.Store.SessionManager
 @inherits Fluxor.Blazor.Web.Components.FluxorComponent
 @inject IState<SessionManagerState> SessionStore
 @inject IStateManager StateManager
 @inject IDispatcher Dispatcher
+@inject IToolComponentRegistry ToolRegistry
 
 <div class="canvas-pane">
     @* Compact plan indicator — shown when an active plan exists.
@@ -168,6 +170,49 @@
                     </div>
                 </BbTabsContent>
             }
+
+            @if (ActiveSession.VisibleTabs.Contains(ArtifactType.ToolResult))
+            {
+                <BbTabsContent Value="@nameof(ArtifactType.ToolResult)" ForceMount="true" Class="canvas-pane__tab-content">
+                    <div class="canvas-pane__scroll">
+                        @if (ActiveToolArtifact is not null && TryGetToolArtifactRenderInfo(ActiveToolArtifact) is { } renderInfo)
+                        {
+                            <div class="canvas-pane__artifact-workspace">
+                                <div class="canvas-pane__artifact-toolbar">
+                                    <div class="canvas-pane__artifact-list" role="tablist" aria-label="Artifacts in canvas workspace">
+                                        @foreach (ToolArtifactState artifact in ActiveSession.ToolArtifacts)
+                                        {
+                                            bool isActive = string.Equals(artifact.ArtifactId, ActiveToolArtifact.ArtifactId, StringComparison.Ordinal);
+                                            <button type="button"
+                                                    class="canvas-pane__artifact-pill @(isActive ? "is-active" : null)"
+                                                    @onclick="() => SelectToolArtifact(artifact.ArtifactId)">
+                                                <LucideIcon Name="@ToolResultParser.GetToolIcon(artifact.ToolName)" Size="14" />
+                                                <span>@artifact.Title</span>
+                                            </button>
+                                        }
+                                    </div>
+
+                                    @if (ActiveToolArtifact.CanMoveToContext)
+                                    {
+                                        <BbButton Variant="ButtonVariant.Outline"
+                                                  Size="ButtonSize.Small"
+                                                  Class="canvas-pane__artifact-action"
+                                                  OnClick="@(() => MoveArtifactToContext(ActiveToolArtifact.ArtifactId))">
+                                            <LucideIcon Name="message-square-text" Size="14" />
+                                            Show inline
+                                        </BbButton>
+                                    }
+                                </div>
+
+                                <div class="canvas-pane__artifact-surface">
+                                    <DynamicComponent Type="renderInfo.ComponentType"
+                                                      Parameters="@(new Dictionary<string, object?> { { renderInfo.ParameterName, renderInfo.ParsedData } })" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </BbTabsContent>
+            }
         </BbTabs>
     }
 </div>
@@ -249,6 +294,11 @@
 
     private string ActiveSessionId => SessionSelectors.GetActiveMetadata(SessionStore.Value).Id;
 
+    private ToolArtifactState? ActiveToolArtifact =>
+        ActiveSession.ActiveToolArtifactId is { } activeArtifactId
+            ? ActiveSession.ToolArtifacts.FirstOrDefault(artifact => artifact.ArtifactId == activeArtifactId) ?? ActiveSession.ToolArtifacts.LastOrDefault()
+            : ActiveSession.ToolArtifacts.LastOrDefault();
+
     private int CompletedCount => ActiveSession.Plan?.Steps.Count(s => s.Status == StepStatus.Completed) ?? 0;
 
     /// <summary>
@@ -293,6 +343,7 @@
         ArtifactType.RecipeEditor => "chef-hat",
         ArtifactType.DocumentPreview => "file-text",
         ArtifactType.AuditTrail => "scroll-text",
+        ArtifactType.ToolResult => "app-window",
         _ => "file"
     };
 
@@ -306,8 +357,34 @@
         ArtifactType.RecipeEditor => "Recipe Editor",
         ArtifactType.DocumentPreview => "Document",
         ArtifactType.AuditTrail => "Audit Trail",
+        ArtifactType.ToolResult => "Artifacts",
         _ => type.ToString()
     };
+
+    private void SelectToolArtifact(string artifactId)
+    {
+        Dispatcher.Dispatch(new SessionActions.SetActiveToolArtifactAction(ActiveSessionId, artifactId));
+    }
+
+    private void MoveArtifactToContext(string artifactId)
+    {
+        Dispatcher.Dispatch(new SessionActions.RemoveToolArtifactAction(ActiveSessionId, artifactId));
+    }
+
+    private ToolArtifactRenderInfo? TryGetToolArtifactRenderInfo(ToolArtifactState artifact)
+    {
+        if (!ToolRegistry.TryGetComponent(artifact.ToolName, out Type? componentType) || componentType is null)
+        {
+            return null;
+        }
+
+        if (!ToolRegistry.TryGetParameterName(artifact.ToolName, out string? parameterName) || string.IsNullOrWhiteSpace(parameterName))
+        {
+            return null;
+        }
+
+        return new ToolArtifactRenderInfo(componentType, parameterName, artifact.ParsedData);
+    }
 
     /// <summary>
     /// Tracks document state transitions to capture the previous finalized version
@@ -351,4 +428,6 @@
         StateManager.UpdateRecipe(recipe);
         Dispatcher.Dispatch(new SessionActions.SetRecipeAction(ActiveSessionId, recipe));
     }
+
+    private sealed record ToolArtifactRenderInfo(Type ComponentType, string ParameterName, object ParsedData);
 }

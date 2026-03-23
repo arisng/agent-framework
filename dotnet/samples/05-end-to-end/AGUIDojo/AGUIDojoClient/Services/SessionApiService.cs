@@ -38,6 +38,9 @@ public sealed record ServerSessionSummary
 
     [JsonPropertyName("preferredModelId")]
     public string? PreferredModelId { get; init; }
+
+    [JsonPropertyName("aguiThreadId")]
+    public string? AguiThreadId { get; init; }
 }
 
 public sealed record ServerSessionDetail

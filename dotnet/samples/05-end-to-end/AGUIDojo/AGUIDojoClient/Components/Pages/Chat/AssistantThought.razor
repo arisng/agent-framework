@@ -6,21 +6,19 @@
 
 <div class="assistant-thought @(IsExpanded ? "expanded" : "collapsed")">
     <BbCollapsible Open="IsExpanded" OpenChanged="OnToggleChanged">
-        <BbCollapsibleTrigger>
-            <div class="thought-toggle" aria-expanded="@IsExpanded">
-                <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
-                <LucideIcon Name="@(IsExpanded ? "chevron-up" : "chevron-down")" Size="14" Class="thought-chevron-icon" />
-                <span class="thought-summary">
-                    @if (IsStillThinking)
-                    {
-                        <span>Thinking...</span>
-                    }
-                    else
-                    {
-                        <span>Thinking (@GetStepCount() steps)</span>
-                    }
-                </span>
-            </div>
+        <BbCollapsibleTrigger AsChild="false" Class="thought-toggle">
+            <LucideIcon Name="brain" Size="16" Class="thought-icon-lucide" />
+            <LucideIcon Name="@(IsExpanded ? "chevron-up" : "chevron-down")" Size="14" Class="thought-chevron-icon" />
+            <span class="thought-summary">
+                @if (IsStillThinking)
+                {
+                    <span>Thinking...</span>
+                }
+                else
+                {
+                    <span>Thinking (@GetStepCount() steps)</span>
+                }
+            </span>
         </BbCollapsibleTrigger>
         <BbCollapsibleContent>
             <div class="thought-content">
@@ -539,9 +537,8 @@
             return new ToolRenderingInfo(toolName, null, null, null, false, false);
         }
 
-        // Check if visual tool should be hidden in thought (it renders in message-list instead)
-        // Only hide MessageList tools; CanvasPane tools should show a redirect message via IsInteractive branch
-        bool isVisualAndHiddenInThought = metadata.IsVisual && metadata.RenderLocation == RenderLocation.MessageList;
+        // Visual tool artifacts are rendered in the main message flow or workspace, not inside the thought panel.
+        bool isVisualAndHiddenInThought = metadata.IsVisual;
 
         if (!ToolRegistry.TryGetComponent(toolName, out Type? componentType) || componentType is null)
         {
@@ -553,7 +550,7 @@
             return new ToolRenderingInfo(toolName, null, null, null, false, isVisualAndHiddenInThought);
         }
 
-        object? parsedData = TryParseToolResult(toolName, frc);
+        object? parsedData = ToolResultParser.TryParseToolResult(toolName, frc);
         if (parsedData is null)
         {
             return new ToolRenderingInfo(toolName, null, null, null, false, isVisualAndHiddenInThought);
@@ -567,14 +564,7 @@
     /// </summary>
     private static string GetTabName(string? toolName)
     {
-        return toolName?.ToLowerInvariant() switch
-        {
-            "show_data_grid" => "Data Table",
-            "show_chart" => "Charts",
-            "show_form" => "Forms",
-            "get_weather" => "Weather",
-            _ => "Canvas"
-        };
+        return ToolResultParser.GetToolDisplayName(toolName);
     }
 
     /// <summary>
@@ -595,124 +585,6 @@
             }
         }
 
-        return null;
-    }
-
-    /// <summary>
-    /// Attempts to parse a FunctionResultContent for the specified tool type.
-    /// Made internal so ChatMessageItem can reuse the same tool→data-type mapping.
-    /// </summary>
-    internal static object? TryParseToolResult(string toolName, FunctionResultContent frc)
-    {
-        try
-        {
-            JsonElement? jsonElement = frc.Result switch
-            {
-                JsonElement je => je,
-                string s when !string.IsNullOrWhiteSpace(s) && IsValidJson(s) => JsonDocument.Parse(s).RootElement,
-                _ => null
-            };
-
-            if (jsonElement is null)
-            {
-                return null;
-            }
-
-            JsonSerializerOptions options = JsonDefaults.Options;
-
-            return toolName.ToLowerInvariant() switch
-            {
-                "get_weather" => TryDeserializeWeatherInfo(jsonElement.Value, options),
-                "show_data_grid" => TryDeserializeDataGridResult(jsonElement.Value, options),
-                "show_chart" => TryDeserializeChartResult(jsonElement.Value, options),
-                "show_form" => TryDeserializeDynamicFormResult(jsonElement.Value, options),
-                _ => null
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Checks if a string is valid JSON.
-    /// </summary>
-    private static bool IsValidJson(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        char firstChar = value.TrimStart()[0];
-        if (firstChar != '{' && firstChar != '[' && firstChar != '"' &&
-            !char.IsDigit(firstChar) && firstChar != '-' &&
-            firstChar != 't' && firstChar != 'f' && firstChar != 'n')
-        {
-            return false;
-        }
-
-        try
-        {
-            using JsonDocument _ = JsonDocument.Parse(value);
-            return true;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Attempts to deserialize a JsonElement as WeatherInfo.
-    /// </summary>
-    private static WeatherInfo? TryDeserializeWeatherInfo(JsonElement json, JsonSerializerOptions options)
-    {
-        if (json.TryGetProperty("temperature", out _) &&
-            json.TryGetProperty("conditions", out _))
-        {
-            return json.Deserialize<WeatherInfo>(options);
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Attempts to deserialize a JsonElement as DataGridResult.
-    /// </summary>
-    private static DataGridResult? TryDeserializeDataGridResult(JsonElement json, JsonSerializerOptions options)
-    {
-        if (json.TryGetProperty("columns", out _) &&
-            json.TryGetProperty("rows", out _))
-        {
-            return json.Deserialize<DataGridResult>(options);
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Attempts to deserialize a JsonElement as DynamicFormResult.
-    /// </summary>
-    private static DynamicFormResult? TryDeserializeDynamicFormResult(JsonElement json, JsonSerializerOptions options)
-    {
-        if (json.TryGetProperty("fields", out _) &&
-            json.TryGetProperty("title", out _))
-        {
-            return json.Deserialize<DynamicFormResult>(options);
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Attempts to deserialize a JsonElement as ChartResult.
-    /// </summary>
-    private static ChartResult? TryDeserializeChartResult(JsonElement json, JsonSerializerOptions options)
-    {
-        if (json.TryGetProperty("labels", out _) &&
-            json.TryGetProperty("datasets", out _))
-        {
-            return json.Deserialize<ChartResult>(options);
-        }
         return null;
     }
 

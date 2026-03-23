@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoServer.ChatSessions;
+﻿namespace AGUIDojoServer.ChatSessions;
 
 /// <summary>Summary DTO for session list views.</summary>
 public sealed class ChatSessionSummary
@@ -13,6 +11,7 @@ public sealed class ChatSessionSummary
     public string? SubjectModule { get; init; }
     public string? SubjectEntityId { get; init; }
     public string? PreferredModelId { get; init; }
+    public string? AguiThreadId { get; init; }
 }
 
 /// <summary>Detail DTO with full session metadata.</summary>

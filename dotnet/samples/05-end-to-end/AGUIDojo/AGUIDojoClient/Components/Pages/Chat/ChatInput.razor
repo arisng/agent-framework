@@ -161,18 +161,44 @@
             _pendingAttachments.Select(att => new MessageAttachmentMarker(att.Id, att.FileName, att.ContentType)));
         var message = new ChatMessage(ChatRole.User, fullText);
 
-        bool sent = OnSend is null || await OnSend(message);
-        if (!sent)
-        {
-            await FocusAsync();
-            return;
-        }
+        string? draftMessageText = messageText;
+        string? draftUploadError = _uploadError;
+        List<AttachmentInfo> draftAttachments = [.. _pendingAttachments];
 
         messageText = null;
         _uploadError = null;
         _pendingAttachments.Clear();
+        StateHasChanged();
+
+        bool sent;
+        try
+        {
+            sent = OnSend is null || await OnSend(message);
+        }
+        catch
+        {
+            RestoreDraft(draftMessageText, draftUploadError, draftAttachments);
+            await FocusAsync();
+            throw;
+        }
+
+        if (!sent)
+        {
+            RestoreDraft(draftMessageText, draftUploadError, draftAttachments);
+            await FocusAsync();
+            return;
+        }
 
         await FocusAsync();
+    }
+
+    private void RestoreDraft(string? draftMessageText, string? draftUploadError, IReadOnlyCollection<AttachmentInfo> draftAttachments)
+    {
+        messageText = draftMessageText;
+        _uploadError = draftUploadError;
+        _pendingAttachments.Clear();
+        _pendingAttachments.AddRange(draftAttachments);
+        StateHasChanged();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

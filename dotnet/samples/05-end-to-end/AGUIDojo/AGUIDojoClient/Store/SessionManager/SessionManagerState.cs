@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using AGUIDojoClient.Models;
 
 namespace AGUIDojoClient.Store.SessionManager;
@@ -41,7 +39,9 @@ public sealed record SessionManagerState
         string sessionId,
         string? title = null,
         string endpointPath = SessionMetadata.DefaultEndpointPath,
-        DateTimeOffset? timestamp = null)
+        DateTimeOffset? timestamp = null,
+        string? aguiThreadId = null,
+        string? serverSessionId = null)
     {
         DateTimeOffset instant = timestamp ?? DateTimeOffset.UtcNow;
         return new SessionEntry(
@@ -53,6 +53,8 @@ public sealed record SessionManagerState
                 Status = SessionStatus.Created,
                 CreatedAt = instant,
                 LastActivityAt = instant,
+                AguiThreadId = string.IsNullOrWhiteSpace(aguiThreadId) ? SessionMetadata.CreateAguiThreadId() : aguiThreadId,
+                ServerSessionId = serverSessionId,
                 UnreadCount = 0,
                 HasPendingApproval = false,
             },

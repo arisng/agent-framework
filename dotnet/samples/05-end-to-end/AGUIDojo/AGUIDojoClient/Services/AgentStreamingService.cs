@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -30,6 +28,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private readonly IObservabilityService _observabilityService;
     private readonly ICheckpointService _checkpointService;
     private readonly IAGUIChatClientFactory _chatClientFactory;
+    private readonly IToolComponentRegistry _toolRegistry;
     private readonly ConcurrentDictionary<string, SessionStreamingContext> _sessionContexts = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _notificationDismissals = new();
     private readonly object _streamGate = new();
@@ -57,6 +56,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         IObservabilityService observabilityService,
         ICheckpointService checkpointService,
         IAGUIChatClientFactory chatClientFactory,
+        IToolComponentRegistry toolRegistry,
         IRiskAssessmentService riskAssessmentService,
         IAutonomyPolicyService autonomyPolicyService)
     {
@@ -68,6 +68,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         _observabilityService = observabilityService;
         _checkpointService = checkpointService;
         _chatClientFactory = chatClientFactory;
+        _toolRegistry = toolRegistry;
         _riskAssessmentService = riskAssessmentService;
         _autonomyPolicyService = autonomyPolicyService;
         _sessionStore.StateChanged += OnSessionStoreChanged;
@@ -263,6 +264,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
     /// <inheritdoc />
     public void SyncSessionState(string sessionId)
     {
+        EnsureContextCorrelation(sessionId, GetOrCreateContext(sessionId));
+
         Recipe? recipe = GetSessionState(sessionId).CurrentRecipe;
         if (recipe is not null)
         {
@@ -387,6 +390,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
             IChatClient chatClient = _chatClientFactory.CreateClient();
             context.ChatOptions.ConversationId = GetSessionState(sessionId).ConversationId;
+            EnsureContextCorrelation(sessionId, context);
 
             // Restore the AG-UI thread ID into ChatOptions so AGUIChatClient reuses
             // the same thread across turns (ConversationId is always null due to
@@ -543,7 +547,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                         {
                                             streamingMessage.Contents.Add(content);
                                             _observabilityService.CompleteToolCall(frc.CallId, frc.Result);
-                                            TryDispatchDataGridArtifact(sessionId, context, frc);
+                                            TryDispatchCanvasToolArtifact(sessionId, context, frc);
                                         }
                                         else if (frc.CallId is null)
                                         {
@@ -577,6 +581,15 @@ public sealed class AgentStreamingService : IAgentStreamingService
                                     && !string.IsNullOrEmpty(aguiThreadId))
                                 {
                                     context.AguiThreadId = aguiThreadId;
+
+                                    if (TryGetSession(sessionId, out SessionEntry currentEntry) &&
+                                        !string.Equals(currentEntry.Metadata.AguiThreadId, aguiThreadId, StringComparison.Ordinal))
+                                    {
+                                        _dispatcher.Dispatch(new SessionActions.SetSessionCorrelationAction(
+                                            sessionId,
+                                            aguiThreadId,
+                                            currentEntry.Metadata.ServerSessionId));
+                                    }
                                 }
 
                                 if (update.AuthorName is not null)
@@ -798,6 +811,40 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private bool TryGetSession(string sessionId, out SessionEntry entry) => SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out entry);
 
     private SessionState GetSessionState(string sessionId) => SessionSelectors.GetSessionStateOrDefault(_sessionStore.Value, sessionId);
+
+    private void EnsureContextCorrelation(string sessionId, SessionStreamingContext context)
+    {
+        if (!TryGetSession(sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(context.AguiThreadId))
+        {
+            string aguiThreadId = string.IsNullOrWhiteSpace(entry.Metadata.AguiThreadId)
+                ? SessionMetadata.CreateAguiThreadId()
+                : entry.Metadata.AguiThreadId;
+
+            context.AguiThreadId = aguiThreadId;
+
+            if (!string.Equals(entry.Metadata.AguiThreadId, aguiThreadId, StringComparison.Ordinal))
+            {
+                _dispatcher.Dispatch(new SessionActions.SetSessionCorrelationAction(
+                    sessionId,
+                    aguiThreadId,
+                    entry.Metadata.ServerSessionId));
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(context.AguiThreadId))
+        {
+            context.ChatOptions.AdditionalProperties?.Remove("agui_thread_id");
+            return;
+        }
+
+        context.ChatOptions.AdditionalProperties ??= [];
+        context.ChatOptions.AdditionalProperties["agui_thread_id"] = context.AguiThreadId;
+    }
 
     private static void SetConfidenceScore(ChatMessage message, double confidenceScore)
     {
@@ -1044,7 +1091,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
         return _stateManager.TryExtractRecipeSnapshot(new DataContent(payloadBytes, "application/json"), out recipe);
     }
 
-    private void TryDispatchDataGridArtifact(string sessionId, SessionStreamingContext context, FunctionResultContent frc)
+    private void TryDispatchCanvasToolArtifact(string sessionId, SessionStreamingContext context, FunctionResultContent frc)
     {
         if (frc.CallId is null)
         {
@@ -1052,32 +1099,29 @@ public sealed class AgentStreamingService : IAgentStreamingService
         }
 
         if (!context.FunctionCallIdToToolName.TryGetValue(frc.CallId, out string? toolName)
-            || !string.Equals(toolName, "show_data_grid", StringComparison.OrdinalIgnoreCase))
+            || !_toolRegistry.TryGetMetadata(toolName, out ToolMetadata? metadata)
+            || metadata?.IsVisual != true
+            || metadata.RenderLocation != RenderLocation.CanvasPane)
         {
             return;
         }
 
-        try
+        object? parsedData = ToolResultParser.TryParseToolResult(toolName, frc);
+        if (parsedData is null)
         {
-            DataGridResult? dataGrid = null;
-
-            if (frc.Result is JsonElement jsonElement)
-            {
-                dataGrid = JsonSerializer.Deserialize<DataGridResult>(jsonElement.GetRawText(), JsonDefaults.Options);
-            }
-            else if (frc.Result is string resultStr)
-            {
-                dataGrid = JsonSerializer.Deserialize<DataGridResult>(resultStr, JsonDefaults.Options);
-            }
-
-            if (dataGrid?.Columns.Count > 0)
-            {
-                _dispatcher.Dispatch(new SessionActions.SetDataGridArtifactAction(sessionId, dataGrid));
-            }
+            return;
         }
-        catch
-        {
-        }
+
+        _dispatcher.Dispatch(new SessionActions.UpsertToolArtifactAction(
+            sessionId,
+            new ToolArtifactState
+            {
+                ArtifactId = frc.CallId,
+                ToolName = toolName,
+                Title = ToolResultParser.GetArtifactTitle(toolName, parsedData),
+                ParsedData = parsedData,
+                CanMoveToContext = metadata.CanTogglePlacement && !metadata.CanvasOnly,
+            }));
     }
 
     private void NotifyBackgroundApprovalRequired(string sessionId, PendingApproval approval)

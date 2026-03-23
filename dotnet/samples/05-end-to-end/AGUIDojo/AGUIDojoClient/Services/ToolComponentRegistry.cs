@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using AGUIDojoClient.Components.GenerativeUI;
 
 namespace AGUIDojoClient.Services;
@@ -45,6 +43,16 @@ public sealed record ToolMetadata
     /// Gets or sets whether the component requires user interaction (editable).
     /// </summary>
     public bool IsInteractive { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether the artifact can move between the message list and the canvas workspace.
+    /// </summary>
+    public bool CanTogglePlacement { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether the artifact must stay in the canvas workspace.
+    /// </summary>
+    public bool CanvasOnly { get; init; }
 }
 
 /// <summary>
@@ -131,7 +139,14 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName, nameof(toolName));
         ArgumentException.ThrowIfNullOrWhiteSpace(parameterName, nameof(parameterName));
 
-        metadata ??= new ToolMetadata { RenderLocation = RenderLocation.AssistantThought, IsVisual = false, IsInteractive = false };
+        metadata ??= new ToolMetadata
+        {
+            RenderLocation = RenderLocation.AssistantThought,
+            IsVisual = false,
+            IsInteractive = false,
+            CanTogglePlacement = false,
+            CanvasOnly = false,
+        };
         this._registry[toolName] = new ToolRegistration(typeof(TComponent), parameterName, metadata);
     }
 
@@ -189,7 +204,8 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             {
                 RenderLocation = RenderLocation.MessageList,
                 IsVisual = true,
-                IsInteractive = false
+                IsInteractive = false,
+                CanTogglePlacement = true,
             });
 
         // Register DataGridDisplay for the show_data_grid tool
@@ -202,7 +218,8 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             {
                 RenderLocation = RenderLocation.CanvasPane,
                 IsVisual = true,
-                IsInteractive = true
+                IsInteractive = true,
+                CanTogglePlacement = true,
             });
 
         // Register ChartDisplay for the show_chart tool
@@ -215,7 +232,8 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             {
                 RenderLocation = RenderLocation.MessageList,
                 IsVisual = true,
-                IsInteractive = false
+                IsInteractive = false,
+                CanTogglePlacement = true,
             });
 
         // Register DynamicFormDisplay for the show_form tool
@@ -228,8 +246,33 @@ public sealed class ToolComponentRegistry : IToolComponentRegistry
             {
                 RenderLocation = RenderLocation.MessageList,
                 IsVisual = true,
-                IsInteractive = false
+                IsInteractive = false,
+                CanTogglePlacement = true,
             });
+
+        ToolMetadata mermaidMetadata = new()
+        {
+            RenderLocation = RenderLocation.CanvasPane,
+            IsVisual = true,
+            IsInteractive = false,
+            CanTogglePlacement = false,
+            CanvasOnly = true,
+        };
+
+        this.Register<MermaidDisplay>(
+            toolName: "show_mermaid",
+            parameterName: "Diagram",
+            metadata: mermaidMetadata);
+
+        this.Register<MermaidDisplay>(
+            toolName: "show_diagram",
+            parameterName: "Diagram",
+            metadata: mermaidMetadata);
+
+        this.Register<MermaidDisplay>(
+            toolName: "render_mermaid",
+            parameterName: "Diagram",
+            metadata: mermaidMetadata);
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AGUIDojoClient.Models;
+using AGUIDojoClient.Shared;
 using Microsoft.Extensions.AI;
 using Microsoft.JSInterop;
 
@@ -30,7 +31,9 @@ public sealed record SessionMetadataDto(
     [property: JsonPropertyName("endpointPath")] string EndpointPath,
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("createdAt")] long CreatedAt,
-    [property: JsonPropertyName("lastActivityAt")] long LastActivityAt)
+    [property: JsonPropertyName("lastActivityAt")] long LastActivityAt,
+    [property: JsonPropertyName("aguiThreadId")] string? AguiThreadId = null,
+    [property: JsonPropertyName("serverSessionId")] string? ServerSessionId = null)
 {
     public static SessionMetadataDto FromMetadata(SessionMetadata m) => new(
         m.Id,
@@ -38,7 +41,9 @@ public sealed record SessionMetadataDto(
         m.EndpointPath,
         m.Status.ToString(),
         m.CreatedAt.ToUnixTimeMilliseconds(),
-        m.LastActivityAt.ToUnixTimeMilliseconds());
+        m.LastActivityAt.ToUnixTimeMilliseconds(),
+        m.AguiThreadId,
+        m.ServerSessionId);
 
     public SessionMetadata ToMetadata() => new()
     {
@@ -48,6 +53,8 @@ public sealed record SessionMetadataDto(
         Status = Enum.TryParse<SessionStatus>(Status, ignoreCase: true, out var s) ? s : SessionStatus.Completed,
         CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(CreatedAt),
         LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(LastActivityAt),
+        AguiThreadId = string.IsNullOrWhiteSpace(AguiThreadId) ? SessionMetadata.CreateAguiThreadId() : AguiThreadId,
+        ServerSessionId = ServerSessionId,
     };
 }
 
@@ -62,6 +69,7 @@ internal sealed record ConversationNodeDto(
     [property: JsonPropertyName("role")] string Role,
     [property: JsonPropertyName("authorName")] string? AuthorName,
     [property: JsonPropertyName("text")] string? Text,
+    [property: JsonPropertyName("additionalProperties")] Dictionary<string, JsonElement>? AdditionalProperties,
     [property: JsonPropertyName("createdAt")] long CreatedAt)
 {
     internal static ConversationNodeDto FromNode(ConversationNode node) => new(
@@ -71,16 +79,56 @@ internal sealed record ConversationNodeDto(
         node.Message.Role.Value,
         node.Message.AuthorName,
         node.Message.Text,
+        SerializeAdditionalProperties(node.Message.AdditionalProperties),
         node.CreatedAt.ToUnixTimeMilliseconds());
 
     internal ConversationNode ToNode() => new()
     {
         Id = Id,
         ParentId = ParentId,
-        Message = new ChatMessage(new ChatRole(Role), Text) { AuthorName = AuthorName },
+        Message = CreateMessage(),
         ChildIds = [.. ChildIds],
         CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(CreatedAt),
     };
+
+    private static Dictionary<string, JsonElement>? SerializeAdditionalProperties(AdditionalPropertiesDictionary? additionalProperties)
+    {
+        if (additionalProperties is null || additionalProperties.Count == 0)
+        {
+            return null;
+        }
+
+        Dictionary<string, JsonElement> serialized = new(StringComparer.Ordinal);
+        foreach ((string key, object? value) in additionalProperties)
+        {
+            if (value is null)
+            {
+                continue;
+            }
+
+            serialized[key] = value is JsonElement jsonElement
+                ? jsonElement.Clone()
+                : JsonSerializer.SerializeToElement(value, JsonDefaults.Options);
+        }
+
+        return serialized.Count == 0 ? null : serialized;
+    }
+
+    private ChatMessage CreateMessage()
+    {
+        ChatMessage message = new(new ChatRole(Role), Text) { AuthorName = AuthorName };
+
+        if (AdditionalProperties is { Count: > 0 })
+        {
+            message.AdditionalProperties = new AdditionalPropertiesDictionary();
+            foreach ((string key, JsonElement value) in AdditionalProperties)
+            {
+                message.AdditionalProperties[key] = value.Clone();
+            }
+        }
+
+        return message;
+    }
 }
 
 /// <summary>

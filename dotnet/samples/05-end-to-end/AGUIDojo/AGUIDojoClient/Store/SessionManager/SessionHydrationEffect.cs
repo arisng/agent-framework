@@ -33,23 +33,23 @@ public sealed class SessionHydrationEffect
     public async Task HandleHydrateFromStorage(SessionActions.HydrateFromStorageAction _, IDispatcher dispatcher)
     {
         // Step 1: Load metadata from localStorage
-        var metadataDtos = await _persistence.LoadMetadataAsync();
+        List<SessionMetadataDto>? metadataDtos = await _persistence.LoadMetadataAsync();
 
         // Step 2: Load active session ID from localStorage
         string? activeSessionId = await _persistence.LoadActiveSessionIdAsync();
 
         // Step 3: Reconstruct SessionEntry objects
-        var sessions = new Dictionary<string, SessionEntry>(StringComparer.Ordinal);
+        Dictionary<string, SessionEntry> sessions = new(StringComparer.Ordinal);
 
         if (metadataDtos is not null)
         {
-            foreach (var dto in metadataDtos)
+            foreach (SessionMetadataDto dto in metadataDtos)
             {
                 SessionMetadata metadata = ResetTransientMetadata(dto.ToMetadata());
 
                 // Load conversation tree from IndexedDB
                 ConversationTree? tree = await _persistence.LoadConversationAsync(dto.Id);
-                var sessionState = new SessionState
+                SessionState sessionState = new()
                 {
                     Tree = tree ?? new ConversationTree(),
                 };
@@ -64,14 +64,28 @@ public sealed class SessionHydrationEffect
             List<ServerSessionSummary>? serverSessions = await _sessionApiService.ListSessionsAsync();
             if (serverSessions is not null)
             {
+                Dictionary<string, string> localSessionIdsByServerSessionId = BuildLocalSessionIdsByServerSessionId(sessions);
+                Dictionary<string, string> localSessionIdsByThreadId = BuildLocalSessionIdsByThreadId(sessions);
+
                 foreach (ServerSessionSummary serverSession in serverSessions)
                 {
-                    if (sessions.ContainsKey(serverSession.Id))
+                    string? localSessionId = FindCorrelatedLocalSessionId(
+                        sessions,
+                        localSessionIdsByServerSessionId,
+                        localSessionIdsByThreadId,
+                        serverSession);
+
+                    if (localSessionId is not null)
                     {
+                        SessionEntry mergedEntry = MergeCorrelatedSession(sessions[localSessionId], serverSession);
+                        sessions[localSessionId] = mergedEntry;
+                        UpdateCorrelationIndexes(localSessionIdsByServerSessionId, localSessionIdsByThreadId, localSessionId, mergedEntry.Metadata);
                         continue;
                     }
 
-                    sessions[serverSession.Id] = CreateServerSessionEntry(serverSession);
+                    SessionEntry serverEntry = CreateServerSessionEntry(serverSession);
+                    sessions[serverSession.Id] = serverEntry;
+                    UpdateCorrelationIndexes(localSessionIdsByServerSessionId, localSessionIdsByThreadId, serverSession.Id, serverEntry.Metadata);
                 }
             }
         }
@@ -113,10 +127,161 @@ public sealed class SessionHydrationEffect
                 Status = MapServerStatus(serverSession.Status),
                 CreatedAt = createdAt,
                 LastActivityAt = lastActivityAt,
+                AguiThreadId = serverSession.AguiThreadId,
+                ServerSessionId = serverSession.Id,
                 UnreadCount = 0,
                 HasPendingApproval = false,
             },
             new SessionState());
+    }
+
+    private static SessionEntry MergeCorrelatedSession(SessionEntry localEntry, ServerSessionSummary serverSession)
+    {
+        SessionEntry serverEntry = CreateServerSessionEntry(serverSession);
+        DateTimeOffset mergedCreatedAt = GetEarlierTimestamp(localEntry.Metadata.CreatedAt, serverEntry.Metadata.CreatedAt);
+        DateTimeOffset mergedLastActivityAt = GetLaterTimestamp(localEntry.Metadata.LastActivityAt, serverEntry.Metadata.LastActivityAt);
+
+        return localEntry with
+        {
+            Metadata = localEntry.Metadata with
+            {
+                Title = ResolveMergedTitle(localEntry.Metadata.Title, serverEntry.Metadata.Title),
+                Status = serverEntry.Metadata.Status,
+                CreatedAt = mergedCreatedAt,
+                LastActivityAt = mergedLastActivityAt,
+                AguiThreadId = !string.IsNullOrWhiteSpace(localEntry.Metadata.AguiThreadId)
+                    ? localEntry.Metadata.AguiThreadId
+                    : serverEntry.Metadata.AguiThreadId,
+                ServerSessionId = serverSession.Id,
+                UnreadCount = 0,
+                HasPendingApproval = false,
+            },
+        };
+    }
+
+    private static Dictionary<string, string> BuildLocalSessionIdsByServerSessionId(IReadOnlyDictionary<string, SessionEntry> sessions)
+    {
+        Dictionary<string, string> map = new(StringComparer.Ordinal);
+        foreach ((string sessionId, SessionEntry entry) in sessions)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.Metadata.ServerSessionId))
+            {
+                map[entry.Metadata.ServerSessionId] = sessionId;
+            }
+        }
+
+        return map;
+    }
+
+    private static Dictionary<string, string> BuildLocalSessionIdsByThreadId(IReadOnlyDictionary<string, SessionEntry> sessions)
+    {
+        Dictionary<string, string> map = new(StringComparer.Ordinal);
+        foreach ((string sessionId, SessionEntry entry) in sessions)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.Metadata.AguiThreadId))
+            {
+                map[entry.Metadata.AguiThreadId] = sessionId;
+            }
+        }
+
+        return map;
+    }
+
+    private static string? FindCorrelatedLocalSessionId(
+        Dictionary<string, SessionEntry> sessions,
+        Dictionary<string, string> localSessionIdsByServerSessionId,
+        Dictionary<string, string> localSessionIdsByThreadId,
+        ServerSessionSummary serverSession)
+    {
+        if (sessions.ContainsKey(serverSession.Id))
+        {
+            return serverSession.Id;
+        }
+
+        if (localSessionIdsByServerSessionId.TryGetValue(serverSession.Id, out string? sessionIdByServerSessionId))
+        {
+            return sessionIdByServerSessionId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(serverSession.AguiThreadId) &&
+            localSessionIdsByThreadId.TryGetValue(serverSession.AguiThreadId, out string? sessionIdByThreadId))
+        {
+            return sessionIdByThreadId;
+        }
+
+        return null;
+    }
+
+    private static void UpdateCorrelationIndexes(
+        Dictionary<string, string> localSessionIdsByServerSessionId,
+        Dictionary<string, string> localSessionIdsByThreadId,
+        string sessionId,
+        SessionMetadata metadata)
+    {
+        if (!string.IsNullOrWhiteSpace(metadata.ServerSessionId))
+        {
+            localSessionIdsByServerSessionId[metadata.ServerSessionId] = sessionId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.AguiThreadId))
+        {
+            localSessionIdsByThreadId[metadata.AguiThreadId] = sessionId;
+        }
+    }
+
+    private static DateTimeOffset GetEarlierTimestamp(DateTimeOffset left, DateTimeOffset right)
+    {
+        if (left == default)
+        {
+            return right;
+        }
+
+        if (right == default)
+        {
+            return left;
+        }
+
+        return left <= right ? left : right;
+    }
+
+    private static DateTimeOffset GetLaterTimestamp(DateTimeOffset left, DateTimeOffset right)
+    {
+        if (left == default)
+        {
+            return right;
+        }
+
+        if (right == default)
+        {
+            return left;
+        }
+
+        return left >= right ? left : right;
+    }
+
+    private static string ResolveMergedTitle(string localTitle, string serverTitle)
+    {
+        bool localHasMeaningfulTitle = !string.IsNullOrWhiteSpace(localTitle) &&
+            !string.Equals(localTitle, SessionMetadata.DefaultTitle, StringComparison.Ordinal);
+        bool serverHasMeaningfulTitle = !string.IsNullOrWhiteSpace(serverTitle) &&
+            !string.Equals(serverTitle, SessionMetadata.DefaultTitle, StringComparison.Ordinal);
+
+        if (localHasMeaningfulTitle)
+        {
+            return localTitle;
+        }
+
+        if (serverHasMeaningfulTitle)
+        {
+            return serverTitle;
+        }
+
+        if (!string.IsNullOrWhiteSpace(localTitle))
+        {
+            return localTitle;
+        }
+
+        return string.IsNullOrWhiteSpace(serverTitle) ? SessionMetadata.DefaultTitle : serverTitle;
     }
 
     private static SessionStatus MapServerStatus(string? status)

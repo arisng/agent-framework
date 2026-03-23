@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using AGUIDojoClient.Models;
 using AGUIDojoClient.Services;
@@ -32,6 +30,27 @@ public sealed record PendingUndoState
     public required DateTimeOffset ExpiresAt { get; init; }
 }
 
+/// <summary>
+/// Represents a promoted visual tool artifact that can live in the canvas workspace.
+/// </summary>
+public sealed record ToolArtifactState
+{
+    /// <summary>Gets the stable artifact identifier, typically derived from the tool call id.</summary>
+    public required string ArtifactId { get; init; }
+
+    /// <summary>Gets the originating tool name.</summary>
+    public required string ToolName { get; init; }
+
+    /// <summary>Gets the display title for the artifact.</summary>
+    public required string Title { get; init; }
+
+    /// <summary>Gets the parsed tool result payload used by the render component.</summary>
+    public required object ParsedData { get; init; }
+
+    /// <summary>Gets a value indicating whether the artifact can move back into the message list.</summary>
+    public required bool CanMoveToContext { get; init; }
+}
+
 /// <summary>Enumerates the artifact tabs that can be shown for a session.</summary>
 public enum ArtifactType
 {
@@ -52,6 +71,9 @@ public enum ArtifactType
 
     /// <summary>An audit trail artifact is active.</summary>
     AuditTrail,
+
+    /// <summary>A promoted tool artifact workspace is active.</summary>
+    ToolResult,
 }
 
 /// <summary>
@@ -107,6 +129,12 @@ public sealed record SessionState
 
     /// <summary>Gets the current data grid artifact.</summary>
     public DataGridResult? CurrentDataGrid { get; init; }
+
+    /// <summary>Gets the promoted visual tool artifacts available in the canvas workspace.</summary>
+    public ImmutableList<ToolArtifactState> ToolArtifacts { get; init; } = ImmutableList<ToolArtifactState>.Empty;
+
+    /// <summary>Gets the selected tool artifact in the canvas workspace.</summary>
+    public string? ActiveToolArtifactId { get; init; }
 
     /// <summary>Gets the visible artifact tabs.</summary>
     public ImmutableHashSet<ArtifactType> VisibleTabs { get; init; } = ImmutableHashSet<ArtifactType>.Empty;

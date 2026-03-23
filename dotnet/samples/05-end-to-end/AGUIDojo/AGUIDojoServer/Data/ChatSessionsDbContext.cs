@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -16,6 +14,8 @@ public sealed class ChatSessionsDbContext : DbContext
     }
 
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
+
+    public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +47,18 @@ public sealed class ChatSessionsDbContext : DbContext
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.LastActivityAt);
             entity.HasIndex(e => e.AguiThreadId).IsUnique();
+        });
+
+        modelBuilder.Entity<ChatAttachment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(32);
+            entity.Property(e => e.FileName).HasMaxLength(512);
+            entity.Property(e => e.ContentType).HasMaxLength(128);
+            entity.Property(e => e.UploadedAt).HasConversion(dtoConverter);
+            entity.Property(e => e.ExpiresAt).HasConversion(dtoConverter);
+
+            entity.HasIndex(e => e.ExpiresAt);
         });
     }
 }

@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-// =============================================================================
+﻿// =============================================================================
 // AGUIDojoServer - Production-Ready Backend for AG-UI Protocol Demonstrations
 // =============================================================================
 //
@@ -298,8 +296,8 @@ builder.Services.AddScoped<IWeatherService, WeatherService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
-// Register in-memory file storage for multimodal attachments
-builder.Services.AddSingleton<IFileStorageService, InMemoryFileStorageService>();
+// Register durable attachment storage backed by the chat-session database.
+builder.Services.AddSingleton<IFileStorageService, DatabaseFileStorageService>();
 builder.Services.AddSingleton<IModelRegistry, ModelRegistry>();
 
 // Register DI-compatible AI Tool classes as Singleton
@@ -353,7 +351,7 @@ WebApplication app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     ChatSessionsDbContext db = scope.ServiceProvider.GetRequiredService<ChatSessionsDbContext>();
-    await db.Database.EnsureCreatedAsync();
+    await ChatSessionsDatabaseInitializer.InitializeAsync(db);
 }
 
 // -----------------------------------------------------------------------------

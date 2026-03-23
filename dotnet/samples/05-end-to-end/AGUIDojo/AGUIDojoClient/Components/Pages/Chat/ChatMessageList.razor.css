@@ -17,6 +17,7 @@
     gap: 0.875rem;
     flex: 1;
     min-width: 0; /* ISS-601: Allow flex child to shrink below content width */
+    padding-bottom: 0.75rem;
 }
 
 /* Removed: @media max-width: 52rem — context-pane is already width-constrained by ResizablePanel in dual-pane mode */
@@ -29,11 +30,6 @@
     align-items: center;
     justify-content: center;
     flex: 1;
-}
-
-chat-messages > ::deep div:last-of-type {
-    /* Adds some vertical buffer to so that suggestions don't overlap the output when they appear */
-    margin-bottom: 2rem;
 }
 
 /* Plan Progress Message - inline state-based component rendering in message-list */

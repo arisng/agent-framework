@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using AGUIDojoServer.Data;
+﻿using AGUIDojoServer.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace AGUIDojoServer.ChatSessions;
@@ -26,6 +24,7 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
                 SubjectModule = s.SubjectModule,
                 SubjectEntityId = s.SubjectEntityId,
                 PreferredModelId = s.PreferredModelId,
+                AguiThreadId = s.AguiThreadId,
             })
             .ToListAsync(ct);
     }

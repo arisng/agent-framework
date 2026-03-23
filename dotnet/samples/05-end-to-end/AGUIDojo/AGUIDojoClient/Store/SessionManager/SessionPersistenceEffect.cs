@@ -88,22 +88,32 @@ public sealed class SessionPersistenceEffect : IDisposable
         await SaveAllMetadataAsync();
         // Fire-and-forget: server sync is best-effort. If the browser tab closes before
         // this completes, the server session stays active until a future reconciliation.
-        _ = ArchiveSessionOnServerAsync(action.SessionId);
+        _ = ArchiveSessionOnServerAsync(action.ServerSessionId, action.AguiThreadId);
     }
 
     [EffectMethod]
-    public Task OnSetRunning(SessionActions.SetRunningAction action, IDispatcher _)
+    public async Task OnSetRunning(SessionActions.SetRunningAction action, IDispatcher dispatcher)
     {
         // When streaming ends, do a final save of conversation + metadata
         if (!action.IsRunning)
         {
-            return Task.WhenAll(
+            await Task.WhenAll(
                 SaveConversationImmediateAsync(action.SessionId),
                 SaveAllMetadataAsync());
+            await ReconcileServerSessionAsync(action.SessionId, dispatcher);
+            return;
         }
 
-        return SaveAllMetadataAsync();
+        await SaveAllMetadataAsync();
     }
+
+    [EffectMethod]
+    public Task OnSetSessionCorrelation(SessionActions.SetSessionCorrelationAction action, IDispatcher _)
+        => SaveAllMetadataAsync();
+
+    [EffectMethod]
+    public Task OnHydrateSessions(SessionActions.HydrateSessionsAction action, IDispatcher _)
+        => SaveAllMetadataAsync();
 
     // =========================================================================
     // Private helpers
@@ -161,19 +171,63 @@ public sealed class SessionPersistenceEffect : IDisposable
         await SaveAllMetadataAsync();
     }
 
-    private async Task ArchiveSessionOnServerAsync(string sessionId)
+    private async Task ArchiveSessionOnServerAsync(string? serverSessionId, string? aguiThreadId)
     {
         try
         {
-            bool archived = await _sessionApiService.ArchiveSessionAsync(sessionId);
+            string? resolvedServerSessionId = serverSessionId;
+            if (string.IsNullOrWhiteSpace(resolvedServerSessionId) && !string.IsNullOrWhiteSpace(aguiThreadId))
+            {
+                resolvedServerSessionId = await ResolveServerSessionIdAsync(aguiThreadId);
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedServerSessionId))
+            {
+                return;
+            }
+
+            bool archived = await _sessionApiService.ArchiveSessionAsync(resolvedServerSessionId);
             if (!archived)
             {
-                _logger.LogWarning("Server archive sync did not succeed for session {SessionId}.", sessionId);
+                _logger.LogWarning("Server archive sync did not succeed for session {ServerSessionId}.", resolvedServerSessionId);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Server archive sync failed for session {SessionId}.", sessionId);
+            _logger.LogError(ex, "Server archive sync failed for correlated session {ServerSessionId}.", serverSessionId);
         }
+    }
+
+    private async Task ReconcileServerSessionAsync(string sessionId, IDispatcher dispatcher)
+    {
+        if (!SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.Metadata.ServerSessionId) || string.IsNullOrWhiteSpace(entry.Metadata.AguiThreadId))
+        {
+            return;
+        }
+
+        string? resolvedServerSessionId = await ResolveServerSessionIdAsync(entry.Metadata.AguiThreadId);
+        if (string.IsNullOrWhiteSpace(resolvedServerSessionId) ||
+            string.Equals(resolvedServerSessionId, entry.Metadata.ServerSessionId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        dispatcher.Dispatch(new SessionActions.SetSessionCorrelationAction(
+            sessionId,
+            entry.Metadata.AguiThreadId,
+            resolvedServerSessionId));
+    }
+
+    private async Task<string?> ResolveServerSessionIdAsync(string aguiThreadId)
+    {
+        List<ServerSessionSummary>? serverSessions = await _sessionApiService.ListSessionsAsync();
+        return serverSessions?
+            .FirstOrDefault(session => string.Equals(session.AguiThreadId, aguiThreadId, StringComparison.Ordinal))
+            ?.Id;
     }
 }

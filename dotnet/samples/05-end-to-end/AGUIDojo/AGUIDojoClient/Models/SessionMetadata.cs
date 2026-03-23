@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoClient.Models;
+﻿namespace AGUIDojoClient.Models;
 
 /// <summary>
 /// Lightweight metadata describing a chat session.
@@ -12,6 +10,9 @@ public sealed record SessionMetadata
 
     /// <summary>The default AG-UI route used by newly created sessions.</summary>
     public const string DefaultEndpointPath = "chat";
+
+    /// <summary>Creates a durable AG-UI thread identifier for a client-owned session.</summary>
+    public static string CreateAguiThreadId() => $"thread_{Guid.NewGuid():N}";
 
     /// <summary>Gets the unique identifier for the session.</summary>
     public required string Id { get; init; }
@@ -30,6 +31,12 @@ public sealed record SessionMetadata
 
     /// <summary>Gets when the session last had activity.</summary>
     public DateTimeOffset LastActivityAt { get; init; }
+
+    /// <summary>Gets the durable AG-UI thread identifier used for /chat continuity.</summary>
+    public string? AguiThreadId { get; init; }
+
+    /// <summary>Gets the correlated server-owned chat session identifier, when known.</summary>
+    public string? ServerSessionId { get; init; }
 
     /// <summary>Gets the number of unread updates for the session.</summary>
     public int UnreadCount { get; init; }

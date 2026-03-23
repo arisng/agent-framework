@@ -1,4 +1,3 @@
-/* Copyright (c) Microsoft. All rights reserved. */
 /* CanvasPane scoped styles — with BB Tabs infrastructure */
 
 .canvas-pane {
@@ -257,4 +256,58 @@
     min-height: 300px;
     border-radius: var(--radius, 0.5rem);
     overflow: hidden;
+}
+
+.canvas-pane__artifact-workspace {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    padding: 0.875rem;
+}
+
+.canvas-pane__artifact-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.canvas-pane__artifact-list {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.canvas-pane__artifact-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border, #e4e4e7);
+    background: var(--background, #fff);
+    color: var(--muted-foreground, #71717a);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.canvas-pane__artifact-pill:hover {
+    color: var(--foreground, #18181b);
+    border-color: color-mix(in oklch, var(--border) 75%, var(--primary) 25%);
+}
+
+.canvas-pane__artifact-pill.is-active {
+    background: color-mix(in oklch, var(--primary) 10%, transparent);
+    color: var(--foreground, #18181b);
+    border-color: color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+::deep .canvas-pane__artifact-action {
+    gap: 0.35rem;
+}
+
+.canvas-pane__artifact-surface {
+    min-width: 0;
 }

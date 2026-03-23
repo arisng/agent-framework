@@ -82,7 +82,10 @@
     private async Task HandleDeleteAsync()
     {
         _isDeleteDialogOpen = false;
-        Dispatcher.Dispatch(new SessionActions.ArchiveSessionAction(Entry.Metadata.Id));
+        Dispatcher.Dispatch(new SessionActions.ArchiveSessionAction(
+            Entry.Metadata.Id,
+            Entry.Metadata.ServerSessionId,
+            Entry.Metadata.AguiThreadId));
         await OnDeleted.InvokeAsync(Entry.Metadata.Id);
     }
 
