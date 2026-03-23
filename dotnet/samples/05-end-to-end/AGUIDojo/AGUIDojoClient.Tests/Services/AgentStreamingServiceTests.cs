@@ -129,6 +129,32 @@ public sealed class AgentStreamingServiceTests
     }
 
     [Fact]
+    public async Task ProcessAgentResponseAsync_FirstTurnCapturesServerSessionIdFromResponseMetadata()
+    {
+        const string sessionId = "session-first-turn";
+        SessionManagerState state = CreateConversationState(
+            sessionId,
+            [
+                new ChatMessage(ChatRole.System, "You are a helpful planner."),
+                new ChatMessage(ChatRole.User, "Start a new session.")
+            ],
+            aguiThreadId: "thread-first-turn");
+
+        ScriptedChatClient client = new(
+            [[CreateTextUpdate("Started", aguiThreadId: "thread-first-turn", serverSessionId: "server-session-123")]]);
+        var (service, _, getState) = CreateReducingService(state, client);
+
+        using (service)
+        {
+            await service.ProcessAgentResponseAsync(sessionId);
+        }
+
+        Assert.True(SessionSelectors.TryGetSession(getState(), sessionId, out SessionEntry entry));
+        Assert.Equal("thread-first-turn", entry.Metadata.AguiThreadId);
+        Assert.Equal("server-session-123", entry.Metadata.ServerSessionId);
+    }
+
+    [Fact]
     public async Task ProcessAgentResponseAsync_EditAndRegenerateUsesFullReplacementBranch()
     {
         const string sessionId = "session-edit";
@@ -501,11 +527,34 @@ public sealed class AgentStreamingServiceTests
         _ => state,
     };
 
-    private static ChatResponseUpdate CreateTextUpdate(string text, string? conversationId = null) =>
-        new(role: ChatRole.Assistant, content: text)
+    private static ChatResponseUpdate CreateTextUpdate(
+        string text,
+        string? conversationId = null,
+        string? aguiThreadId = null,
+        string? serverSessionId = null)
+    {
+        ChatResponseUpdate update = new(role: ChatRole.Assistant, content: text)
         {
             ConversationId = conversationId,
         };
+
+        if (!string.IsNullOrWhiteSpace(aguiThreadId) || !string.IsNullOrWhiteSpace(serverSessionId))
+        {
+            update.AdditionalProperties = [];
+        }
+
+        if (!string.IsNullOrWhiteSpace(aguiThreadId))
+        {
+            update.AdditionalProperties!["agui_thread_id"] = aguiThreadId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(serverSessionId))
+        {
+            update.AdditionalProperties!["server_session_id"] = serverSessionId;
+        }
+
+        return update;
+    }
 
     private static ChatResponseUpdate CreateApprovalRequestUpdate(
         string callId,

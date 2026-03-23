@@ -95,6 +95,49 @@ public sealed class SessionHydrationEffectTests
         Assert.Null(entry.Metadata.ServerSessionId);
     }
 
+    [Fact]
+    public async Task HandleHydrateFromStorage_UsesServerSessionsWhenBrowserMetadataIsEmpty()
+    {
+        FakeSessionPersistenceService persistence = new()
+        {
+            Metadata = null,
+            ActiveSessionId = null,
+        };
+
+        Mock<ISessionApiService> sessionApiService = new();
+        sessionApiService
+            .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ServerSessionSummary
+                {
+                    Id = "server-session-1",
+                    Title = "Server owned session",
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(10),
+                    LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(20),
+                    AguiThreadId = "thread-server-1",
+                }
+            ]);
+
+        SessionHydrationEffect effect = new(
+            persistence,
+            sessionApiService.Object,
+            NullLogger<SessionHydrationEffect>.Instance);
+        CapturingDispatcher dispatcher = new();
+
+        await effect.HandleHydrateFromStorage(new SessionActions.HydrateFromStorageAction(), dispatcher);
+
+        SessionActions.HydrateSessionsAction hydrateAction = Assert.IsType<SessionActions.HydrateSessionsAction>(Assert.Single(dispatcher.Actions));
+        Assert.Null(hydrateAction.ActiveSessionId);
+        SessionEntry entry = Assert.Single(hydrateAction.Sessions.Values);
+        Assert.Equal("server-session-1", entry.Metadata.Id);
+        Assert.Equal("Server owned session", entry.Metadata.Title);
+        Assert.Equal("server-session-1", entry.Metadata.ServerSessionId);
+        Assert.Equal("thread-server-1", entry.Metadata.AguiThreadId);
+        Assert.Empty(entry.State.Tree.Nodes);
+    }
+
     private sealed class FakeSessionPersistenceService : ISessionPersistenceService
     {
         public List<SessionMetadataDto>? Metadata { get; init; }
