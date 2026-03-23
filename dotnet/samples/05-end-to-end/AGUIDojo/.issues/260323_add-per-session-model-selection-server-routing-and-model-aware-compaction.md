@@ -4,7 +4,7 @@ type: Task
 severity: High
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Add per-session model selection, server routing, and model-aware compaction
@@ -27,7 +27,7 @@ Support per-session model preference on the single `/chat` route while keeping t
 - [ ] Compaction decisions leave durable checkpoint and audit breadcrumbs that can explain what happened during support/debug flows.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Model-picker architecture: `.docs/explanation/agui-dojo/aguidojo-llm-picker-architecture-and-maf-alignment.md`
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`

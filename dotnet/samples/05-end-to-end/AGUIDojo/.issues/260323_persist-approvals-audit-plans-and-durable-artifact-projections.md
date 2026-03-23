@@ -4,7 +4,7 @@ type: Task
 severity: High
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Persist approvals, audit, plans, and durable artifact projections
@@ -27,7 +27,7 @@ Make server persistence useful for the full AGUIDojo experience by durably resto
 - [ ] Session detail plus dedicated inspection reads can expose current plan, checkpoint, artifact, and file state without ad hoc database spelunking.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Persistence rationale: `.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md`
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`

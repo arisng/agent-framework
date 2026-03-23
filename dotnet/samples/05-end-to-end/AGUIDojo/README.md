@@ -92,9 +92,9 @@ Intended direction for the unified `/chat` route:
 Related docs:
 
 - [Documentation index](./.docs/index.md)
-- [Explanation: AGUIDojo system design](./.docs/explanation/agui-dojo/system-design.md)
-- [Roadmap issue: AGUIDojo durable chat sessions foundation](./.issues/260323_aguidojo-durable-chat-sessions-foundation.md)
+- [Roadmap issue: AGUIDojo implementation plan](./.issues/260323_aguidojo-implementation-plan.md)
 - [Issue index](./.issues/index.md)
+- [Explanation: AGUIDojo system design](./.docs/explanation/agui-dojo/system-design.md)
 - [Explanation: AGUIDojo LLM picker architecture and MAF alignment](./.docs/explanation/agui-dojo/aguidojo-llm-picker-architecture-and-maf-alignment.md)
 - [Explanation: Server-side primary persistence for AGUIDojo chat sessions](./.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md)
 - [Explanation: Copilot CLI patterns relevant to AGUIDojo](./.docs/explanation/copilot/copilot-cli-session-context-and-instruction-patterns.md)
@@ -169,5 +169,5 @@ Try these in the chat UI:
 - Business APIs still flow through YARP on the client.
 - AG-UI streaming still goes directly from client to server to avoid proxy buffering.
 - Session metadata may retain a route hint for existing worktree state, but all new traffic is sent to `/chat`.
-- Today the effective model is chosen at server startup; the per-session model picker described in `.docs/explanation/agui-dojo/system-design.md` and `.issues/260323_aguidojo-durable-chat-sessions-foundation.md` is target architecture, not current behavior.
+- Today the effective model is chosen at server startup; the per-session model picker described in `.docs/explanation/agui-dojo/system-design.md` and `.issues/260323_aguidojo-implementation-plan.md` is target architecture, not current behavior.
 - The context-window direction is full-history submission plus server-side compaction; the existing fixed message cap is a transitional implementation.

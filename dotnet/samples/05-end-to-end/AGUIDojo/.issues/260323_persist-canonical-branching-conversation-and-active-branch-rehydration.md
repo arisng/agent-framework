@@ -4,7 +4,7 @@ type: Task
 severity: Critical
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Persist canonical branching conversation and active-branch rehydration
@@ -26,7 +26,7 @@ Make the server-owned branching conversation graph the canonical durable record 
 - [ ] Runtime correlation IDs remain linked references, not the primary session identity.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`
 - Persistence rationale: `.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md`

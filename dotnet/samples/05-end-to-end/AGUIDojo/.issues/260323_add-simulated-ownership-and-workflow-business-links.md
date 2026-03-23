@@ -4,7 +4,7 @@ type: Task
 severity: Medium
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Add simulated ownership and workflow/business links
@@ -27,7 +27,7 @@ Make the durable session model more realistic by adding explicit simulated owner
 - [ ] No real auth flow, token issuance, tenant onboarding, or production identity plumbing is introduced.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`
 - Persistence rationale: `.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md`

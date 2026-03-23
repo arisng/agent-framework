@@ -4,7 +4,7 @@ type: Task
 severity: Critical
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Restore /chat continuity and re-entry correctness
@@ -26,7 +26,7 @@ Re-establish `/chat` as a stateful conversation surface by always sending the fu
 - [ ] Any future context trimming happens only through an explicit server-owned policy.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Architecture and defect rationale: `.docs/explanation/agui-dojo/system-design.md`
 - Sample overview: `README.md`

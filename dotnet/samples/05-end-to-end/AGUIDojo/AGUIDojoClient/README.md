@@ -82,7 +82,7 @@ export ReverseProxy__Clusters__backend__Destinations__primary__Address="https://
 ```
 
 **Server-side AI Model Configuration:**
-The AI model is configured on the **AGUIDojoServer**, not the client. See [AGUIDojoServer README](../AGUIDojoServer/README.md) for LLM configuration options. Quick setup:
+The AI model is configured on the **AGUIDojoServer**, not the client. See [AGUIDojo LLM picker architecture and MAF alignment](./../.docs/explanation/agui-dojo/aguidojo-llm-picker-architecture-and-maf-alignment.md) for LLM configuration options. Quick setup:
 
 ```bash
 # For OpenAI (set on the SERVER)

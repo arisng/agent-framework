@@ -4,7 +4,7 @@ type: Task
 severity: High
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Demote browser storage and align portability, inspection, and docs
@@ -27,8 +27,8 @@ Finish the transition to a server-owned session foundation by making browser sto
 - [ ] Browser-local import remains a best-effort convenience, not a lossless contract.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Sample overview: `README.md`
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`
 - Persistence rationale: `.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md`

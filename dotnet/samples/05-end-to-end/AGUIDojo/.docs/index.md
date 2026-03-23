@@ -1,12 +1,11 @@
 # AGUIDojo documentation index
 
 This is the primary navigation entry point for the AGUIDojo wiki.
-For the shorter landing page, see [README.md](./README.md).
 
 ## Start here
 
 - [AGUIDojo system design](explanation/agui-dojo/system-design.md)
-- [Roadmap issue: AGUIDojo durable chat sessions foundation](../.issues/260323_aguidojo-durable-chat-sessions-foundation.md)
+- [Roadmap issue: AGUIDojo implementation plan](../.issues/260323_aguidojo-implementation-plan.md)
 - [Issue index](../.issues/index.md)
 
 ## Explanation
@@ -34,10 +33,5 @@ For the shorter landing page, see [README.md](./README.md).
 ### AGUIDojo
 
 - [Grounding the AGUIDojo harnessing plan](research/agui-dojo/aguidojo-harnessing-plan.md)
-
-## Compatibility notes
-
-- [`how-to/implementation-plan.md`](how-to/implementation-plan.md) is now a redirect page that points to the roadmap issue and child issue files.
-- [`implementation-plan.md`](implementation-plan.md) remains only as a legacy compatibility path for older links.
 
 AG-UI and Agent Framework do not yet have standalone docs in this sample's wiki. When that changes, add those domain folders only for docs that are truly AG-UI- or framework-owned rather than AGUIDojo-specific design notes.

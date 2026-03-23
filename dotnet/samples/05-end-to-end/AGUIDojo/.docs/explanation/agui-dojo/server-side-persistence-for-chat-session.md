@@ -776,4 +776,4 @@ Confidence is **medium** on the exact long-term message shape:
 
 [23] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/explanation/agui-dojo/system-design.md`
 
-[24] `dotnet/samples/05-end-to-end/AGUIDojo/.issues/260323_aguidojo-durable-chat-sessions-foundation.md`
+[24] `dotnet/samples/05-end-to-end/AGUIDojo/.issues/260323_aguidojo-implementation-plan.md`

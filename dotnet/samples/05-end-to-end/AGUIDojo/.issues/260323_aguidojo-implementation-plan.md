@@ -13,10 +13,10 @@ related:
   - 260323_demote-browser-storage-and-align-portability-inspection-and-docs.md
 ---
 
-# AGUIDojo durable chat sessions foundation
+# AGUIDojo implementation plan
 
 ## Goal
-Establish the durable-session foundation for AGUIDojo so the sample keeps one `/chat` route, preserves full branch continuity, moves canonical session ownership to the server, and supports recovery and inspection without depending on browser-local state.
+Establish the canonical high-level roadmap and implementation plan for AGUIDojo durable chat sessions and related features, consolidating foundational goals, requirements, and the ordered child work items.
 
 ## Requirements
 - [ ] Restore `/chat` full-history continuity and correct all re-entry flows before durability work builds on top.
@@ -41,6 +41,15 @@ Establish the durable-session foundation for AGUIDojo so the sample keeps one `/
 - Treat browser storage as cache, draft support, offline convenience, and best-effort import only once server-owned sessions exist.
 - Use Copilot CLI research as topology and inspection inspiration only; do not copy `~/.copilot/session-state` or a per-session filesystem layout as AGUIDojo's storage contract.
 
+## Ordered Child Work Items
+- [Restore /chat continuity and re-entry correctness](./260323_restore-chat-continuity-and-re-entry-correctness.md)
+- [Add server-owned Chat Sessions module and lifecycle APIs](./260323_add-server-owned-chat-sessions-module-and-lifecycle-apis.md)
+- [Persist canonical branching conversation and active-branch rehydration](./260323_persist-canonical-branching-conversation-and-active-branch-rehydration.md)
+- [Add per-session model selection, server routing, and model-aware compaction](./260323_add-per-session-model-selection-server-routing-and-model-aware-compaction.md)
+- [Persist approvals, audit, plans, and durable artifact projections](./260323_persist-approvals-audit-plans-and-durable-artifact-projections.md)
+- [Add simulated ownership and workflow/business links](./260323_add-simulated-ownership-and-workflow-business-links.md)
+- [Demote browser storage and align portability, inspection, and docs](./260323_demote-browser-storage-and-align-portability-inspection-and-docs.md)
+
 ## Risks & Considerations
 - Payload sizes grow when the client always sends the full active branch; do not reintroduce silent client-side truncation.
 - The Chat Sessions module must stay sample-scoped and modular-monolith friendly rather than turning into premature repo-wide platformization.
@@ -49,7 +58,6 @@ Establish the durable-session foundation for AGUIDojo so the sample keeps one `/
 - Documentation drift will undercut the implementation if README, system design, and this roadmap diverge.
 
 ## References
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`
 - Persistence rationale: `.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md`
 - Model picker and compaction rationale: `.docs/explanation/agui-dojo/aguidojo-llm-picker-architecture-and-maf-alignment.md`

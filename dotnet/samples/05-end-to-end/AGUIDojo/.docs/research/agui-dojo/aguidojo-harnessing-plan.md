@@ -1,6 +1,6 @@
 # Grounding the AGUIDojo harnessing plan
 
-> Historical background note: this document remains useful for context, but the active rollout guidance now lives in the [AGUIDojo implementation plan](../../../.issues/260323_aguidojo-durable-chat-sessions-foundation.md).
+> Historical background note: this document remains useful for context, but the active rollout guidance now lives in the [AGUIDojo implementation plan](../../../.issues/260323_aguidojo-implementation-plan.md).
 
 ## Executive summary
 

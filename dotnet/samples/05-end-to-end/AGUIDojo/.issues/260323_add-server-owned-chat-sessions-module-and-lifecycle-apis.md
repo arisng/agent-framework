@@ -4,7 +4,7 @@ type: Task
 severity: Critical
 status: Proposed
 related:
-  - 260323_aguidojo-durable-chat-sessions-foundation.md
+  - 260323_aguidojo-implementation-plan.md
 ---
 
 # Task: Add server-owned Chat Sessions module and lifecycle APIs
@@ -28,7 +28,7 @@ Move primary session ownership into `AGUIDojoServer` by adding a SQL-first Chat 
 - [ ] Session contracts leave room for preferred-model metadata without multiplying chat endpoints.
 
 ## References
-- Parent roadmap: `260323_aguidojo-durable-chat-sessions-foundation.md`
-- Planning redirect stub: `.docs/how-to/implementation-plan.md`
+- Parent roadmap: `260323_aguidojo-implementation-plan.md`
+- See parent: [260323_aguidojo-implementation-plan.md](260323_aguidojo-implementation-plan.md)
 - Architecture baseline: `.docs/explanation/agui-dojo/system-design.md`
 - Persistence rationale: `.docs/explanation/agui-dojo/server-side-persistence-for-chat-session.md`

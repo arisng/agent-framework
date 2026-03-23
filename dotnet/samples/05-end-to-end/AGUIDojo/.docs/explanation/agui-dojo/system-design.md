@@ -379,7 +379,7 @@ The important point is not the exact table names. The important point is that th
 ## 10. Key code touchpoints
 
 - `README.md` - live sample summary and current topology
-- [Roadmap issue](../../../.issues/260323_aguidojo-durable-chat-sessions-foundation.md) - active phase ordering, rollout decisions, and resolved design choices
+- [Roadmap issue](../../../.issues/260323_aguidojo-implementation-plan.md) - active phase ordering, rollout decisions, and resolved design choices
 - `AGUIDojo.AppHost/AppHost.cs` - Aspire wiring between client and server
 - `AGUIDojoClient/Program.cs` - Blazor Server BFF setup, direct `/chat` client, YARP proxy setup
 - `AGUIDojoClient/Services/AGUIChatClientFactory.cs` - current AG-UI transport client creation; future forwarded model metadata likely attaches here or in a thin wrapper around it
