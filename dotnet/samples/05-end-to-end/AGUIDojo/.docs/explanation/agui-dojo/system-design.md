@@ -4,17 +4,17 @@
 
 This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the chat continuity invariants that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
 
-For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap material that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference, session-topology note, and the focused continuity note—see [AGUIDojo LLM picker architecture and MAF alignment](./aguidojo-llm-picker-architecture-and-maf-alignment.md), [server-side primary persistence for AGUIDojo chat sessions](./server-side-persistence-for-chat-session.md), [chat continuity and re-entry invariants](./chat-continuity-and-re-entry-invariants.md), [Copilot CLI patterns relevant to AGUIDojo](../copilot/copilot-cli-session-context-and-instruction-patterns.md), [Copilot CLI public repo grounding for AGUIDojo](../copilot/copilot-cli-public-repo-grounding.md), [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md), and [Copilot CLI session topology and orchestration layer](../copilot/copilot-cli-session-topology.md).
+For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap material that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference, session-topology note, the focused continuity note, and the implemented server-owned lifecycle note—see [AGUIDojo LLM picker architecture and MAF alignment](./aguidojo-llm-picker-architecture-and-maf-alignment.md), [server-side primary persistence for AGUIDojo chat sessions](./server-side-persistence-for-chat-session.md), [server-owned chat session lifecycle and canonical ID flow](./server-owned-chat-session-lifecycle-and-canonical-id-flow.md), [chat continuity and re-entry invariants](./chat-continuity-and-re-entry-invariants.md), [Copilot CLI patterns relevant to AGUIDojo](../copilot/copilot-cli-session-context-and-instruction-patterns.md), [Copilot CLI public repo grounding for AGUIDojo](../copilot/copilot-cli-public-repo-grounding.md), [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md), and [Copilot CLI session topology and orchestration layer](../copilot/copilot-cli-session-topology.md).
 
 ## 1. Scope and status
 
 **CURRENT**
 - AGUIDojo is a unified `/chat` sample. `AGUIDojoClient` is a Blazor Server BFF, `AGUIDojoServer` is a Minimal API backend, and `AGUIDojo.AppHost` wires both together.
 - `AGUIDojoClient` sends AG-UI traffic directly to `AGUIDojoServer /chat`. YARP proxies only `/api/*` business endpoints.
-- Client session state lives in Fluxor and is hydrated from browser storage. The server does not yet own chat-session identity or persistence.
+- Client session state lives in Fluxor and is hydrated from browser storage, while the server now owns a thin chat-session catalog for identity, lifecycle, and cross-browser list recovery.
 - Model selection is process-wide today. `ChatClientAgentFactory` creates one provider-bound `ChatClient` from startup configuration and all sessions use it.
 - Context handling is still transitional, but the baseline continuity invariant is already restored: the client sends the full active branch on each `/chat` turn, while the server still uses `ContextWindowChatClient` with a fixed 80 non-system-message cap rather than a model-aware token policy.
-- Browser storage is a convenience cache, not the system of record.
+- Browser storage is a convenience cache, not the system of record, while the server now owns a thin chat-session catalog for list/detail/archive recovery.
 - `/chat` is the canonical server shape. The older seven-endpoint AG-UI layout is legacy only.
 
 **TARGET**
@@ -182,7 +182,7 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
   - Audit history is not durably restored.
   - Plan state, diff preview, recipe state, document state, data grids, and undo state are not durably restored.
   - Hydrated sessions reset transient statuses back to `Completed`, clear unread counts, and clear pending approvals.
-- Session archive/delete is still client-side cleanup: the client marks metadata as archived and deletes the local conversation record. There is no server archive API yet.
+- Session archive is now mirrored into a server-owned lifecycle API and removed from the server session catalog; client cleanup still deletes the local cached conversation tree afterward.
 - Browser storage is therefore **not** a system of record. It cannot provide authoritative history, cross-device resume, or durable governance/audit data.
 - Attachment persistence now survives ordinary server restarts: uploaded files live in a SQLite-backed attachment table, while browser-stored message markers continue to reference them through `/api/files/{id}` until the server-side retention window expires.
 - There is no per-session model preference or compaction state to restore; the effective model is simply whatever the server process was configured with at startup.
@@ -190,6 +190,7 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 **TARGET**
 - Browser persistence becomes cache, draft, and best-effort import support only.
 - Durable session ownership moves to the server, and the durable session becomes a support/debug artifact as well as resume state.
+- The current intermediate state is intentional: the server already owns the chat-session catalog/index while richer branching/detail durability is still phased in behind that catalog.
 - Server-owned session records eventually hold catalog fields for list/resume/search plus durable detail/workspace surfaces for requested-model metadata, effective-model facts, plan state, checkpoints, files/artifacts, runtime correlations, and audit/support artifacts rather than only a flattened transcript.
 
 ## 6. Chat continuity invariant and why it matters

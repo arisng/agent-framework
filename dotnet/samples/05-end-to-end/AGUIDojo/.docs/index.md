@@ -8,6 +8,7 @@ This is the primary navigation entry point for the AGUIDojo wiki.
 
 - [AGUIDojo system design](explanation/agui-dojo/system-design.md)
 - [Chat continuity and re-entry invariants](explanation/agui-dojo/chat-continuity-and-re-entry-invariants.md)
+- [Server-owned chat session lifecycle and canonical ID flow](explanation/agui-dojo/server-owned-chat-session-lifecycle-and-canonical-id-flow.md)
 - [Roadmap issue: AGUIDojo implementation plan](../.issues/260323_aguidojo-implementation-plan.md)
 - [Issue index](../.issues/index.md)
 
@@ -25,6 +26,8 @@ This is the primary navigation entry point for the AGUIDojo wiki.
 - [Confidence badge persistence across refresh](explanation/agui-dojo/confidence-badge-persistence-across-refresh.md)
 - [AGUIDojo LLM picker architecture and MAF alignment](explanation/agui-dojo/aguidojo-llm-picker-architecture-and-maf-alignment.md)
 - [Ownership boundaries and header hygiene](explanation/agui-dojo/ownership-boundaries-and-header-hygiene.md)
+- [Server-owned chat session catalog and hydration](explanation/agui-dojo/server-owned-chat-session-catalog-and-hydration.md)
+- [Server-owned chat session lifecycle and canonical ID flow](explanation/agui-dojo/server-owned-chat-session-lifecycle-and-canonical-id-flow.md)
 - [Server-side primary persistence for AGUIDojo chat sessions](explanation/agui-dojo/server-side-persistence-for-chat-session.md)
 - [Session hydration correlation and duplication](explanation/agui-dojo/session-hydration-correlation-and-duplication.md)
 
