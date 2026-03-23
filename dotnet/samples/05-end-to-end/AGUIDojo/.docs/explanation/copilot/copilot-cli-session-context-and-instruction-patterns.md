@@ -1,4 +1,4 @@
-# Research: Copilot CLI patterns relevant to AGUIDojo
+# Copilot CLI patterns relevant to AGUIDojo
 
 ## Executive summary
 

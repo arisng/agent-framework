@@ -1,10 +1,10 @@
-# Research: Copilot CLI public repo grounding for AGUIDojo
+# Copilot CLI public repo grounding for AGUIDojo
 
 ## Executive summary
 
 The public [`github/copilot-cli`](https://github.com/github/copilot-cli) repository is **not** a normal source-available application repo. Its top-level surface is a release/distribution repo built around `README.md`, `install.sh`, `changelog.md`, and GitHub automation under `.github/`, with no public `src/`, `packages/`, or equivalent implementation tree exposed in the root listing.[^1] That means the most concrete implementation-adjacent evidence for overlapping AGUIDojo features comes from three places: release packaging (`install.sh` and `winget.yml`), operational/support artifacts (issue templates and issue workflows), and a very detailed `changelog.md` that records feature rollouts and storage/config paths over time.[^2][^3][^4][^5]
 
-This note complements `.docs/research/copilot-cli-session-context-and-instruction-patterns.md`: that earlier pass distilled public docs and product-surface patterns, while this pass grounds the overlapping signals in artifacts directly visible from the public repo.
+This note complements [Copilot CLI patterns relevant to AGUIDojo](./copilot-cli-session-context-and-instruction-patterns.md): that earlier pass distilled public docs and product-surface patterns, while this pass grounds the overlapping signals in artifacts directly visible from the public repo.
 
 Even with that limitation, the repo is still valuable. It shows that Copilot CLI treats sessions as durable first-class objects with resume/undo/restart/reporting flows, model selection as a session-scoped concern with entitlement/policy-aware UI, long-running context management as checkpointed background compaction, and custom instructions as a multi-source composition system that eventually moved away from priority-based fallbacks toward combined instruction sets.[^5][^6][^7][^8][^9] Those are directly relevant design signals for AGUIDojo, even though the public repo does not expose the exact serialization code or prompt-construction code paths.
 

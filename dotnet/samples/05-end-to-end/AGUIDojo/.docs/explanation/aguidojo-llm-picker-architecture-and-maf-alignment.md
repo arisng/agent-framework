@@ -1,4 +1,4 @@
-# Research: AGUIDojo LLM picker architecture and MAF alignment
+# AGUIDojo LLM picker architecture and MAF alignment
 
 ## Executive summary
 

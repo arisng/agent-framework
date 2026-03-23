@@ -91,15 +91,15 @@ Intended direction for the unified `/chat` route:
 
 Related docs:
 
-- [Docs index](./.docs/README.md)
-- [System design](./.docs/system-design.md)
-- [Implementation plan](./.docs/implementation-plan.md)
-- [Research: AGUIDojo LLM picker architecture and MAF alignment](./.docs/research/aguidojo-llm-picker-architecture-and-maf-alignment.md)
-- [Research: Server-side persistence for chat session](./.docs/research/server-side-persistence-for-chat-session.md)
-- [Research: Copilot CLI session context and instruction patterns](./.docs/research/copilot-cli-session-context-and-instruction-patterns.md)
-- [Research: Copilot CLI public repo grounding](./.docs/research/copilot-cli-public-repo-grounding.md)
-- [Research: Copilot CLI session state schema reference](./.docs/research/copilot-cli-session-state-schema.md)
-- [Research: Copilot CLI session topology](./.docs/research/copilot-cli-session-topology.md)
+- [Documentation index](./.docs/index.md)
+- [Explanation: AGUIDojo system design](./.docs/explanation/system-design.md)
+- [How-to: AGUIDojo implementation plan](./.docs/how-to/implementation-plan.md)
+- [Explanation: AGUIDojo LLM picker architecture and MAF alignment](./.docs/explanation/aguidojo-llm-picker-architecture-and-maf-alignment.md)
+- [Explanation: Server-side primary persistence for AGUIDojo chat sessions](./.docs/explanation/server-side-persistence-for-chat-session.md)
+- [Explanation: Copilot CLI patterns relevant to AGUIDojo](./.docs/explanation/copilot/copilot-cli-session-context-and-instruction-patterns.md)
+- [Explanation: Copilot CLI public repo grounding for AGUIDojo](./.docs/explanation/copilot/copilot-cli-public-repo-grounding.md)
+- [Reference: Copilot CLI session state schema reference](./.docs/reference/copilot-cli-session-state-schema.md)
+- [Explanation: Copilot CLI session topology and orchestration layer](./.docs/explanation/copilot/copilot-cli-session-topology.md)
 
 The Copilot CLI research links ground durable-session topology and inspectable session surfaces. They are
 reference material, not a directive to mirror Copilot CLI's `~/.copilot/` filesystem or exact session
@@ -168,5 +168,5 @@ Try these in the chat UI:
 - Business APIs still flow through YARP on the client.
 - AG-UI streaming still goes directly from client to server to avoid proxy buffering.
 - Session metadata may retain a route hint for existing worktree state, but all new traffic is sent to `/chat`.
-- Today the effective model is chosen at server startup; the per-session model picker described in `.docs/system-design.md` and `.docs/implementation-plan.md` is target architecture, not current behavior.
+- Today the effective model is chosen at server startup; the per-session model picker described in `.docs/explanation/system-design.md` and `.docs/how-to/implementation-plan.md` is target architecture, not current behavior.
 - The context-window direction is full-history submission plus server-side compaction; the existing fixed message cap is a transitional implementation.

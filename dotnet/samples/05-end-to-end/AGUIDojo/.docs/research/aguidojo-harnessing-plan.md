@@ -1,4 +1,6 @@
-# Research: grounding the AGUIDojo harnessing plan
+# Grounding the AGUIDojo harnessing plan
+
+> Historical background note: this document remains useful for context, but the active rollout guidance now lives in the [AGUIDojo implementation plan](../how-to/implementation-plan.md).
 
 ## Executive summary
 

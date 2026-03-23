@@ -1,4 +1,4 @@
-# Research: Server-side Primary Persistence for AGUIDojo Chat Sessions
+# Server-side primary persistence for AGUIDojo chat sessions
 
 ## Executive summary
 
@@ -774,6 +774,6 @@ Confidence is **medium** on the exact long-term message shape:
 
 [22] `dotnet/src/Microsoft.Agents.AI.Hosting.A2A/AIAgentExtensions.cs`, `dotnet/src/Microsoft.Agents.AI.Hosting.AGUI.AspNetCore/AGUIEndpointRouteBuilderExtensions.cs`, `docs/decisions/0010-ag-ui-support.md`
 
-[23] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/system-design.md`
+[23] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/explanation/system-design.md`
 
-[24] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/implementation-plan.md`
+[24] `dotnet/samples/05-end-to-end/AGUIDojo/.docs/how-to/implementation-plan.md`
