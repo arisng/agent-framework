@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 /**
  * Command Palette keyboard shortcut interop for Blazor Server.
  *

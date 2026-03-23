@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoServer.Services;
+﻿namespace AGUIDojoServer.Services;
 
 /// <summary>
 /// Default implementation of <see cref="IDocumentService"/> that provides simulated document functionality.

@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoClient.Services;
+﻿namespace AGUIDojoClient.Services;
 
 /// <summary>
 /// Interface for registering and resolving Blazor components for tool-specific UI rendering.

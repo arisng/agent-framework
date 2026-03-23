@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using AGUIDojoClient.Models;
+﻿using AGUIDojoClient.Models;
 using Microsoft.Extensions.AI;
 
 namespace AGUIDojoClient.Store.SessionManager;

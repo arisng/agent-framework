@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using System.Reflection;
 using System.Text.Json;
 using AGUIDojoServer.Api;

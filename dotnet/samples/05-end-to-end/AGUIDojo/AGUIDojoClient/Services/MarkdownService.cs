@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using Markdig;
+﻿using Markdig;
 
 namespace AGUIDojoClient.Services;
 

@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace AGUIDojoClient.Models;

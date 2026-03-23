@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Json;
 using AGUIDojoClient.Helpers;
 using AGUIDojoClient.Models;

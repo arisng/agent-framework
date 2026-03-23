@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoClient.Services;
+﻿namespace AGUIDojoClient.Services;
 
 /// <summary>
 /// Interface for Markdown to HTML conversion service.

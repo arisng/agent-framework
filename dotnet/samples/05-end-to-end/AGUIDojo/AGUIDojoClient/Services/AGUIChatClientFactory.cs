@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using Microsoft.Agents.AI.AGUI;
 using Microsoft.Extensions.AI;
 

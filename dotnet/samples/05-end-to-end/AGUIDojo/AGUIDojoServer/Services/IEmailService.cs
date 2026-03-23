@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoServer.Services;
+﻿namespace AGUIDojoServer.Services;
 
 /// <summary>
 /// Provides email sending functionality.

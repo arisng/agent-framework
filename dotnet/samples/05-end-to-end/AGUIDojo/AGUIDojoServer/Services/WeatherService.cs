@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoServer.Services;
+﻿namespace AGUIDojoServer.Services;
 
 /// <summary>
 /// Default implementation of <see cref="IWeatherService"/> that provides simulated weather data.

@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using Fluxor;
+﻿using Fluxor;
 
 namespace AGUIDojoClient.Store.SessionManager;
 

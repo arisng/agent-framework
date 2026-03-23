@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using AGUIDojoServer.Services;
+﻿using AGUIDojoServer.Services;
 
 namespace AGUIDojoServer.Api;
 

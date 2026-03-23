@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using AGUIDojoServer.Models;
 
 namespace AGUIDojoServer.Api;

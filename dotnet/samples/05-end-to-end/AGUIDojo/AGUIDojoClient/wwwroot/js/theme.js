@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 /**
  * Theme interop module for Blazor Server.
  *

@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using BlazorBlueprint.Components;
 using Fluxor;
 using Microsoft.AspNetCore.Components.Authorization;

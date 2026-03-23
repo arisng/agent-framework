@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using AGUIDojoServer.AgenticUI;
 using AGUIDojoServer.Api;
 using AGUIDojoServer.BackendToolRendering;

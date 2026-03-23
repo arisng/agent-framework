@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Register the AG-UI backend server with health monitoring.

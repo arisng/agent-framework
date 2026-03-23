@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using AGUIDojoClient.Components.Governance;
 using AGUIDojoClient.Models;
 using AGUIDojoClient.Store.SessionManager;

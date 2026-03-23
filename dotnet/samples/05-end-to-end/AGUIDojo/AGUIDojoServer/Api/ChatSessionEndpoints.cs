@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using AGUIDojoServer.ChatSessions;
+﻿using AGUIDojoServer.ChatSessions;
 
 namespace AGUIDojoServer.Api;
 

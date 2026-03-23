@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoClient.Services;
+﻿namespace AGUIDojoClient.Services;
 
 /// <summary>
 /// Typed HTTP client for consuming the backend Weather API through the YARP reverse proxy.

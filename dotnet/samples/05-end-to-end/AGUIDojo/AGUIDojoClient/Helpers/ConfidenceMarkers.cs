@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using System.Linq;
 using System.Collections;
 using System.Globalization;

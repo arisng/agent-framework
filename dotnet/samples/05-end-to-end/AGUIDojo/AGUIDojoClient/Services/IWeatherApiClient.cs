@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoClient.Services;
+﻿namespace AGUIDojoClient.Services;
 
 /// <summary>
 /// Weather information returned from the backend Weather API.

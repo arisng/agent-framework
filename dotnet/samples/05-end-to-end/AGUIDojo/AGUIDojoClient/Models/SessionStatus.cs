@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-namespace AGUIDojoClient.Models;
+﻿namespace AGUIDojoClient.Models;
 
 /// <summary>
 /// Represents the lifecycle state of a chat session.

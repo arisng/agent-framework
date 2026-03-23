@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using AGUIDojoClient.Store.SessionManager;
 
 namespace AGUIDojoClient.Tests.Store.SessionManager;

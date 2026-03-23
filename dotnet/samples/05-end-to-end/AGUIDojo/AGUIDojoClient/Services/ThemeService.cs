@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using Microsoft.JSInterop;
 
 namespace AGUIDojoClient.Services;

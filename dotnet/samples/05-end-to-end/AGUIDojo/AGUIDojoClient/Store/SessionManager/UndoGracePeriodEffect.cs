@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using System.Collections.Concurrent;
 using Fluxor;
 

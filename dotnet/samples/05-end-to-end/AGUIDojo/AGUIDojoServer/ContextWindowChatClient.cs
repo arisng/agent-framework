@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 

@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Text.Json;
+﻿using System.Text.Json;
 using AGUIDojoServer.AgenticUI;
 using AGUIDojoServer.Api;
 using AGUIDojoServer.HumanInTheLoop;
