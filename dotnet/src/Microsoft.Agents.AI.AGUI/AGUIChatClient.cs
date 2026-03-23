@@ -246,6 +246,11 @@ public sealed class AGUIChatClient : DelegatingChatClient
                     }
                     firstUpdate.AdditionalProperties ??= [];
                     firstUpdate.AdditionalProperties["agui_thread_id"] = threadId;
+                    // MY CUSTOMIZATION POINT: surface the server-issued AGUIDojo chat-session id on the first streamed update.
+                    if (!string.IsNullOrWhiteSpace(this._httpService.ServerSessionId))
+                    {
+                        firstUpdate.AdditionalProperties["server_session_id"] = this._httpService.ServerSessionId;
+                    }
                 }
 
                 if (update.Contents is { Count: 1 } && update.Contents[0] is FunctionCallContent fcc)

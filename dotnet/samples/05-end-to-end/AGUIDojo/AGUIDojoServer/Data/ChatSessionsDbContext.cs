@@ -33,9 +33,11 @@ public sealed class ChatSessionsDbContext : DbContext
             entity.Property(e => e.Title).HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.SubjectModule).HasMaxLength(64);
+            entity.Property(e => e.SubjectEntityType).HasMaxLength(64);
             entity.Property(e => e.SubjectEntityId).HasMaxLength(128);
             entity.Property(e => e.AguiThreadId).HasMaxLength(128);
             entity.Property(e => e.PreferredModelId).HasMaxLength(64);
+            entity.Property(e => e.ServerProtocolVersion).HasMaxLength(64);
             entity.Property(e => e.ConcurrencyStamp)
                 .HasMaxLength(32)
                 .IsConcurrencyToken();

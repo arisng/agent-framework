@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.ServerSentEvents;
@@ -18,12 +19,16 @@ internal sealed class AGUIHttpService(HttpClient client, string endpoint)
 {
     private const int MaxReconnectAttempts = 3;
 
+    // MY CUSTOMIZATION POINT: expose server-owned chat-session headers so sample clients can persist canonical session ids.
+    public string? ServerSessionId { get; private set; }
+
     public async IAsyncEnumerable<BaseEvent> PostRunAsync(
         RunAgentInput input,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string? lastEventId = null;
         int reconnectAttempts = 0;
+        this.ServerSessionId = null;
 
         while (true)
         {
@@ -58,6 +63,9 @@ internal sealed class AGUIHttpService(HttpClient client, string endpoint)
                 try
                 {
                     response.EnsureSuccessStatusCode();
+                    this.ServerSessionId = response.Headers.TryGetValues("X-Session-Id", out IEnumerable<string>? sessionIds)
+                        ? sessionIds.FirstOrDefault()
+                        : null;
 
 #if NET
                     responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);

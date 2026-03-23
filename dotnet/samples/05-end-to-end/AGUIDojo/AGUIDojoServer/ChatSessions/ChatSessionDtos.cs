@@ -9,9 +9,11 @@ public sealed class ChatSessionSummary
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastActivityAt { get; init; }
     public string? SubjectModule { get; init; }
+    public string? SubjectEntityType { get; init; }
     public string? SubjectEntityId { get; init; }
     public string? PreferredModelId { get; init; }
     public string? AguiThreadId { get; init; }
+    public required string ServerProtocolVersion { get; init; }
 }
 
 /// <summary>Detail DTO with full session metadata.</summary>
@@ -24,7 +26,9 @@ public sealed class ChatSessionDetail
     public DateTimeOffset LastActivityAt { get; init; }
     public DateTimeOffset? ArchivedAt { get; init; }
     public string? SubjectModule { get; init; }
+    public string? SubjectEntityType { get; init; }
     public string? SubjectEntityId { get; init; }
     public string? AguiThreadId { get; init; }
     public string? PreferredModelId { get; init; }
+    public required string ServerProtocolVersion { get; init; }
 }

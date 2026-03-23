@@ -33,6 +33,9 @@ public sealed record ServerSessionSummary
     [JsonPropertyName("subjectModule")]
     public string? SubjectModule { get; init; }
 
+    [JsonPropertyName("subjectEntityType")]
+    public string? SubjectEntityType { get; init; }
+
     [JsonPropertyName("subjectEntityId")]
     public string? SubjectEntityId { get; init; }
 
@@ -41,6 +44,9 @@ public sealed record ServerSessionSummary
 
     [JsonPropertyName("aguiThreadId")]
     public string? AguiThreadId { get; init; }
+
+    [JsonPropertyName("serverProtocolVersion")]
+    public string? ServerProtocolVersion { get; init; }
 }
 
 public sealed record ServerSessionDetail
@@ -66,6 +72,9 @@ public sealed record ServerSessionDetail
     [JsonPropertyName("subjectModule")]
     public string? SubjectModule { get; init; }
 
+    [JsonPropertyName("subjectEntityType")]
+    public string? SubjectEntityType { get; init; }
+
     [JsonPropertyName("subjectEntityId")]
     public string? SubjectEntityId { get; init; }
 
@@ -74,6 +83,9 @@ public sealed record ServerSessionDetail
 
     [JsonPropertyName("preferredModelId")]
     public string? PreferredModelId { get; init; }
+
+    [JsonPropertyName("serverProtocolVersion")]
+    public string? ServerProtocolVersion { get; init; }
 }
 
 public sealed class SessionApiService : ISessionApiService

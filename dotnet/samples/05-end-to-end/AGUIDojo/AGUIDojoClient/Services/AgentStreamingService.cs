@@ -579,19 +579,30 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
                                 // Capture the AG-UI thread ID from the first update and store
                                 // it on the context for cross-turn reuse.
-                                if (update.AdditionalProperties?.TryGetValue("agui_thread_id", out string? aguiThreadId) is true
-                                    && !string.IsNullOrEmpty(aguiThreadId))
+                                string? aguiThreadId = null;
+                                if (update.AdditionalProperties?.TryGetValue("agui_thread_id", out string? rawAguiThreadId) is true
+                                    && !string.IsNullOrEmpty(rawAguiThreadId))
                                 {
+                                    aguiThreadId = rawAguiThreadId;
                                     context.AguiThreadId = aguiThreadId;
+                                }
 
-                                    if (TryGetSession(sessionId, out SessionEntry currentEntry) &&
-                                        !string.Equals(currentEntry.Metadata.AguiThreadId, aguiThreadId, StringComparison.Ordinal))
-                                    {
-                                        _dispatcher.Dispatch(new SessionActions.SetSessionCorrelationAction(
-                                            sessionId,
-                                            aguiThreadId,
-                                            currentEntry.Metadata.ServerSessionId));
-                                    }
+                                string? serverSessionId = null;
+                                if (update.AdditionalProperties?.TryGetValue("server_session_id", out string? rawServerSessionId) is true
+                                    && !string.IsNullOrEmpty(rawServerSessionId))
+                                {
+                                    serverSessionId = rawServerSessionId;
+                                }
+
+                                if ((aguiThreadId is not null || serverSessionId is not null) &&
+                                    TryGetSession(sessionId, out SessionEntry currentEntry) &&
+                                    (!string.Equals(currentEntry.Metadata.AguiThreadId, aguiThreadId ?? currentEntry.Metadata.AguiThreadId, StringComparison.Ordinal) ||
+                                     !string.Equals(currentEntry.Metadata.ServerSessionId, serverSessionId ?? currentEntry.Metadata.ServerSessionId, StringComparison.Ordinal)))
+                                {
+                                    _dispatcher.Dispatch(new SessionActions.SetSessionCorrelationAction(
+                                        sessionId,
+                                        aguiThreadId ?? currentEntry.Metadata.AguiThreadId,
+                                        serverSessionId ?? currentEntry.Metadata.ServerSessionId));
                                 }
 
                                 if (update.AuthorName is not null)

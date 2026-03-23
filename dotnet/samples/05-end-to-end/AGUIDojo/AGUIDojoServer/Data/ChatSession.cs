@@ -29,14 +29,28 @@ public sealed class ChatSession
     /// <summary>The business entity ID within the subject module.</summary>
     public string? SubjectEntityId { get; set; }
 
+    /// <summary>The business entity type within the subject module.</summary>
+    public string? SubjectEntityType { get; set; }
+
     /// <summary>AG-UI thread correlation ID (runtime reference, not primary key).</summary>
     public string? AguiThreadId { get; set; }
 
     /// <summary>User's preferred model for this session (for future model picker).</summary>
     public string? PreferredModelId { get; set; }
 
+    /// <summary>Server-owned protocol/version marker for thin recovery and support metadata.</summary>
+    public string ServerProtocolVersion { get; set; } = ChatSessionProtocolVersions.Current;
+
     /// <summary>Optimistic concurrency token (GUID string, SQLite-compatible).</summary>
     public string ConcurrencyStamp { get; set; } = Guid.NewGuid().ToString("N");
+}
+
+/// <summary>
+/// Well-known protocol versions for the server-owned chat-session contract.
+/// </summary>
+public static class ChatSessionProtocolVersions
+{
+    public const string Current = "agui-chat-session.v1";
 }
 
 /// <summary>
