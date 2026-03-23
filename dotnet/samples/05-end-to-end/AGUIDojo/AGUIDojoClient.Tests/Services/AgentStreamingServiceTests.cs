@@ -1,6 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
-
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using AGUIDojoClient.Models;
 using AGUIDojoClient.Services;
 using AGUIDojoClient.Store.SessionManager;
@@ -167,6 +165,7 @@ public sealed class AgentStreamingServiceTests
             observability.Object,
             checkpointService.Object,
             new QueueChatClientFactory(clients),
+            new ToolComponentRegistry(),
             riskAssessment.Object,
             new AutonomyPolicyService());
     }

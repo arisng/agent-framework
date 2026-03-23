@@ -1,6 +1,5 @@
-// Copyright (c) Microsoft. All rights reserved.
-
 using AGUIDojoClient.Models;
+using AGUIDojoClient.Helpers;
 using AGUIDojoClient.Services;
 using Microsoft.Extensions.AI;
 using Microsoft.JSInterop;
@@ -23,8 +22,8 @@ public sealed class SessionPersistenceServiceTests
         SessionPersistenceService service = new(jsRuntime);
         List<SessionMetadataDto> metadata =
         [
-            new("session-1", "First", "/chat", "Running", 10, 20),
-            new("session-2", "Second", "/chat", "Completed", 30, 40)
+            new("session-1", "First", "/chat", "Running", 10, 20, "thread_1", "server-1"),
+            new("session-2", "Second", "/chat", "Completed", 30, 40, "thread_2", null)
         ];
 
         await service.SaveMetadataAsync(metadata);
@@ -57,7 +56,15 @@ public sealed class SessionPersistenceServiceTests
         tree = tree.AddMessage(new ChatMessage(ChatRole.User, "Root") { AuthorName = "User" });
         string rootId = Assert.IsType<string>(tree.RootId);
         tree = tree.AddMessage(new ChatMessage(ChatRole.Assistant, "Original") { AuthorName = "Assistant" });
-        tree = tree.BranchAt(rootId, new ChatMessage(ChatRole.Assistant, "Branch") { AuthorName = "Assistant" });
+        ChatMessage branchMessage = new(ChatRole.Assistant, "Branch")
+        {
+            AuthorName = "Assistant",
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [ConfidenceMarkers.ConfidenceScoreKey] = 0.61d,
+            }
+        };
+        tree = tree.BranchAt(rootId, branchMessage);
 
         await service.SaveConversationAsync("session-1", tree);
         ConversationTree? loaded = await service.LoadConversationAsync("session-1");
@@ -68,6 +75,10 @@ public sealed class SessionPersistenceServiceTests
         Assert.Equal(tree.GetActiveBranchMessages().Select(message => message.Text), loaded.GetActiveBranchMessages().Select(message => message.Text));
         Assert.Equal(tree.GetActiveBranchMessages().Select(message => message.AuthorName), loaded.GetActiveBranchMessages().Select(message => message.AuthorName));
         Assert.Equal(tree.Nodes.Keys.Order(), loaded.Nodes.Keys.Order());
+
+        ChatMessage loadedAssistant = Assert.Single(loaded.GetActiveBranchMessages(), message => message.Role == ChatRole.Assistant);
+        Assert.True(ConfidenceMarkers.TryGetConfidenceScore(loadedAssistant.AdditionalProperties, out double confidenceScore));
+        Assert.Equal(0.61d, confidenceScore, 3);
     }
 
     [Fact]
@@ -80,6 +91,17 @@ public sealed class SessionPersistenceServiceTests
         ConversationTree? loaded = await service.LoadConversationAsync("session-1");
 
         Assert.Null(loaded);
+    }
+
+    [Fact]
+    public void SessionMetadataDto_ToMetadata_BackfillsMissingThreadId()
+    {
+        SessionMetadataDto dto = new("session-1", "First", "/chat", "Completed", 10, 20);
+
+        SessionMetadata metadata = dto.ToMetadata();
+
+        Assert.False(string.IsNullOrWhiteSpace(metadata.AguiThreadId));
+        Assert.Null(metadata.ServerSessionId);
     }
 
     private sealed class FakeJsRuntime : IJSRuntime
