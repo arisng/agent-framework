@@ -1,7 +1,7 @@
 ---
 title: "AGUIDojo phase 0/1 testing feedback backlog"
 type: task
-status: open
+status: resolved
 date: 2026-03-23
 area: AGUIDojo
 priority: high
