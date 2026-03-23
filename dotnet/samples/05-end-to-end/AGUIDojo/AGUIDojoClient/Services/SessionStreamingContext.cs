@@ -33,9 +33,10 @@ public sealed class SessionStreamingContext : IDisposable
     public ChatOptions ChatOptions { get; } = new();
 
     /// <summary>
-    /// Gets or sets the AG-UI thread ID for cross-turn continuity.
+    /// Gets or sets the AG-UI thread ID for cross-turn correlation.
     /// AGUIChatClient clears ConversationId on every response (full-history protocol),
-    /// so this field preserves the thread identity across turns.
+    /// so this field preserves the thread identity across turns without changing
+    /// the requirement to resend the full active branch on each /chat call.
     /// </summary>
     public string? AguiThreadId { get; set; }
 

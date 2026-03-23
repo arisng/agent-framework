@@ -443,6 +443,8 @@ public sealed class AgentStreamingService : IAgentStreamingService
                         try
                         {
                             await foreach (var update in chatClient.GetStreamingResponseAsync(
+                                // Correlation IDs are transport metadata only. Always resend the
+                                // full active branch and let server-owned context policy trim it.
                                 session.Messages,
                                 context.ChatOptions,
                                 responseCancellation.Token))

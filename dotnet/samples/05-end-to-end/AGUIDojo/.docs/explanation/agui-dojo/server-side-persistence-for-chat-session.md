@@ -1,3 +1,5 @@
+<!-- MY CUSTOMIZATION POINT: align persistence guidance with the restored full-history /chat invariant -->
+
 # Server-side primary persistence for AGUIDojo chat sessions
 
 ## Executive summary
@@ -436,7 +438,7 @@ This should be derived from the canonical journal/tables, not treated as the onl
 
 One major lesson from the current AGUIDojo bug is that **canonical history must not be confused with context optimization**.
 
-Today the client's `StatefulMessageCount` optimization drops earlier messages even though the AG-UI route expects the full history each turn. That is exactly the kind of layering mistake the server-side persistence design should avoid.
+A previously considered `StatefulMessageCount`/delta-turn optimization would have dropped earlier messages even though the AG-UI route expects the full history each turn. That is exactly the kind of layering mistake the server-side persistence design should avoid, and the current client now preserves the full active branch for every `/chat` turn.
 
 Recommended rule:
 
@@ -564,7 +566,7 @@ Do **not** assume that introducing server persistence means the client can immed
 
 Because the current AG-UI path expects full history **and** `MapAGUI` does not yet restore `AgentSession` automatically, the safe near-term approach is:
 
-- fix the memory bug first
+- preserve the full-history continuity invariant first
 - introduce server session load/save around `/chat`
 - do **not** naively enable a server `ChatHistoryProvider` while the client still posts full active-branch history, or the same history will be duplicated
 - keep sending full active-branch history per turn until the server contract explicitly reconciles or versions stateful turns
@@ -572,9 +574,9 @@ Because the current AG-UI path expects full history **and** `MapAGUI` does not y
 
 ## Migration plan
 
-### Phase 0: fix the current memory bug first
+### Phase 0: preserve the current full-history invariant
 
-Before changing persistence semantics, fix the within-session continuity issue by sending full active-branch history to the current AG-UI route.
+Before changing persistence semantics, keep the within-session continuity invariant intact by sending full active-branch history to the current AG-UI route.
 
 Without that, the new server store will be fed already-truncated turn context.
 

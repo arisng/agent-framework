@@ -1,3 +1,5 @@
+<!-- MY CUSTOMIZATION POINT: clarify that AG-UI thread correlation does not replace full-history continuity -->
+
 # AGUIDojo session hydration correlation and duplication
 
 ## Defect pattern
@@ -20,7 +22,7 @@ Because the merge logic only compared raw session IDs, AGUIDojo could render bot
 
 ## Root cause
 
-The real continuity key for AG-UI `/chat` is the AG-UI `threadId`, not the server chat-session row ID.
+The durable cross-boundary correlation key for AG-UI `/chat` hydration is the AG-UI `threadId`, not the server chat-session row ID. The thread ID helps the client and server recognize the same conversation, but `/chat` continuity still depends on resending the full active branch each turn.
 
 Before the fix:
 

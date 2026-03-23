@@ -1,8 +1,10 @@
+<!-- MY CUSTOMIZATION POINT: realign the system design doc with the current full-history /chat behavior -->
+
 # AGUIDojo system design
 
-This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the defects that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
+This document consolidates the legacy AGUIDojo design notes into one implementation-aligned view. It explains what the sample does today, the chat continuity invariants that matter now, and the server-owned session and model-selection architecture the current implementation plan is targeting next.
 
-For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap material that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference and session-topology note—see [AGUIDojo LLM picker architecture and MAF alignment](./aguidojo-llm-picker-architecture-and-maf-alignment.md), [server-side primary persistence for AGUIDojo chat sessions](./server-side-persistence-for-chat-session.md), [Copilot CLI patterns relevant to AGUIDojo](../copilot/copilot-cli-session-context-and-instruction-patterns.md), [Copilot CLI public repo grounding for AGUIDojo](../copilot/copilot-cli-public-repo-grounding.md), [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md), and [Copilot CLI session topology and orchestration layer](../copilot/copilot-cli-session-topology.md).
+For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap material that informs this design—including the repo-grounded validation pass plus the companion session-state schema reference, session-topology note, and the focused continuity note—see [AGUIDojo LLM picker architecture and MAF alignment](./aguidojo-llm-picker-architecture-and-maf-alignment.md), [server-side primary persistence for AGUIDojo chat sessions](./server-side-persistence-for-chat-session.md), [chat continuity and re-entry invariants](./chat-continuity-and-re-entry-invariants.md), [Copilot CLI patterns relevant to AGUIDojo](../copilot/copilot-cli-session-context-and-instruction-patterns.md), [Copilot CLI public repo grounding for AGUIDojo](../copilot/copilot-cli-public-repo-grounding.md), [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md), and [Copilot CLI session topology and orchestration layer](../copilot/copilot-cli-session-topology.md).
 
 ## 1. Scope and status
 
@@ -11,12 +13,12 @@ For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap 
 - `AGUIDojoClient` sends AG-UI traffic directly to `AGUIDojoServer /chat`. YARP proxies only `/api/*` business endpoints.
 - Client session state lives in Fluxor and is hydrated from browser storage. The server does not yet own chat-session identity or persistence.
 - Model selection is process-wide today. `ChatClientAgentFactory` creates one provider-bound `ChatClient` from startup configuration and all sessions use it.
-- Context handling is still transitional: the client has a history-slicing continuity bug, and the server uses `ContextWindowChatClient` with a fixed 80 non-system-message cap rather than a model-aware token policy.
+- Context handling is still transitional, but the baseline continuity invariant is already restored: the client sends the full active branch on each `/chat` turn, while the server still uses `ContextWindowChatClient` with a fixed 80 non-system-message cap rather than a model-aware token policy.
 - Browser storage is a convenience cache, not the system of record.
 - `/chat` is the canonical server shape. The older seven-endpoint AG-UI layout is legacy only.
 
 **TARGET**
-- Phase 0 fixes multi-turn continuity by sending full active-branch history on every `/chat` turn.
+- Phase 0's continuity invariant is now the baseline: send full active-branch history on every `/chat` turn and keep prompt trimming as explicit server-owned policy.
 - Phase 1+ moves primary session ownership into `AGUIDojoServer` via a Chat Sessions module backed by a SQL-first, relational-first store. SQLite may remain useful for local sample runs, but SQL Server or PostgreSQL are the natural modular-monolith targets.
 - Server-owned session records are more than transcript storage: AGUIDojo needs both a read-optimized catalog/index surface for list/resume/search and a richer session-detail/workspace surface for approvals, plans, checkpoints, files/artifacts, audit facts, and compaction/debug history.
 - Copilot CLI's recent public-doc research plus the companion schema reference and topology note are useful mainly as a topology lesson: separate a central session catalog/index from richer per-session detail/workspace surfaces, but do not copy the literal `~/.copilot/session-state/<id>/...` filesystem layout into AGUIDojo. In this sample, both surfaces stay server-owned and SQL-first.
@@ -113,7 +115,7 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 - The root Fluxor store (`SessionManagerState`) holds many `SessionEntry` objects plus the active session ID and global autonomy level.
 - Each `SessionEntry` splits into:
   - `SessionMetadata`: title, status, created/last-activity timestamps, unread count, pending-approval badge, and a legacy `EndpointPath` hint.
-  - `SessionState`: branching `ConversationTree`, current active-branch messages, in-progress assistant message, `ConversationId`, `StatefulMessageCount`, approval state, artifact state, audit trail, and undo state.
+  - `SessionState`: branching `ConversationTree`, current active-branch messages, in-progress assistant message, `ConversationId`, approval state, artifact state, audit trail, and undo state.
 - Session switching is first-class. The sidebar changes the active session, clears unread count for the foreground session, and lets other sessions continue streaming in the background.
 - Status values such as `Created`, `Active`, `Streaming`, `Background`, `Completed`, `Error`, and `Archived` are UI/session lifecycle markers, not server-owned records.
 - Concurrency is managed client-side today: up to three active streams, with a small queue for overflow.
@@ -190,36 +192,32 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 - Durable session ownership moves to the server, and the durable session becomes a support/debug artifact as well as resume state.
 - Server-owned session records eventually hold catalog fields for list/resume/search plus durable detail/workspace surfaces for requested-model metadata, effective-model facts, plan state, checkpoints, files/artifacts, runtime correlations, and audit/support artifacts rather than only a flattened transcript.
 
-## 6. Critical continuity bug and why it matters
+## 6. Chat continuity invariant and why it matters
 
-**CURRENT defect**
-`AgentStreamingService` currently sends delta-only messages after the first successful turn:
+**CURRENT baseline**
+`AgentStreamingService` now sends the session's full active branch on every `/chat` turn:
 
 ```csharp
 chatClient.GetStreamingResponseAsync(
-    session.Messages.Skip(session.StatefulMessageCount),
+    session.Messages,
     context.ChatOptions,
     responseCancellation.Token)
 ```
 
-After a turn completes, the client stores `StatefulMessageCount = session.Messages.Count` when `ConversationId` is set. On the next turn, earlier messages are skipped and only the new tail of the branch is sent.
+`SessionState.Messages` is derived from `ConversationTree.GetActiveBranchMessages()`, so the outbound history is always the current root-to-leaf branch rather than a client-side tail slice. That same rule applies after edit-and-regenerate branch swaps, checkpoint restores, approval submit/reject flows, and ordinary same-session continuation.
 
-**Why this is wrong**
-- In AGUIDojo's current `/chat` contract, `ConversationId` is correlation metadata, not proof that the backend already owns complete conversational memory.
-- The server-side agent wrappers still need full active-branch history to interpret:
-  - follow-up questions
-  - previous tool results
-  - approval decisions
-  - plan/recipe/document state already discussed in the branch
-- The bug is not subtle: second and later turns can forget earlier instructions inside the same session.
-- It also blocks safe per-session model switching: a server-side compaction policy can only make good decisions if it sees the full active branch before trimming or summarizing it.
+**Why this matters**
+- In AGUIDojo's `/chat` contract, `ConversationId` is correlation metadata, not proof that the backend already owns complete conversational memory.
+- The same is true for AG-UI `threadId`, AG-UI `runId`, and downstream workflow/runtime identifiers: they are useful links, not permission to omit history.
+- The server-side agent wrappers still need full active-branch history to interpret follow-up questions, previous tool results, approval decisions, and plan/recipe/document state already discussed in the branch.
+- Safe prompt-size management depends on the server seeing canonical history first. Only then can the server choose whether to summarize, slide, truncate, or otherwise compact invocation context.
 
-**TARGET / Phase 0**
+**Required invariant**
 - Always send the full active-branch history on every `/chat` turn.
 - Keep context-window trimming as an explicit server policy, not a client-side skip heuristic.
-- Apply the same rule to edit/regenerate, retry, and approval re-entry paths.
+- Apply the same rule to ordinary follow-ups plus edit/regenerate, retry/restart, approval submit/reject, and other re-entry paths.
 - Treat future compaction as checkpointed server behavior: it may shrink invocation context, but it must not silently rewrite the canonical branch history.
-- Treat that invariant as a prerequisite for future model-picker and server-side compaction work.
+- Guard the invariant with regression tests before layering server-owned sessions or model-routing behavior on top.
 
 ## 7. Target session architecture
 
@@ -258,7 +256,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 ### Phase shape
 
 **Phase 0**
-- Fix full-history turns on `/chat`.
+- Preserve and regression-test full-history turns on `/chat`.
 
 **Phase 1**
 - Add a Chat Sessions module with list/get summary-detail/archive APIs and implicit creation on the first persisted `/chat` turn.
@@ -302,7 +300,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 | Model preference | no per-session setting; one server startup model for all sessions | per-session requested/preferred model owned by server records and cached in the client UI |
 | Effective model | implicit process-wide startup model for all turns | per-turn or audit fact recorded by the server when known |
 | Conversation graph | client-only `ConversationTree` | server-owned branching graph in SQL-backed Chat Sessions storage |
-| Context-window policy | client skip heuristic plus fixed 80-message server cap | full-history submission plus server-owned, checkpointed model-aware compaction |
+| Context-window policy | full active-branch submission plus fixed 80-message server cap | full-history submission plus server-owned, checkpointed model-aware compaction |
 | Message fidelity | good live state, lossy browser persistence | durable message payloads with tool/state context |
 | Approval history | transient UI/session state | durable approval records |
 | Audit trail | transient UI/session state | durable audit/support records for approvals, model switches, compaction, and trust |
@@ -388,7 +386,7 @@ The important point is not the exact table names. The important point is that th
 - `AGUIDojoServer/ContextWindowChatClient.cs` - current fixed message-cap wrapper that the research points toward replacing with server-side compaction
 - `AGUIDojoServer/ToolResultStreamingChatClient.cs` - tool-result streaming bridge
 - `AGUIDojoServer/Multimodal/MultimodalAttachmentAgent.cs` - attachment resolution into multimodal model input
-- `AGUIDojoClient/Services/AgentStreamingService.cs` - direct AG-UI streaming, approvals, notifications, and the current history-skipping bug
+- `AGUIDojoClient/Services/AgentStreamingService.cs` - direct AG-UI streaming, approvals, notifications, and the full-history submission invariant
 - `AGUIDojoClient/Store/SessionManager/SessionState.cs` - per-session state model
 - `AGUIDojoClient/Store/SessionManager/SessionHydrationEffect.cs` - browser hydration behavior
 - `AGUIDojoClient/Store/SessionManager/SessionPersistenceEffect.cs` and `AGUIDojoClient/Services/SessionPersistenceService.cs` - localStorage/IndexedDB persistence boundary

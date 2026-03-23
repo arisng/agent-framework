@@ -1,3 +1,5 @@
+<!-- MY CUSTOMIZATION POINT: document the chat continuity invariants in the AGUIDojo wiki -->
+
 # AGUIDojo documentation index
 
 This is the primary navigation entry point for the AGUIDojo wiki.
@@ -5,6 +7,7 @@ This is the primary navigation entry point for the AGUIDojo wiki.
 ## Start here
 
 - [AGUIDojo system design](explanation/agui-dojo/system-design.md)
+- [Chat continuity and re-entry invariants](explanation/agui-dojo/chat-continuity-and-re-entry-invariants.md)
 - [Roadmap issue: AGUIDojo implementation plan](../.issues/260323_aguidojo-implementation-plan.md)
 - [Issue index](../.issues/index.md)
 
@@ -13,6 +16,7 @@ This is the primary navigation entry point for the AGUIDojo wiki.
 ### AGUIDojo
 
 - [AGUIDojo system design](explanation/agui-dojo/system-design.md)
+- [Chat continuity and re-entry invariants](explanation/agui-dojo/chat-continuity-and-re-entry-invariants.md)
 - [Attachment durability and the AGUIDojo persistence model](explanation/agui-dojo/attachment-durability-and-persistence-model.md)
 - [Artifact placement toggles and Mermaid rendering](explanation/agui-dojo/artifact-placement-toggle-and-mermaid-rendering.md)
 - [Assistant thought toggle trigger and collapsible state](explanation/agui-dojo/assistant-thought-toggle-trigger-and-collapsible-state.md)
