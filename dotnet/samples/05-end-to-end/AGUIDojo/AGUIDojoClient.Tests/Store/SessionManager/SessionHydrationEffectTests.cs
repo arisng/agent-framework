@@ -27,7 +27,7 @@ public sealed class SessionHydrationEffectTests
             Conversations = { [localSessionId] = localTree },
         };
 
-        Mock<ISessionApiService> sessionApiService = new();
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
         sessionApiService
             .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(
@@ -76,7 +76,7 @@ public sealed class SessionHydrationEffectTests
             ActiveSessionId = sessionId,
         };
 
-        Mock<ISessionApiService> sessionApiService = new();
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
         sessionApiService
             .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((List<ServerSessionSummary>?)null);
@@ -104,7 +104,7 @@ public sealed class SessionHydrationEffectTests
             ActiveSessionId = null,
         };
 
-        Mock<ISessionApiService> sessionApiService = new();
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
         sessionApiService
             .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(
@@ -139,6 +139,100 @@ public sealed class SessionHydrationEffectTests
     }
 
     [Fact]
+    public async Task HandleHydrateFromStorage_PrefersServerConversationGraphOverBrowserCache()
+    {
+        const string localSessionId = "local-session";
+        const string serverSessionId = "server-session";
+        const string aguiThreadId = "thread_local-session";
+
+        ConversationTree browserTree = new();
+        browserTree = browserTree.AddMessage(new ChatMessage(ChatRole.User, "Root question"));
+        browserTree = browserTree.AddMessage(new ChatMessage(ChatRole.Assistant, "Browser cached reply"));
+
+        FakeSessionPersistenceService persistence = new()
+        {
+            Metadata = [new SessionMetadataDto(localSessionId, SessionMetadata.DefaultTitle, "chat", "Completed", 10, 20, aguiThreadId, null)],
+            ActiveSessionId = localSessionId,
+            Conversations = { [localSessionId] = browserTree },
+        };
+
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
+        sessionApiService
+            .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ServerSessionSummary
+                {
+                    Id = serverSessionId,
+                    Title = "Recovered from server",
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(5),
+                    LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(30),
+                    AguiThreadId = aguiThreadId,
+                }
+            ]);
+        sessionApiService
+            .Setup(service => service.GetConversationAsync(serverSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+                new ServerConversationGraph
+                {
+                    RootId = "server-root",
+                    ActiveLeafId = "server-branch",
+                    Nodes =
+                    [
+                        new ServerConversationNode
+                        {
+                            Id = "server-root",
+                            ParentId = null,
+                            Role = ChatRole.User.Value,
+                            Text = "Root question",
+                            AuthorName = "User",
+                            ChildIds = ["server-original", "server-branch"],
+                        },
+                        new ServerConversationNode
+                        {
+                            Id = "server-original",
+                            ParentId = "server-root",
+                            Role = ChatRole.Assistant.Value,
+                            Text = "Server original reply",
+                            AuthorName = "Assistant",
+                            ChildIds = [],
+                        },
+                        new ServerConversationNode
+                        {
+                            Id = "server-branch",
+                            ParentId = "server-root",
+                            Role = ChatRole.Assistant.Value,
+                            Text = "Server preferred branch",
+                            AuthorName = "Assistant",
+                            ChildIds = [],
+                        }
+                    ],
+                });
+
+        SessionHydrationEffect effect = new(
+            persistence,
+            sessionApiService.Object,
+            NullLogger<SessionHydrationEffect>.Instance);
+        CapturingDispatcher dispatcher = new();
+
+        await effect.HandleHydrateFromStorage(new SessionActions.HydrateFromStorageAction(), dispatcher);
+
+        SessionActions.HydrateSessionsAction hydrateAction = Assert.IsType<SessionActions.HydrateSessionsAction>(Assert.Single(dispatcher.Actions));
+        SessionEntry entry = Assert.Single(hydrateAction.Sessions.Values);
+
+        Assert.Equal(localSessionId, hydrateAction.ActiveSessionId);
+        Assert.Equal(serverSessionId, entry.Metadata.ServerSessionId);
+        Assert.Equal("server-root", entry.State.Tree.RootId);
+        Assert.Equal("server-branch", entry.State.Tree.ActiveLeafId);
+        Assert.Equal(
+            ["Root question", "Server preferred branch"],
+            entry.State.Tree.GetActiveBranchMessages().Select(message => message.Text));
+        Assert.DoesNotContain("Browser cached reply", entry.State.Tree.GetActiveBranchMessages().Select(message => message.Text));
+        sessionApiService.Verify(service => service.GetConversationAsync(serverSessionId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task HandleHydrateFromStorage_ServerOnlyRecoverySelectsMostRecentServerSession()
     {
         FakeSessionPersistenceService persistence = new()
@@ -147,7 +241,7 @@ public sealed class SessionHydrationEffectTests
             ActiveSessionId = null,
         };
 
-        Mock<ISessionApiService> sessionApiService = new();
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
         sessionApiService
             .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(
@@ -189,6 +283,107 @@ public sealed class SessionHydrationEffectTests
         Assert.Equal(2, hydratedState.Sessions.Count);
         Assert.Equal("server-session-2", hydratedState.Sessions["server-session-2"].Metadata.ServerSessionId);
         Assert.Equal("Newest server session", hydratedState.Sessions["server-session-2"].Metadata.Title);
+    }
+
+    [Fact]
+    public async Task HandleHydrateFromStorage_ServerOnlyRecoveryRestoresServerActiveBranch()
+    {
+        const string serverSessionId = "server-session-1";
+
+        FakeSessionPersistenceService persistence = new()
+        {
+            Metadata = null,
+            ActiveSessionId = null,
+        };
+
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
+        sessionApiService
+            .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ServerSessionSummary
+                {
+                    Id = serverSessionId,
+                    Title = "Recovered session",
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(10),
+                    LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(20),
+                    AguiThreadId = "thread-server-1",
+                }
+            ]);
+        sessionApiService
+            .Setup(service => service.GetConversationAsync(serverSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+                new ServerConversationGraph
+                {
+                    RootId = "server-root",
+                    ActiveLeafId = "server-branch-child",
+                    Nodes =
+                    [
+                        new ServerConversationNode
+                        {
+                            Id = "server-root",
+                            ParentId = null,
+                            Role = ChatRole.User.Value,
+                            Text = "Root question",
+                            ChildIds = ["server-original", "server-branch"],
+                        },
+                        new ServerConversationNode
+                        {
+                            Id = "server-original",
+                            ParentId = "server-root",
+                            Role = ChatRole.Assistant.Value,
+                            Text = "Server original reply",
+                            ChildIds = [],
+                        },
+                        new ServerConversationNode
+                        {
+                            Id = "server-branch",
+                            ParentId = "server-root",
+                            Role = ChatRole.Assistant.Value,
+                            Text = "Alternative branch",
+                            ChildIds = ["server-branch-child"],
+                        },
+                        new ServerConversationNode
+                        {
+                            Id = "server-branch-child",
+                            ParentId = "server-branch",
+                            Role = ChatRole.User.Value,
+                            Text = "Continue on preferred branch",
+                            ChildIds = [],
+                        }
+                    ],
+                });
+
+        SessionHydrationEffect effect = new(
+            persistence,
+            sessionApiService.Object,
+            NullLogger<SessionHydrationEffect>.Instance);
+        CapturingDispatcher dispatcher = new();
+
+        await effect.HandleHydrateFromStorage(new SessionActions.HydrateFromStorageAction(), dispatcher);
+
+        SessionActions.HydrateSessionsAction hydrateAction =
+            Assert.IsType<SessionActions.HydrateSessionsAction>(Assert.Single(dispatcher.Actions));
+        SessionManagerState hydratedState =
+            SessionReducers.OnHydrateSessions(new SessionManagerState(), hydrateAction);
+
+        Assert.Equal(serverSessionId, hydratedState.ActiveSessionId);
+        SessionEntry entry = hydratedState.Sessions[serverSessionId];
+        Assert.Equal("server-branch-child", entry.State.Tree.ActiveLeafId);
+        Assert.Equal(
+            ["Root question", "Alternative branch", "Continue on preferred branch"],
+            entry.State.Messages.Select(message => message.Text));
+    }
+
+    private static Mock<ISessionApiService> CreateSessionApiServiceMock()
+    {
+        Mock<ISessionApiService> sessionApiService = new();
+        sessionApiService
+            .Setup(service => service.GetConversationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ServerConversationGraph?)null);
+
+        return sessionApiService;
     }
 
     private sealed class FakeSessionPersistenceService : ISessionPersistenceService

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.AI;
 
 namespace AGUIDojoServer.Tests;
 
@@ -69,6 +70,132 @@ public sealed class ChatSessionEndpointTests
             Assert.Equal("todo-42", detail.SubjectEntityId);
             Assert.Equal("gpt-4.1", detail.PreferredModelId);
             Assert.Equal(ChatSessionProtocolVersions.Current, detail.ServerProtocolVersion);
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConversationEndpoint_ReturnsCanonicalBranchingGraph()
+    {
+        string dbPath = CreateDatabasePath();
+
+        try
+        {
+            await using TestApiHost host = await TestApiHost.StartAsync(dbPath);
+            string sessionId = await host.CreateSessionAsync(
+                new ChatSessionService.ChatSessionEnsureRequest
+                {
+                    AguiThreadId = "thread-api-conversation",
+                    FirstUserMessage = "Plan a launch checklist.",
+                });
+
+            ChatMessage root = new(ChatRole.User, "Plan a launch checklist.")
+            {
+                AuthorName = "User",
+                MessageId = "api-user-1",
+            };
+            ChatMessage original = new(ChatRole.Assistant, "Here is the original checklist.")
+            {
+                AuthorName = "Planner",
+                MessageId = "api-assistant-1",
+            };
+            ChatMessage branch = new(
+                ChatRole.Assistant,
+                [
+                    new TextContent("Here is the revised checklist."),
+                    new FunctionResultContent("tool-call-2", new { revised = true }),
+                ])
+            {
+                AuthorName = "Planner",
+                MessageId = "api-assistant-2",
+            };
+
+            await host.PersistConversationAsync(sessionId, root, original);
+            await host.PersistConversationAsync(sessionId, root, branch);
+
+            ChatConversationGraph? graph =
+                await host.Client.GetFromJsonAsync<ChatConversationGraph>($"/api/chat-sessions/{sessionId}/conversation");
+
+            Assert.NotNull(graph);
+            Assert.Equal(3, graph.Nodes.Count);
+            ChatConversationNodeDto rootNode = Assert.Single(graph.Nodes, node => node.Id == graph.RootId);
+            Assert.Equal(2, rootNode.ChildIds.Count);
+            ChatConversationNodeDto activeLeaf = Assert.Single(graph.Nodes, node => node.Id == graph.ActiveLeafId);
+            Assert.Equal(rootNode.Id, activeLeaf.ParentId);
+            Assert.Equal("api-assistant-2", activeLeaf.MessageId);
+            Assert.Contains("FunctionResultContent", activeLeaf.Content?.GetRawText(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task ConversationEndpoints_UpdateActiveLeafAndClearGraph()
+    {
+        string dbPath = CreateDatabasePath();
+
+        try
+        {
+            await using TestApiHost host = await TestApiHost.StartAsync(dbPath);
+            string sessionId = await host.CreateSessionAsync(
+                new ChatSessionService.ChatSessionEnsureRequest
+                {
+                    AguiThreadId = "thread-api-branch-selection",
+                    FirstUserMessage = "Walk me through the branch selection flow.",
+                });
+
+            ChatMessage root = new(ChatRole.User, "Walk me through the branch selection flow.")
+            {
+                AuthorName = "User",
+                MessageId = "api-user-selection",
+            };
+            ChatMessage original = new(ChatRole.Assistant, "Original branch")
+            {
+                AuthorName = "Planner",
+                MessageId = "api-assistant-selection-1",
+            };
+            ChatMessage alternative = new(ChatRole.Assistant, "Alternative branch")
+            {
+                AuthorName = "Planner",
+                MessageId = "api-assistant-selection-2",
+            };
+
+            await host.PersistConversationAsync(sessionId, root, original);
+            await host.PersistConversationAsync(sessionId, root, alternative);
+
+            ChatConversationGraph? initialGraph =
+                await host.Client.GetFromJsonAsync<ChatConversationGraph>($"/api/chat-sessions/{sessionId}/conversation");
+            Assert.NotNull(initialGraph);
+
+            ChatConversationNodeDto rootNode = Assert.Single(initialGraph.Nodes, node => node.Id == initialGraph.RootId);
+            ChatConversationNodeDto originalNode = Assert.Single(initialGraph.Nodes, node => node.MessageId == "api-assistant-selection-1");
+
+            HttpResponseMessage selectionResponse = await host.Client.PutAsJsonAsync(
+                $"/api/chat-sessions/{sessionId}/active-leaf",
+                new ChatConversationActiveLeafUpdate { ActiveLeafId = originalNode.Id });
+            Assert.Equal(HttpStatusCode.NoContent, selectionResponse.StatusCode);
+
+            ChatConversationGraph? selectedGraph =
+                await host.Client.GetFromJsonAsync<ChatConversationGraph>($"/api/chat-sessions/{sessionId}/conversation");
+            Assert.NotNull(selectedGraph);
+            Assert.Equal(originalNode.Id, selectedGraph.ActiveLeafId);
+            Assert.Equal(rootNode.Id, selectedGraph.RootId);
+
+            HttpResponseMessage clearResponse =
+                await host.Client.DeleteAsync(new Uri($"/api/chat-sessions/{sessionId}/conversation", UriKind.Relative));
+            Assert.Equal(HttpStatusCode.NoContent, clearResponse.StatusCode);
+
+            ChatConversationGraph? clearedGraph =
+                await host.Client.GetFromJsonAsync<ChatConversationGraph>($"/api/chat-sessions/{sessionId}/conversation");
+            Assert.NotNull(clearedGraph);
+            Assert.Null(clearedGraph.RootId);
+            Assert.Null(clearedGraph.ActiveLeafId);
+            Assert.Empty(clearedGraph.Nodes);
         }
         finally
         {
@@ -179,6 +306,7 @@ public sealed class ChatSessionEndpointTests
 
             builder.Services.AddDbContext<ChatSessionsDbContext>(options => options.UseSqlite($"Data Source={dbPath}"));
             builder.Services.AddScoped<ChatSessionService>();
+            builder.Services.AddScoped<ChatConversationService>();
             builder.Services.AddSingleton<IModelRegistry, ModelRegistry>();
 
             WebApplication app = builder.Build();
@@ -201,6 +329,13 @@ public sealed class ChatSessionEndpointTests
             ChatSessionService service = scope.ServiceProvider.GetRequiredService<ChatSessionService>();
             ChatSessionService.ChatSessionEnsureResult result = await service.EnsureSessionForThreadAsync(request);
             return result.SessionId;
+        }
+
+        public async Task PersistConversationAsync(string sessionId, params ChatMessage[] messages)
+        {
+            using IServiceScope scope = App.Services.CreateScope();
+            ChatConversationService service = scope.ServiceProvider.GetRequiredService<ChatConversationService>();
+            await service.PersistConversationAsync(sessionId, messages);
         }
 
         public async ValueTask DisposeAsync()
