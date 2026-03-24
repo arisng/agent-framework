@@ -1,6 +1,7 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using AGUIDojoServer.AgenticUI;
 using AGUIDojoServer.Api;
+using AGUIDojoServer.ChatSessions;
 using AGUIDojoServer.HumanInTheLoop;
 using AGUIDojoServer.Multimodal;
 using AGUIDojoServer.PredictiveStateUpdates;
@@ -9,6 +10,7 @@ using AGUIDojoServer.Tools;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using OpenAI.Chat;
@@ -74,6 +76,7 @@ public sealed class ChatClientAgentFactory
     private readonly EmailTool _emailTool;
     private readonly DocumentTool _documentTool;
     private readonly IFileStorageService _fileStorage;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     /// <summary>
     /// Gets an <see cref="IChatClient"/> wrapper around the underlying <see cref="ChatClient"/>,
@@ -90,6 +93,7 @@ public sealed class ChatClientAgentFactory
     /// <param name="emailTool">The email tool for AI function calls.</param>
     /// <param name="documentTool">The document tool for AI function calls.</param>
     /// <param name="fileStorage">The uploaded file storage used to resolve multimodal attachments.</param>
+    /// <param name="httpContextAccessor">Provides access to the current request for persistence integration.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when neither Azure OpenAI nor OpenAI credentials are configured.
     /// </exception>
@@ -98,18 +102,21 @@ public sealed class ChatClientAgentFactory
         WeatherTool weatherTool,
         EmailTool emailTool,
         DocumentTool documentTool,
-        IFileStorageService fileStorage)
+        IFileStorageService fileStorage,
+        IHttpContextAccessor httpContextAccessor)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(weatherTool);
         ArgumentNullException.ThrowIfNull(emailTool);
         ArgumentNullException.ThrowIfNull(documentTool);
         ArgumentNullException.ThrowIfNull(fileStorage);
+        ArgumentNullException.ThrowIfNull(httpContextAccessor);
 
         this._weatherTool = weatherTool;
         this._emailTool = emailTool;
         this._documentTool = documentTool;
         this._fileStorage = fileStorage;
+        this._httpContextAccessor = httpContextAccessor;
 
         // Create the real ChatClient with LLM backend
         // Requires OpenAI or Azure OpenAI credentials
@@ -170,6 +177,7 @@ public sealed class ChatClientAgentFactory
             .Use(inner => new AgenticUIAgent(inner, jsonSerializerOptions))
             .Use(inner => new PredictiveStateUpdatesAgent(inner, jsonSerializerOptions))
             .Use(inner => new SharedStateAgent(inner, jsonSerializerOptions))
+            .Use(inner => new ConversationPersistenceAgent(inner, this._httpContextAccessor))
             .UseOpenTelemetry(SourceName)
             .Build();
     }

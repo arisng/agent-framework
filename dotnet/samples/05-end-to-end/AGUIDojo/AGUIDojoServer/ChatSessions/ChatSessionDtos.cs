@@ -1,4 +1,4 @@
-﻿namespace AGUIDojoServer.ChatSessions;
+namespace AGUIDojoServer.ChatSessions;
 
 /// <summary>Summary DTO for session list views.</summary>
 public sealed class ChatSessionSummary
@@ -30,5 +30,7 @@ public sealed class ChatSessionDetail
     public string? SubjectEntityId { get; init; }
     public string? AguiThreadId { get; init; }
     public string? PreferredModelId { get; init; }
+    public string? RootMessageId { get; init; }
+    public string? ActiveLeafMessageId { get; init; }
     public required string ServerProtocolVersion { get; init; }
 }

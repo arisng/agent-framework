@@ -1,4 +1,4 @@
-﻿using AGUIDojoServer.Data;
+using AGUIDojoServer.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace AGUIDojoServer.ChatSessions;
@@ -72,6 +72,8 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
             SubjectEntityId = session.SubjectEntityId,
             AguiThreadId = session.AguiThreadId,
             PreferredModelId = session.PreferredModelId,
+            RootMessageId = session.RootMessageId,
+            ActiveLeafMessageId = session.ActiveLeafMessageId,
             ServerProtocolVersion = session.ServerProtocolVersion,
         };
     }

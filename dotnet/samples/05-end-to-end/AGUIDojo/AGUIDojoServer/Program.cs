@@ -1,4 +1,4 @@
-﻿// =============================================================================
+// =============================================================================
 // AGUIDojoServer - Production-Ready Backend for AG-UI Protocol Demonstrations
 // =============================================================================
 //
@@ -316,6 +316,7 @@ builder.Services.AddSingleton<IChatClient>(sp => sp.GetRequiredService<ChatClien
 builder.Services.AddDbContext<ChatSessionsDbContext>(options =>
     options.UseSqlite("Data Source=aguidojo-sessions.db"));
 builder.Services.AddScoped<ChatSessionService>();
+builder.Services.AddScoped<ChatConversationService>();
 
 // Add health checks for operational monitoring
 // Health checks verify:

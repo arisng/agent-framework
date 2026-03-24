@@ -17,6 +17,8 @@ public sealed class ChatSessionsDbContext : DbContext
 
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
 
+    public DbSet<ChatConversationNode> ChatConversationNodes => Set<ChatConversationNode>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // SQLite does not natively support DateTimeOffset; store as ISO 8601 TEXT for
@@ -32,6 +34,8 @@ public sealed class ChatSessionsDbContext : DbContext
             entity.Property(e => e.Id).HasMaxLength(32);
             entity.Property(e => e.Title).HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.RootMessageId).HasMaxLength(32);
+            entity.Property(e => e.ActiveLeafMessageId).HasMaxLength(32);
             entity.Property(e => e.SubjectModule).HasMaxLength(64);
             entity.Property(e => e.SubjectEntityType).HasMaxLength(64);
             entity.Property(e => e.SubjectEntityId).HasMaxLength(128);
@@ -49,6 +53,26 @@ public sealed class ChatSessionsDbContext : DbContext
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.LastActivityAt);
             entity.HasIndex(e => e.AguiThreadId).IsUnique();
+        });
+
+        modelBuilder.Entity<ChatConversationNode>(entity =>
+        {
+            entity.HasKey(e => new { e.SessionId, e.NodeId });
+            entity.Property(e => e.SessionId).HasMaxLength(32);
+            entity.Property(e => e.NodeId).HasMaxLength(32);
+            entity.Property(e => e.ParentNodeId).HasMaxLength(32);
+            entity.Property(e => e.RuntimeMessageId).HasMaxLength(128);
+            entity.Property(e => e.Role).HasMaxLength(32);
+            entity.Property(e => e.AuthorName).HasMaxLength(256);
+            entity.Property(e => e.CreatedAt).HasConversion(dtoConverter);
+
+            entity.HasIndex(e => e.SessionId);
+            entity.HasIndex(e => new { e.SessionId, e.ParentNodeId, e.SiblingOrder }).IsUnique();
+
+            entity.HasOne<ChatSession>()
+                .WithMany()
+                .HasForeignKey(e => e.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ChatAttachment>(entity =>

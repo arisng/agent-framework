@@ -139,12 +139,36 @@ public sealed class SessionPersistenceEffect : IDisposable
     {
         if (SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out SessionEntry entry))
         {
-            // Skip persisting trees that only contain a system prompt
-            if (entry.State.Tree.Nodes.Count > 1 ||
-                (entry.State.Tree.Nodes.Count == 1 &&
-                 entry.State.Tree.Nodes.Values.First().Message.Role != ChatRole.System))
+            bool hasMeaningfulTree = HasMeaningfulConversation(entry.State.Tree);
+            if (hasMeaningfulTree)
             {
                 await _persistence.SaveConversationAsync(sessionId, entry.State.Tree);
+            }
+            else
+            {
+                await _persistence.DeleteConversationAsync(sessionId);
+            }
+
+            string? resolvedServerSessionId = entry.Metadata.ServerSessionId;
+            if (string.IsNullOrWhiteSpace(resolvedServerSessionId) && !string.IsNullOrWhiteSpace(entry.Metadata.AguiThreadId))
+            {
+                resolvedServerSessionId = await ResolveServerSessionIdAsync(entry.Metadata.AguiThreadId);
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedServerSessionId))
+            {
+                return;
+            }
+
+            if (!hasMeaningfulTree)
+            {
+                await _sessionApiService.ClearConversationAsync(resolvedServerSessionId);
+                return;
+            }
+
+            if (LooksLikeServerConversationNodeId(entry.State.Tree.ActiveLeafId))
+            {
+                await _sessionApiService.SetActiveLeafAsync(resolvedServerSessionId, entry.State.Tree.ActiveLeafId!);
             }
         }
     }
@@ -230,4 +254,11 @@ public sealed class SessionPersistenceEffect : IDisposable
             .FirstOrDefault(session => string.Equals(session.AguiThreadId, aguiThreadId, StringComparison.Ordinal))
             ?.Id;
     }
+
+    private static bool HasMeaningfulConversation(ConversationTree tree) =>
+        tree.Nodes.Count > 1 ||
+        (tree.Nodes.Count == 1 && tree.Nodes.Values.First().Message.Role != ChatRole.System);
+
+    private static bool LooksLikeServerConversationNodeId(string? nodeId) =>
+        !string.IsNullOrWhiteSpace(nodeId) && nodeId.Length == 32;
 }

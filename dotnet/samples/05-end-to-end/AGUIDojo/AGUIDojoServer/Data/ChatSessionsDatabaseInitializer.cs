@@ -33,6 +33,24 @@ public static class ChatSessionsDatabaseInitializer
             );
 
             CREATE INDEX IF NOT EXISTS "IX_ChatAttachments_ExpiresAt" ON "ChatAttachments" ("ExpiresAt");
+
+            CREATE TABLE IF NOT EXISTS "ChatConversationNodes" (
+                "SessionId" TEXT NOT NULL,
+                "NodeId" TEXT NOT NULL,
+                "ParentNodeId" TEXT NULL,
+                "SiblingOrder" INTEGER NOT NULL,
+                "RuntimeMessageId" TEXT NULL,
+                "Role" TEXT NOT NULL,
+                "AuthorName" TEXT NULL,
+                "Text" TEXT NULL,
+                "ContentJson" TEXT NULL,
+                "AdditionalPropertiesJson" TEXT NULL,
+                "CreatedAt" TEXT NOT NULL,
+                CONSTRAINT "PK_ChatConversationNodes" PRIMARY KEY ("SessionId", "NodeId")
+            );
+
+            CREATE INDEX IF NOT EXISTS "IX_ChatConversationNodes_SessionId" ON "ChatConversationNodes" ("SessionId");
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ChatConversationNodes_SessionId_ParentNodeId_SiblingOrder" ON "ChatConversationNodes" ("SessionId", "ParentNodeId", "SiblingOrder");
             """,
             cancellationToken);
 
@@ -43,6 +61,11 @@ public static class ChatSessionsDatabaseInitializer
             "ServerProtocolVersion",
             $"TEXT NOT NULL DEFAULT '{ChatSessionProtocolVersions.Current}'",
             cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessions", "RootMessageId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessions", "ActiveLeafMessageId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatConversationNodes", "SiblingOrder", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatConversationNodes", "RuntimeMessageId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatConversationNodes", "ContentJson", "TEXT", cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync(
             """

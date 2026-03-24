@@ -23,6 +23,12 @@ public sealed class ChatSession
     /// <summary>When the session was archived, if applicable.</summary>
     public DateTimeOffset? ArchivedAt { get; set; }
 
+    /// <summary>Canonical root node ID for the persisted conversation graph.</summary>
+    public string? RootMessageId { get; set; }
+
+    /// <summary>Canonical active leaf node ID for the persisted conversation graph.</summary>
+    public string? ActiveLeafMessageId { get; set; }
+
     /// <summary>The business module that owns the subject (e.g. "Todo").</summary>
     public string? SubjectModule { get; set; }
 

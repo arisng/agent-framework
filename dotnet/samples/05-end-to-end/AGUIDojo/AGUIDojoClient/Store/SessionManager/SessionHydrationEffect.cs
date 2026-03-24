@@ -1,6 +1,9 @@
+using System.Collections.Immutable;
+using System.Text.Json;
 using AGUIDojoClient.Models;
 using AGUIDojoClient.Services;
 using Fluxor;
+using Microsoft.Extensions.AI;
 
 namespace AGUIDojoClient.Store.SessionManager;
 
@@ -26,8 +29,9 @@ public sealed class SessionHydrationEffect
     }
 
     /// <summary>
-    /// Loads metadata from localStorage and conversation trees from IndexedDB,
-    /// then dispatches <see cref="SessionActions.HydrateSessionsAction"/> to restore state.
+    /// Loads browser metadata, prefers server-owned conversation graphs when available,
+    /// and falls back to IndexedDB trees before dispatching
+    /// <see cref="SessionActions.HydrateSessionsAction"/> to restore state.
     /// </summary>
     [EffectMethod]
     public async Task HandleHydrateFromStorage(SessionActions.HydrateFromStorageAction _, IDispatcher dispatcher)
@@ -58,7 +62,7 @@ public sealed class SessionHydrationEffect
             }
         }
 
-        // Step 4: Merge in server-owned sessions that do not exist in browser storage
+        // Step 4: Merge in server-owned sessions and prefer their canonical conversation graphs
         try
         {
             List<ServerSessionSummary>? serverSessions = await _sessionApiService.ListSessionsAsync();
@@ -77,13 +81,17 @@ public sealed class SessionHydrationEffect
 
                     if (localSessionId is not null)
                     {
-                        SessionEntry mergedEntry = MergeCorrelatedSession(sessions[localSessionId], serverSession);
+                        ConversationTree mergedTree = await ResolveHydratedTreeAsync(
+                            serverSession.Id,
+                            sessions[localSessionId].State.Tree);
+                        SessionEntry mergedEntry = MergeCorrelatedSession(sessions[localSessionId], serverSession, mergedTree);
                         sessions[localSessionId] = mergedEntry;
                         UpdateCorrelationIndexes(localSessionIdsByServerSessionId, localSessionIdsByThreadId, localSessionId, mergedEntry.Metadata);
                         continue;
                     }
 
-                    SessionEntry serverEntry = CreateServerSessionEntry(serverSession);
+                    ConversationTree hydratedTree = await ResolveHydratedTreeAsync(serverSession.Id);
+                    SessionEntry serverEntry = CreateServerSessionEntry(serverSession, hydratedTree);
                     sessions[serverSession.Id] = serverEntry;
                     UpdateCorrelationIndexes(localSessionIdsByServerSessionId, localSessionIdsByThreadId, serverSession.Id, serverEntry.Metadata);
                 }
@@ -113,7 +121,16 @@ public sealed class SessionHydrationEffect
         HasPendingApproval = false,
     };
 
-    private static SessionEntry CreateServerSessionEntry(ServerSessionSummary serverSession)
+    private async Task<ConversationTree> ResolveHydratedTreeAsync(string serverSessionId, ConversationTree? browserFallbackTree = null)
+        => await LoadServerConversationTreeAsync(serverSessionId) ?? browserFallbackTree ?? new ConversationTree();
+
+    private async Task<ConversationTree?> LoadServerConversationTreeAsync(string serverSessionId)
+    {
+        ServerConversationGraph? serverGraph = await _sessionApiService.GetConversationAsync(serverSessionId);
+        return TryBuildConversationTree(serverGraph, out ConversationTree? tree) ? tree : null;
+    }
+
+    private static SessionEntry CreateServerSessionEntry(ServerSessionSummary serverSession, ConversationTree? tree = null)
     {
         DateTimeOffset createdAt = serverSession.CreatedAt == default ? DateTimeOffset.UtcNow : serverSession.CreatedAt;
         DateTimeOffset lastActivityAt = serverSession.LastActivityAt == default ? createdAt : serverSession.LastActivityAt;
@@ -132,12 +149,15 @@ public sealed class SessionHydrationEffect
                 UnreadCount = 0,
                 HasPendingApproval = false,
             },
-            new SessionState());
+            new SessionState
+            {
+                Tree = tree ?? new ConversationTree(),
+            });
     }
 
-    private static SessionEntry MergeCorrelatedSession(SessionEntry localEntry, ServerSessionSummary serverSession)
+    private static SessionEntry MergeCorrelatedSession(SessionEntry localEntry, ServerSessionSummary serverSession, ConversationTree hydratedTree)
     {
-        SessionEntry serverEntry = CreateServerSessionEntry(serverSession);
+        SessionEntry serverEntry = CreateServerSessionEntry(serverSession, hydratedTree);
         DateTimeOffset mergedCreatedAt = GetEarlierTimestamp(localEntry.Metadata.CreatedAt, serverEntry.Metadata.CreatedAt);
         DateTimeOffset mergedLastActivityAt = GetLaterTimestamp(localEntry.Metadata.LastActivityAt, serverEntry.Metadata.LastActivityAt);
 
@@ -155,6 +175,10 @@ public sealed class SessionHydrationEffect
                 ServerSessionId = serverSession.Id,
                 UnreadCount = 0,
                 HasPendingApproval = false,
+            },
+            State = localEntry.State with
+            {
+                Tree = hydratedTree,
             },
         };
     }
@@ -298,4 +322,130 @@ public sealed class SessionHydrationEffect
 
         return SessionStatus.Completed;
     }
+
+    private static bool TryBuildConversationTree(ServerConversationGraph? serverGraph, out ConversationTree? tree)
+    {
+        tree = null;
+
+        if (serverGraph is null)
+        {
+            return false;
+        }
+
+        if (serverGraph.Nodes.Count == 0)
+        {
+            tree = new ConversationTree();
+            return true;
+        }
+
+        Dictionary<string, ConversationNode> nodes = new(StringComparer.Ordinal);
+        foreach (ServerConversationNode node in serverGraph.Nodes)
+        {
+            if (string.IsNullOrWhiteSpace(node.Id) || string.IsNullOrWhiteSpace(node.Role))
+            {
+                return false;
+            }
+
+            ChatMessage message = new(new ChatRole(node.Role), node.Text)
+            {
+                AuthorName = node.AuthorName,
+                MessageId = node.MessageId,
+            };
+
+            PopulateAdditionalProperties(message, node.AdditionalProperties);
+            PopulateContents(message, node.Content);
+
+            nodes[node.Id] = new ConversationNode
+            {
+                Id = node.Id,
+                ParentId = node.ParentId,
+                Message = message,
+                ChildIds = [.. node.ChildIds],
+                CreatedAt = node.GetCreatedAtOrDefault(),
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(serverGraph.RootId) ||
+            string.IsNullOrWhiteSpace(serverGraph.ActiveLeafId) ||
+            !nodes.ContainsKey(serverGraph.RootId) ||
+            !nodes.ContainsKey(serverGraph.ActiveLeafId))
+        {
+            return false;
+        }
+
+        tree = new ConversationTree
+        {
+            RootId = serverGraph.RootId,
+            ActiveLeafId = serverGraph.ActiveLeafId,
+            Nodes = nodes.ToImmutableDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        };
+
+        return true;
+    }
+
+    private static void PopulateAdditionalProperties(ChatMessage message, JsonElement? additionalProperties)
+    {
+        if (additionalProperties is null ||
+            additionalProperties.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ||
+            additionalProperties.Value.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        message.AdditionalProperties = new AdditionalPropertiesDictionary();
+        foreach (JsonProperty property in additionalProperties.Value.EnumerateObject())
+        {
+            message.AdditionalProperties[property.Name] = property.Value.Clone();
+        }
+    }
+
+    private static void PopulateContents(ChatMessage message, JsonElement? content)
+    {
+        if (content is null ||
+            content.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ||
+            content.Value.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        try
+        {
+            List<StoredContentPayload>? payloads = JsonSerializer.Deserialize<List<StoredContentPayload>>(content.Value.GetRawText());
+            if (payloads is null)
+            {
+                return;
+            }
+
+            foreach (StoredContentPayload payload in payloads)
+            {
+                AIContent? restoredContent = RestoreContent(payload);
+                if (restoredContent is not null)
+                {
+                    message.Contents.Add(restoredContent);
+                }
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        catch (NotSupportedException)
+        {
+        }
+    }
+
+    private static AIContent? RestoreContent(StoredContentPayload payload)
+    {
+        string rawJson = payload.Value.GetRawText();
+
+        return payload.Type switch
+        {
+            nameof(TextContent) => JsonSerializer.Deserialize<TextContent>(rawJson),
+            nameof(DataContent) => JsonSerializer.Deserialize<DataContent>(rawJson),
+            nameof(FunctionCallContent) => JsonSerializer.Deserialize<FunctionCallContent>(rawJson),
+            nameof(FunctionResultContent) => JsonSerializer.Deserialize<FunctionResultContent>(rawJson),
+            _ => null,
+        };
+    }
+
+    private readonly record struct StoredContentPayload(string Type, JsonElement Value);
 }

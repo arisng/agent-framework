@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace AGUIDojoServer.ChatSessions;
 
@@ -49,6 +49,7 @@ public sealed class ChatSessionMiddleware(RequestDelegate next)
                         },
                         context.RequestAborted);
 
+                context.Items[ChatSessionHttpContextItems.SessionId] = sessionResult.SessionId;
                 context.Response.Headers["X-Session-Id"] = sessionResult.SessionId;
                 context.Response.Headers["X-Chat-Session-Protocol"] = sessionResult.ServerProtocolVersion;
             }
