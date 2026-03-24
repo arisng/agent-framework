@@ -19,9 +19,9 @@ related:
 Establish the canonical high-level roadmap and implementation plan for AGUIDojo durable chat sessions and related features, consolidating foundational goals, requirements, and the ordered child work items.
 
 ## Requirements
-- [ ] Restore `/chat` full-history continuity and correct all re-entry flows before durability work builds on top.
-- [ ] Add a server-owned Chat Sessions module with implicit first-turn creation plus thin list/detail/archive lifecycle APIs.
-- [ ] Persist the canonical branching conversation graph and active-branch state with rich enough message fidelity for current AGUIDojo surfaces.
+- [x] Restore `/chat` full-history continuity and correct all re-entry flows before durability work builds on top.
+- [x] Add a server-owned Chat Sessions module with implicit first-turn creation plus thin list/detail/archive lifecycle APIs.
+- [x] Persist the canonical branching conversation graph and active-branch state with rich enough message fidelity for current AGUIDojo surfaces.
 - [ ] Support per-session preferred model selection on the single `/chat` route, server-side effective-model routing, and model-aware compaction/checkpoint policy.
 - [ ] Persist approvals, audit, plan state, compaction checkpoints, and durable artifact/projection records needed for resume and support.
 - [ ] Add simulated owner/tenant context plus durable workflow and business-subject links, starting with Todo.
