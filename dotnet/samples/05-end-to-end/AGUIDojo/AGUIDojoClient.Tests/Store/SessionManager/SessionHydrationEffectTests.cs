@@ -138,6 +138,59 @@ public sealed class SessionHydrationEffectTests
         Assert.Empty(entry.State.Tree.Nodes);
     }
 
+    [Fact]
+    public async Task HandleHydrateFromStorage_ServerOnlyRecoverySelectsMostRecentServerSession()
+    {
+        FakeSessionPersistenceService persistence = new()
+        {
+            Metadata = null,
+            ActiveSessionId = null,
+        };
+
+        Mock<ISessionApiService> sessionApiService = new();
+        sessionApiService
+            .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ServerSessionSummary
+                {
+                    Id = "server-session-1",
+                    Title = "Older server session",
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(10),
+                    LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(20),
+                    AguiThreadId = "thread-server-1",
+                },
+                new ServerSessionSummary
+                {
+                    Id = "server-session-2",
+                    Title = "Newest server session",
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(30),
+                    LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(40),
+                    AguiThreadId = "thread-server-2",
+                }
+            ]);
+
+        SessionHydrationEffect effect = new(
+            persistence,
+            sessionApiService.Object,
+            NullLogger<SessionHydrationEffect>.Instance);
+        CapturingDispatcher dispatcher = new();
+
+        await effect.HandleHydrateFromStorage(new SessionActions.HydrateFromStorageAction(), dispatcher);
+
+        SessionActions.HydrateSessionsAction hydrateAction =
+            Assert.IsType<SessionActions.HydrateSessionsAction>(Assert.Single(dispatcher.Actions));
+        SessionManagerState hydratedState =
+            SessionReducers.OnHydrateSessions(new SessionManagerState(), hydrateAction);
+
+        Assert.Equal("server-session-2", hydratedState.ActiveSessionId);
+        Assert.Equal(2, hydratedState.Sessions.Count);
+        Assert.Equal("server-session-2", hydratedState.Sessions["server-session-2"].Metadata.ServerSessionId);
+        Assert.Equal("Newest server session", hydratedState.Sessions["server-session-2"].Metadata.Title);
+    }
+
     private sealed class FakeSessionPersistenceService : ISessionPersistenceService
     {
         public List<SessionMetadataDto>? Metadata { get; init; }

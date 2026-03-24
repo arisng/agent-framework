@@ -756,6 +756,39 @@ public sealed class AGUIAgentTests
     }
 
     [Fact]
+    public async Task GetStreamingResponseAsync_SurfacesServerSessionId_FromResponseHeaderAsync()
+    {
+        // Arrange
+        var handler = new TestDelegatingHandler();
+        handler.AddResponse(
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run1" },
+            new TextMessageStartEvent { MessageId = "msg1", Role = AGUIRoles.Assistant },
+            new TextMessageContentEvent { MessageId = "msg1", Delta = "Hello" },
+            new TextMessageEndEvent { MessageId = "msg1" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run1" }
+        ],
+        response => response.Headers.TryAddWithoutValidation("X-Session-Id", "server-session-123"));
+
+        using HttpClient httpClient = new(handler);
+        var chatClient = new AGUIChatClient(httpClient, "http://localhost/agent", null, AGUIJsonSerializerContext.Default.Options);
+
+        // Act
+        List<ChatResponseUpdate> updates = [];
+        await foreach (ChatResponseUpdate update in chatClient.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "Test")]))
+        {
+            updates.Add(update);
+        }
+
+        // Assert
+        Assert.NotEmpty(updates);
+        ChatResponseUpdate firstUpdate = updates.First();
+        string? serverSessionId = null;
+        Assert.True(firstUpdate.AdditionalProperties?.TryGetValue("server_session_id", out serverSessionId) is true);
+        Assert.Equal("server-session-123", serverSessionId);
+    }
+
+    [Fact]
     public async Task GetStreamingResponseAsync_GeneratesThreadId_WhenNoneProvidedAsync()
     {
         // Arrange
@@ -1650,7 +1683,17 @@ internal sealed class TestDelegatingHandler : DelegatingHandler
 
     public void AddResponse(BaseEvent[] events)
     {
-        this._responseFactories.Enqueue(_ => Task.FromResult(CreateResponse(events)));
+        this.AddResponse(events, configureResponse: null);
+    }
+
+    public void AddResponse(BaseEvent[] events, Action<HttpResponseMessage>? configureResponse)
+    {
+        this._responseFactories.Enqueue(_ =>
+        {
+            HttpResponseMessage response = CreateResponse(events);
+            configureResponse?.Invoke(response);
+            return Task.FromResult(response);
+        });
     }
 
     public void AddResponseWithCapture(BaseEvent[] events)
