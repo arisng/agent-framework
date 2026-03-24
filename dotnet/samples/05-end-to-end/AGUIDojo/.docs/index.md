@@ -26,6 +26,7 @@ This is the primary navigation entry point for the AGUIDojo wiki.
 - [Confidence badge persistence across refresh](explanation/agui-dojo/confidence-badge-persistence-across-refresh.md)
 - [AGUIDojo LLM picker architecture and MAF alignment](explanation/agui-dojo/aguidojo-llm-picker-architecture-and-maf-alignment.md)
 - [Ownership boundaries and header hygiene](explanation/agui-dojo/ownership-boundaries-and-header-hygiene.md)
+- [Server-owned branching conversation graph and active-branch rehydration](explanation/agui-dojo/server-owned-branching-conversation-graph-and-active-branch-rehydration.md)
 - [Server-owned chat session catalog and hydration](explanation/agui-dojo/server-owned-chat-session-catalog-and-hydration.md)
 - [Server-owned chat session lifecycle and canonical ID flow](explanation/agui-dojo/server-owned-chat-session-lifecycle-and-canonical-id-flow.md)
 - [Server-side primary persistence for AGUIDojo chat sessions](explanation/agui-dojo/server-side-persistence-for-chat-session.md)
