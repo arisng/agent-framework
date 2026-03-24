@@ -123,7 +123,7 @@ public sealed class ChatClientAgentFactory
         string? endpoint = configuration["AZURE_OPENAI_ENDPOINT"];
         string? deploymentName = configuration["AZURE_OPENAI_DEPLOYMENT_NAME"];
         string? openAiApiKey = configuration["OPENAI_API_KEY"]; // prefer this option over Azure OpenAI
-        string? openAiModel = configuration["OPENAI_MODEL"] ?? "gpt-5.4-mini";
+        string? openAiModel = configuration["OPENAI_MODEL"] ?? "gpt-5.4-nano";
 
         if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(deploymentName))
         {

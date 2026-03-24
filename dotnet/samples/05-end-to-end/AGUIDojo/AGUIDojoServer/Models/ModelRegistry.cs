@@ -29,12 +29,12 @@ public sealed class ModelRegistry : IModelRegistry
     {
         ActiveModelId = configuration["OPENAI_MODEL"]
             ?? configuration["AZURE_OPENAI_DEPLOYMENT_NAME"]
-            ?? "gpt-5.4-mini";
+            ?? "gpt-5.4-nano";
 
         // Sensible defaults for common models — extend as needed
         var defaultModels = new ModelInfo[]
         {
-            new("gpt-5.4-mini", "GPT-5.4 Mini", ContextWindowTokens: 1_047_576),
+            new("gpt-5.4-nano", "GPT-5.4 Nano", ContextWindowTokens: 1_047_576),
             new("gpt-5.4", "GPT-5.4", ContextWindowTokens: 1_047_576),
             new("gpt-5.1", "GPT-5.1", ContextWindowTokens: 1_047_576),
             new("gpt-5.1-mini", "GPT-5.1 Mini", ContextWindowTokens: 1_047_576),

@@ -257,7 +257,7 @@ public sealed class ChatSessionEndpointTests
             Assert.Equal("gpt-4.1", response.RootElement.GetProperty("activeModelId").GetString());
             JsonElement.ArrayEnumerator models = response.RootElement.GetProperty("models").EnumerateArray();
             Assert.Contains(models, model => model.GetProperty("modelId").GetString() == "gpt-4.1");
-            Assert.Contains(response.RootElement.GetProperty("models").EnumerateArray(), model => model.GetProperty("modelId").GetString() == "gpt-5.4-mini");
+            Assert.Contains(response.RootElement.GetProperty("models").EnumerateArray(), model => model.GetProperty("modelId").GetString() == "gpt-5.4-nano");
         }
         finally
         {
