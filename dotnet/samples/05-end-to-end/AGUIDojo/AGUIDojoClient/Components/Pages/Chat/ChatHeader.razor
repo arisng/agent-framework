@@ -1,3 +1,5 @@
+@using System.Linq
+@using AGUIDojoClient.Services
 @using AGUIDojoClient.Store.SessionManager
 @inject IThemeService ThemeService
 
@@ -14,6 +16,27 @@
                 </div>
             </BbSidebarHeaderInfo>
         </BbSidebarHeaderContent>
+
+        <div class="sidebar-model-picker">
+            <span class="sidebar-model-label">Model</span>
+            <BbSelect TValue="string"
+                      Value="@SelectedModelId"
+                      ValueChanged="@HandleModelSelectedAsync"
+                      DisplayTextSelector="@(value => AvailableModels.FirstOrDefault(model => string.Equals(model.ModelId, value, StringComparison.Ordinal))?.DisplayName ?? value)"
+                      Disabled="@(!AvailableModels.Any())">
+                <BbSelectTrigger Class="sidebar-model-trigger">
+                    <BbSelectValue Placeholder="@GetModelPlaceholder()" />
+                </BbSelectTrigger>
+                <BbSelectContent>
+                    @foreach (ServerModelInfo model in AvailableModels)
+                    {
+                        <BbSelectItem TValue="string" Value="@model.ModelId" Text="@model.DisplayName">
+                            @model.DisplayName
+                        </BbSelectItem>
+                    }
+                </BbSelectContent>
+            </BbSelect>
+        </div>
     </BbSidebarHeader>
 
     <BbSidebarContent>
@@ -87,6 +110,15 @@
     [Parameter]
     public EventCallback<string> OnSessionDeleted { get; set; }
 
+    [Parameter]
+    public IReadOnlyList<ServerModelInfo> AvailableModels { get; set; } = [];
+
+    [Parameter]
+    public string SelectedModelId { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> OnModelSelected { get; set; }
+
     private bool _isDark;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -100,6 +132,10 @@
     }
 
     private Task HandleNewChatAsync() => OnNewChat.InvokeAsync();
+
+    private string GetModelPlaceholder() => AvailableModels.Any() ? "Select a model" : "Loading models...";
+
+    private Task HandleModelSelectedAsync(string modelId) => OnModelSelected.InvokeAsync(modelId);
 
     private async Task ToggleThemeAsync()
     {

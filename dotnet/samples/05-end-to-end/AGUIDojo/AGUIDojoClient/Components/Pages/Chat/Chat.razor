@@ -1,4 +1,5 @@
 @page "/"
+@using System.Linq
 @using AGUIDojoClient.Helpers
 @using AGUIDojoClient.Models
 @using AGUIDojoClient.Services
@@ -8,6 +9,7 @@
 @inject ICheckpointService CheckpointService
 @inject IRiskAssessmentService RiskAssessmentService
 @inject IStateManager StateManager
+@inject ISessionApiService SessionApiService
 @inject ViewportService ViewportService
 @inject IDispatcher Dispatcher
 @inject IState<SessionManagerState> SessionStore
@@ -22,7 +24,10 @@
             Sessions="@OrderedSessions"
             ActiveSessionId="@ActiveSessionId"
             OnSessionSelected="@HandleSessionSelectedAsync"
-            OnSessionDeleted="@HandleSessionDeletedAsync" />
+            OnSessionDeleted="@HandleSessionDeletedAsync"
+            AvailableModels="@AvailableModels"
+            SelectedModelId="@SelectedModelId"
+            OnModelSelected="@HandlePreferredModelSelectedAsync" />
 
 <BbSidebarInset>
     <header class="sidebar-inset-header" role="banner">
@@ -127,12 +132,18 @@
     private DateTime lastStateChangeTime = DateTime.MinValue;
     private bool pendingStateChange;
     private System.Timers.Timer? throttleTimer;
+    private IReadOnlyList<ServerModelInfo> _availableModels = [];
+    private string? _defaultModelId;
 
     private string GetCurrentSessionTitle()
     {
         string title = ActiveSessionMetadata.Title?.Trim() ?? string.Empty;
         return string.IsNullOrWhiteSpace(title) ? SessionMetadata.DefaultTitle : title;
     }
+
+    private IReadOnlyList<ServerModelInfo> AvailableModels => _availableModels;
+
+    private string SelectedModelId => ResolveSelectedModelId();
 
     protected override Task OnInitializedAsync()
     {
@@ -165,6 +176,8 @@
 
             // Hydrate sessions from browser storage (localStorage + IndexedDB)
             Dispatcher.Dispatch(new SessionActions.HydrateFromStorageAction());
+
+            await LoadModelCatalogAsync();
 
             if (ShouldPreviewUndoGracePeriod())
             {
@@ -306,7 +319,10 @@
     private async Task CreateNewSessionAsync()
     {
         string sessionId = Guid.NewGuid().ToString("N");
-        Dispatcher.Dispatch(new SessionActions.CreateSessionAction(sessionId, EndpointPath: SessionMetadata.DefaultEndpointPath));
+        Dispatcher.Dispatch(new SessionActions.CreateSessionAction(
+            sessionId,
+            EndpointPath: SessionMetadata.DefaultEndpointPath,
+            PreferredModelId: ResolveDefaultModelId()));
         EnsureSessionInitialized(sessionId);
         SyncActiveSessionContext();
         chatSuggestions?.Clear();
@@ -324,6 +340,8 @@
         {
             Dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, new ChatMessage(ChatRole.System, SystemPrompt)));
         }
+
+        EnsurePreferredModelInitialized(sessionId, entry);
 
         if (string.Equals(SessionStore.Value.ActiveSessionId, sessionId, StringComparison.Ordinal))
         {
@@ -351,6 +369,22 @@
         await chatInput!.FocusAsync();
     }
 
+    private Task HandlePreferredModelSelectedAsync(string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId) || string.Equals(modelId, SelectedModelId, StringComparison.Ordinal))
+        {
+            return Task.CompletedTask;
+        }
+
+        Dispatcher.Dispatch(new SessionActions.SetPreferredModelAction(ActiveSessionId, modelId));
+        if (string.Equals(SessionStore.Value.ActiveSessionId, ActiveSessionId, StringComparison.Ordinal))
+        {
+            StreamingService.SyncSessionState(ActiveSessionId);
+        }
+
+        return Task.CompletedTask;
+    }
+
     private void SyncActiveSessionContext()
     {
         if (string.IsNullOrEmpty(ActiveSessionId))
@@ -365,6 +399,49 @@
 
         _observedSessionId = ActiveSessionId;
         StreamingService.SyncSessionState(ActiveSessionId);
+    }
+
+    private async Task LoadModelCatalogAsync()
+    {
+        ServerModelCatalog? catalog = await SessionApiService.GetModelCatalogAsync();
+        if (catalog is null)
+        {
+            return;
+        }
+
+        _availableModels = catalog.Models;
+        _defaultModelId = string.IsNullOrWhiteSpace(catalog.ActiveModelId)
+            ? catalog.Models.FirstOrDefault()?.ModelId
+            : catalog.ActiveModelId;
+
+        if (!string.IsNullOrWhiteSpace(ActiveSessionId) &&
+            SessionSelectors.TryGetSession(SessionStore.Value, ActiveSessionId, out SessionEntry activeEntry))
+        {
+            EnsurePreferredModelInitialized(ActiveSessionId, activeEntry);
+        }
+
+        StateHasChanged();
+    }
+
+    private string ResolveSelectedModelId()
+    {
+        string? preferredModelId = ActiveSessionMetadata.PreferredModelId;
+        if (!string.IsNullOrWhiteSpace(preferredModelId))
+        {
+            return preferredModelId;
+        }
+
+        return ResolveDefaultModelId();
+    }
+
+    private string ResolveDefaultModelId() => _defaultModelId ?? ActiveSessionMetadata.PreferredModelId ?? string.Empty;
+
+    private void EnsurePreferredModelInitialized(string sessionId, SessionEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Metadata.PreferredModelId) && !string.IsNullOrWhiteSpace(_defaultModelId))
+        {
+            Dispatcher.Dispatch(new SessionActions.SetPreferredModelAction(sessionId, _defaultModelId));
+        }
     }
 
     private string GetActiveSessionStatusIcon() => ActiveSessionMetadata.HasPendingApproval

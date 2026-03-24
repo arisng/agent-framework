@@ -17,7 +17,7 @@ For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap 
 - Browser storage is a convenience cache, not the system of record, while the server now owns a thin chat-session catalog for list/detail/archive recovery.
 - `/chat` is the canonical server shape. The older seven-endpoint AG-UI layout is legacy only.
 
-**TARGET**
+**CURRENT**
 - Phase 0's continuity invariant is now the baseline: send full active-branch history on every `/chat` turn and keep prompt trimming as explicit server-owned policy.
 - Phase 1+ moves primary session ownership into `AGUIDojoServer` via a Chat Sessions module backed by a SQL-first, relational-first store. SQLite may remain useful for local sample runs, but SQL Server or PostgreSQL are the natural modular-monolith targets.
 - Server-owned session records are more than transcript storage: AGUIDojo needs both a read-optimized catalog/index surface for list/resume/search and a richer session-detail/workspace surface for approvals, plans, checkpoints, files/artifacts, audit facts, and compaction/debug history.
@@ -225,17 +225,17 @@ chatClient.GetStreamingResponseAsync(
 **TARGET**
 The next real architecture step is not "more tools." It is a server-owned Chat Sessions module inside `AGUIDojoServer`.
 
-### Target model-selection and context policy
+### Current model-selection and context policy
 
-- Per-session model selection is part of the intended chat-session experience, but it stays inside the same unified `/chat` contract.
-- AGUIDojo will need an application-owned model catalog / registry because MAF does not provide model-to-context-window metadata.
-- The client-side model picker should read from a small server model catalog, store the user's requested/preferred model per session, and send that preference with each `/chat` turn.
-- The server remains authoritative: it routes the request to the effective provider client, the effective model may differ from the requested model because of routing/availability/policy, and that effective `ModelId` should be streamable and persistable per assistant turn or audit event when available.
-- When a session switches to a smaller-context model, the server must re-evaluate the current branch against that model's safe input budget before the provider call.
-- Ordered server-side compaction (tool-result collapse -> summarization -> sliding window -> truncation, or equivalent) is the intended policy shape for invocation context, but the canonical branching conversation and its checkpoints stay durable.
-- Compaction should be inspectable and background-friendly where possible: summaries/checkpoints become audit/support artifacts rather than silent transcript mutation.
-- AGUIDojo should keep more headroom than Copilot CLI's public ~95% trigger because tool outputs, approvals, and richer artifacts share the same session envelope; exact thresholds remain a model-tier implementation detail.
-- Client UX can warn about likely downgrades, but the client should not count tokens or perform the actual compaction.
+- Per-session model selection is now part of the chat-session experience, and it stays inside the same unified `/chat` contract.
+- AGUIDojo owns an application-owned model catalog / registry because MAF does not provide model-to-context-window metadata.
+- The client-side model picker reads from the server model catalog, stores the user's requested/preferred model per session, and sends that preference with each `/chat` turn.
+- The server remains authoritative: it routes the request to the effective provider client, the effective model may differ from the requested model because of routing/availability/policy, and that effective `ModelId` is streamable and persistable per assistant turn or audit event when available.
+- When a session switches to a smaller-context model, the server re-evaluates the current branch against that model's safe input budget before the provider call.
+- Ordered server-side compaction (tool-result collapse -> summarization -> sliding window -> truncation, or equivalent) is the active policy shape for invocation context, and the canonical branching conversation and its checkpoints stay durable.
+- Compaction is inspectable and background-friendly where possible: summaries/checkpoints become audit/support artifacts rather than silent transcript mutation.
+- AGUIDojo keeps more headroom than Copilot CLI's public ~95% trigger because tool outputs, approvals, and richer artifacts share the same session envelope; exact thresholds remain a model-tier implementation detail.
+- Client UX can warn about likely downgrades, but the client does not count tokens or perform the actual compaction.
 
 ### Target instruction visibility and trust boundaries
 
@@ -244,7 +244,7 @@ The next real architecture step is not "more tools." It is a server-owned Chat S
 - Active instruction sources and trust decisions should be visible in diagnostics/UI and, when they materially affect behavior, persisted as session/audit facts.
 - Uploaded files, fetched URLs, and future workspace/project instruction content are untrusted inputs until explicitly approved.
 
-### Target durable session topology
+### Current durable session topology
 
 - The paired [Copilot CLI session state schema reference](../../reference/copilot/copilot-cli-session-state-schema.md) and [session-topology note](../copilot/copilot-cli-session-topology.md) support a useful framing already hinted at by the public-repo and context-pattern research: the product appears to combine a central session catalog/index with richer per-session workspace artifacts. AGUIDojo should borrow that separation of concerns, not the on-disk folder layout.
 - For AGUIDojo, that means two related server-owned surfaces:

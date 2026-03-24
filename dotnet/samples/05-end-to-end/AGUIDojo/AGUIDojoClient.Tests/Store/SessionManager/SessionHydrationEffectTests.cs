@@ -22,7 +22,7 @@ public sealed class SessionHydrationEffectTests
 
         FakeSessionPersistenceService persistence = new()
         {
-            Metadata = [new SessionMetadataDto(localSessionId, SessionMetadata.DefaultTitle, "chat", "Completed", 10, 20, aguiThreadId, null)],
+            Metadata = [new SessionMetadataDto(localSessionId, SessionMetadata.DefaultTitle, "chat", "gpt-4.1", "Completed", 10, 20, aguiThreadId, null)],
             ActiveSessionId = localSessionId,
             Conversations = { [localSessionId] = localTree },
         };
@@ -58,6 +58,7 @@ public sealed class SessionHydrationEffectTests
         SessionEntry entry = hydrateAction.Sessions[localSessionId];
         Assert.Equal(serverSessionId, entry.Metadata.ServerSessionId);
         Assert.Equal(aguiThreadId, entry.Metadata.AguiThreadId);
+        Assert.Equal("gpt-4.1", entry.Metadata.PreferredModelId);
         Assert.Equal("Persisted title", entry.Metadata.Title);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(5), entry.Metadata.CreatedAt);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(30), entry.Metadata.LastActivityAt);
@@ -72,7 +73,7 @@ public sealed class SessionHydrationEffectTests
 
         FakeSessionPersistenceService persistence = new()
         {
-            Metadata = [new SessionMetadataDto(sessionId, "Legacy", "chat", "Completed", 10, 20)],
+            Metadata = [new SessionMetadataDto(sessionId, "Legacy", "chat", null, "Completed", 10, 20)],
             ActiveSessionId = sessionId,
         };
 
@@ -151,7 +152,7 @@ public sealed class SessionHydrationEffectTests
 
         FakeSessionPersistenceService persistence = new()
         {
-            Metadata = [new SessionMetadataDto(localSessionId, SessionMetadata.DefaultTitle, "chat", "Completed", 10, 20, aguiThreadId, null)],
+            Metadata = [new SessionMetadataDto(localSessionId, SessionMetadata.DefaultTitle, "chat", null, "Completed", 10, 20, aguiThreadId, null)],
             ActiveSessionId = localSessionId,
             Conversations = { [localSessionId] = browserTree },
         };

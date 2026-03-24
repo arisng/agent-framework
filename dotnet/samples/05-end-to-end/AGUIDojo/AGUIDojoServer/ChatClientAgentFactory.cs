@@ -1,19 +1,23 @@
 using System.Text.Json;
+using System.Linq;
 using AGUIDojoServer.AgenticUI;
 using AGUIDojoServer.Api;
 using AGUIDojoServer.ChatSessions;
 using AGUIDojoServer.HumanInTheLoop;
 using AGUIDojoServer.Multimodal;
+using AGUIDojoServer.Models;
 using AGUIDojoServer.PredictiveStateUpdates;
 using AGUIDojoServer.SharedState;
 using AGUIDojoServer.Tools;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.Compaction;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using OpenAI.Chat;
+using AIChatMessage = Microsoft.Extensions.AI.ChatMessage;
 
 namespace AGUIDojoServer;
 
@@ -77,6 +81,7 @@ public sealed class ChatClientAgentFactory
     private readonly DocumentTool _documentTool;
     private readonly IFileStorageService _fileStorage;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IModelRegistry _modelRegistry;
 
     /// <summary>
     /// Gets an <see cref="IChatClient"/> wrapper around the underlying <see cref="ChatClient"/>,
@@ -94,6 +99,7 @@ public sealed class ChatClientAgentFactory
     /// <param name="documentTool">The document tool for AI function calls.</param>
     /// <param name="fileStorage">The uploaded file storage used to resolve multimodal attachments.</param>
     /// <param name="httpContextAccessor">Provides access to the current request for persistence integration.</param>
+    /// <param name="modelRegistry">The model registry used to resolve routing and compaction context windows.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when neither Azure OpenAI nor OpenAI credentials are configured.
     /// </exception>
@@ -103,7 +109,8 @@ public sealed class ChatClientAgentFactory
         EmailTool emailTool,
         DocumentTool documentTool,
         IFileStorageService fileStorage,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IModelRegistry modelRegistry)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(weatherTool);
@@ -111,12 +118,14 @@ public sealed class ChatClientAgentFactory
         ArgumentNullException.ThrowIfNull(documentTool);
         ArgumentNullException.ThrowIfNull(fileStorage);
         ArgumentNullException.ThrowIfNull(httpContextAccessor);
+        ArgumentNullException.ThrowIfNull(modelRegistry);
 
         this._weatherTool = weatherTool;
         this._emailTool = emailTool;
         this._documentTool = documentTool;
         this._fileStorage = fileStorage;
         this._httpContextAccessor = httpContextAccessor;
+        this._modelRegistry = modelRegistry;
 
         // Create the real ChatClient with LLM backend
         // Requires OpenAI or Azure OpenAI credentials
@@ -156,8 +165,7 @@ public sealed class ChatClientAgentFactory
     /// <returns>An <see cref="AIAgent"/> composed from the unified tool registry and wrapper pipeline.</returns>
     public AIAgent CreateUnifiedAgent(JsonSerializerOptions jsonSerializerOptions)
     {
-        IChatClient wrappedClient = new ToolResultStreamingChatClient(
-            new ContextWindowChatClient(this._chatClient.AsIChatClient(), maxNonSystemMessages: 80));
+        IChatClient wrappedClient = new ToolResultStreamingChatClient(this._chatClient.AsIChatClient());
 
         var baseAgent = wrappedClient.AsAIAgent(new ChatClientAgentOptions
         {
@@ -167,6 +175,7 @@ public sealed class ChatClientAgentFactory
             {
                 Instructions = UnifiedSystemPrompt,
                 Tools = CreateUnifiedChatTools(),
+                ModelId = this._modelRegistry.ActiveModelId,
             }
         });
 
@@ -177,6 +186,7 @@ public sealed class ChatClientAgentFactory
             .Use(inner => new AgenticUIAgent(inner, jsonSerializerOptions))
             .Use(inner => new PredictiveStateUpdatesAgent(inner, jsonSerializerOptions))
             .Use(inner => new SharedStateAgent(inner, jsonSerializerOptions))
+            .Use(inner => new ModelRoutingAgent(inner, this._modelRegistry))
             .Use(inner => new ConversationPersistenceAgent(inner, this._httpContextAccessor))
             .UseOpenTelemetry(SourceName)
             .Build();
@@ -232,4 +242,130 @@ public sealed class ChatClientAgentFactory
         ];
     }
 #pragma warning restore MEAI001
+
+    private sealed class ModelRoutingAgent : DelegatingAIAgent
+    {
+        private readonly IModelRegistry _modelRegistry;
+
+        public ModelRoutingAgent(AIAgent innerAgent, IModelRegistry modelRegistry)
+            : base(innerAgent)
+        {
+            this._modelRegistry = modelRegistry;
+        }
+
+        protected override Task<AgentResponse> RunCoreAsync(
+            IEnumerable<AIChatMessage> messages,
+            AgentSession? session = null,
+            AgentRunOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            return this.RunCoreStreamingAsync(messages, session, options, cancellationToken)
+                .ToAgentResponseAsync(cancellationToken);
+        }
+
+        protected override async IAsyncEnumerable<AgentResponseUpdate> RunCoreStreamingAsync(
+            IEnumerable<AIChatMessage> messages,
+            AgentSession? session = null,
+            AgentRunOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            List<AIChatMessage> inputMessages = messages.ToList();
+            ChatClientAgentRunOptions routedOptions = PrepareRunOptions(options, out string preferredModelId, out string effectiveModelId, out string routingReason);
+            string recordedPreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? effectiveModelId : preferredModelId;
+            IEnumerable<AIChatMessage> compactedMessages = await CompactMessagesAsync(effectiveModelId, inputMessages, cancellationToken).ConfigureAwait(false);
+
+            await foreach (AgentResponseUpdate update in this.InnerAgent.RunStreamingAsync(compactedMessages, session, routedOptions, cancellationToken).ConfigureAwait(false))
+            {
+                update.AdditionalProperties ??= [];
+                update.AdditionalProperties["preferredModelId"] = recordedPreferredModelId;
+                update.AdditionalProperties["effectiveModelId"] = effectiveModelId;
+                update.AdditionalProperties["modelRoutingReason"] = routingReason;
+                yield return update;
+            }
+        }
+
+        private ChatClientAgentRunOptions PrepareRunOptions(
+            AgentRunOptions? options,
+            out string preferredModelId,
+            out string effectiveModelId,
+            out string routingReason)
+        {
+            ChatClientAgentRunOptions routedOptions = options as ChatClientAgentRunOptions ?? new ChatClientAgentRunOptions();
+            routedOptions = (ChatClientAgentRunOptions)routedOptions.Clone();
+
+            preferredModelId = ExtractPreferredModelId(routedOptions);
+            if (string.IsNullOrWhiteSpace(preferredModelId))
+            {
+                effectiveModelId = this._modelRegistry.ActiveModelId;
+                routingReason = $"No preferred model was supplied; using active model {effectiveModelId}.";
+            }
+            else if (this._modelRegistry.GetModel(preferredModelId) is null)
+            {
+                effectiveModelId = this._modelRegistry.ActiveModelId;
+                routingReason = $"Requested model {preferredModelId} is not registered; using active model {effectiveModelId}.";
+            }
+            else
+            {
+                effectiveModelId = preferredModelId;
+                routingReason = string.Equals(preferredModelId, effectiveModelId, StringComparison.Ordinal)
+                    ? $"Routing to preferred model {effectiveModelId}."
+                    : $"Routing preference {preferredModelId} resolved to {effectiveModelId}.";
+            }
+
+            routedOptions.ChatOptions ??= new ChatOptions();
+            routedOptions.ChatOptions.ModelId = effectiveModelId;
+            routedOptions.ChatOptions.AdditionalProperties ??= [];
+            routedOptions.ChatOptions.AdditionalProperties["preferredModelId"] = string.IsNullOrWhiteSpace(preferredModelId) ? effectiveModelId : preferredModelId;
+            routedOptions.ChatOptions.AdditionalProperties["effectiveModelId"] = effectiveModelId;
+            routedOptions.ChatOptions.AdditionalProperties["modelRoutingReason"] = routingReason;
+
+            return routedOptions;
+        }
+
+        private async Task<IEnumerable<AIChatMessage>> CompactMessagesAsync(
+            string effectiveModelId,
+            List<AIChatMessage> messages,
+            CancellationToken cancellationToken)
+        {
+            ModelInfo model = this._modelRegistry.GetModel(effectiveModelId) ?? new ModelInfo(effectiveModelId, effectiveModelId, ContextWindowTokens: 128_000);
+            CompactionStrategy strategy = BuildCompactionStrategy(model);
+            return await CompactionProvider.CompactAsync(strategy, messages, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        private static string ExtractPreferredModelId(ChatClientAgentRunOptions routedOptions)
+        {
+            if (routedOptions.ChatOptions?.AdditionalProperties is null ||
+                !routedOptions.ChatOptions.AdditionalProperties.TryGetValue("ag_ui_forwarded_properties", out object? rawForwardedProps) ||
+                rawForwardedProps is not JsonElement forwardedProps ||
+                forwardedProps.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            if (forwardedProps.TryGetProperty("preferredModelId", out JsonElement preferredModel) &&
+                preferredModel.ValueKind == JsonValueKind.String)
+            {
+                return preferredModel.GetString() ?? string.Empty;
+            }
+
+            return string.Empty;
+        }
+
+        private static PipelineCompactionStrategy BuildCompactionStrategy(ModelInfo model)
+        {
+            int contextWindow = Math.Max(16_000, model.ContextWindowTokens);
+            int toolTrigger = Math.Max(8_000, contextWindow - Math.Min(64_000, contextWindow / 5));
+            int turnTrigger = Math.Max(4, contextWindow / 128_000);
+            int hardTrigger = Math.Max(toolTrigger + 2_000, contextWindow - Math.Min(32_000, contextWindow / 10));
+
+            CompactionTrigger toolTriggerPredicate = CompactionTriggers.All(
+                CompactionTriggers.HasToolCalls(),
+                CompactionTriggers.TokensExceed(toolTrigger));
+
+            return new PipelineCompactionStrategy(
+                new ToolResultCompactionStrategy(toolTriggerPredicate, minimumPreservedGroups: 12),
+                new SlidingWindowCompactionStrategy(CompactionTriggers.TurnsExceed(turnTrigger), minimumPreservedTurns: 4),
+                new TruncationCompactionStrategy(CompactionTriggers.TokensExceed(hardTrigger), minimumPreservedGroups: 24));
+        }
+    }
 }

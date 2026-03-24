@@ -73,21 +73,17 @@ Artifacts appear on demand from the unified stream:
 - **Data grid** → tabbed table artifact
 - **Charts / forms / weather** → message or canvas rendering via `ToolComponentRegistry`
 
-## Model and context-window direction
+## Model and context-window behavior
 
-Today the sample still behaves as a **single-model server**:
+The sample now exposes a **per-session model picker** on the unified `/chat` route:
 
-- `ChatClientAgentFactory` creates one provider-bound `ChatClient` from startup configuration (`OPENAI_MODEL` or Azure deployment) and shares it across sessions.
-- `AGUIDojoClient` does not yet expose a per-session model picker.
-- `AGUIDojoServer` currently uses `ContextWindowChatClient` with a fixed 80 non-system-message cap before model execution.
+- the client loads a server model catalog from `/api/models` and renders the current session's preferred model in the chat sidebar
+- model selection is stored with session metadata, round-tripped through browser persistence, and restored during hydration
+- each chat turn forwards the selected model through AG-UI request metadata so the server can route the effective model per session
+- the server records both the preferred and effective model IDs and applies model-aware compaction before invoking the provider
+- the unified route remains `POST /chat`; model choice is still request metadata, not endpoint topology
 
-Intended direction for the unified `/chat` route:
-
-- keep one `POST /chat`; model choice should travel as request metadata on that route, not as separate per-model endpoints
-- treat model selection as a per-session preference once server-owned sessions exist, with the client mainly caching and displaying the current choice
-- send full active-branch history from the client and keep context-window / compaction policy on the server
-- use MAF seams for transport, per-request chat-client selection, and compaction rather than client-side token counting or history slicing
-- replace the fixed message cap over time with model-aware compaction so switching to smaller-context models can be handled safely
+The current implementation keeps browser storage as session cache/import support for now, but the selected model itself is now durable enough to survive reloads and server hydration.
 
 Related docs:
 
@@ -169,5 +165,5 @@ Try these in the chat UI:
 - Business APIs still flow through YARP on the client.
 - AG-UI streaming still goes directly from client to server to avoid proxy buffering.
 - Session metadata may retain a route hint for existing worktree state, but all new traffic is sent to `/chat`.
-- Today the effective model is chosen at server startup; the per-session model picker described in `.docs/explanation/agui-dojo/system-design.md` and `.issues/260323_aguidojo-implementation-plan.md` is target architecture, not current behavior.
-- The context-window direction is full-history submission plus server-side compaction; the existing fixed message cap is a transitional implementation.
+- The per-session model picker described in `.docs/explanation/agui-dojo/system-design.md` and `.issues/260323_aguidojo-implementation-plan.md` is now implemented and persists through browser/server hydration.
+- The context-window direction is full-history submission plus server-side compaction, with model-aware thresholds driven by the selected session model.

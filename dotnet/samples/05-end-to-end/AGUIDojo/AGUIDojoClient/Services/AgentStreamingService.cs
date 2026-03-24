@@ -264,7 +264,9 @@ public sealed class AgentStreamingService : IAgentStreamingService
     /// <inheritdoc />
     public void SyncSessionState(string sessionId)
     {
-        EnsureContextCorrelation(sessionId, GetOrCreateContext(sessionId));
+        SessionStreamingContext context = GetOrCreateContext(sessionId);
+        EnsureContextCorrelation(sessionId, context);
+        ApplyModelRouting(sessionId, context);
 
         Recipe? recipe = GetSessionState(sessionId).CurrentRecipe;
         if (recipe is not null)
@@ -316,6 +318,28 @@ public sealed class AgentStreamingService : IAgentStreamingService
     private SessionStreamingContext GetActiveContext() => GetOrCreateContext(SessionSelectors.GetActiveSessionId(_sessionStore.Value));
 
     private SessionStreamingContext GetOrCreateContext(string sessionId) => _sessionContexts.GetOrAdd(sessionId, _ => new SessionStreamingContext());
+
+    private void ApplyModelRouting(string sessionId, SessionStreamingContext context)
+    {
+        if (!TryGetSession(sessionId, out SessionEntry entry))
+        {
+            context.ChatOptions.ModelId = null;
+            context.ChatOptions.AdditionalProperties?.Remove("preferredModelId");
+            return;
+        }
+
+        string? preferredModelId = entry.Metadata.PreferredModelId;
+        if (!string.IsNullOrWhiteSpace(preferredModelId))
+        {
+            context.ChatOptions.ModelId = preferredModelId;
+            context.ChatOptions.AdditionalProperties ??= [];
+            context.ChatOptions.AdditionalProperties["preferredModelId"] = preferredModelId;
+            return;
+        }
+
+        context.ChatOptions.ModelId = null;
+        context.ChatOptions.AdditionalProperties?.Remove("preferredModelId");
+    }
 
     private void OnSessionStoreChanged(object? sender, EventArgs e)
     {
@@ -391,15 +415,7 @@ public sealed class AgentStreamingService : IAgentStreamingService
             IChatClient chatClient = _chatClientFactory.CreateClient();
             context.ChatOptions.ConversationId = GetSessionState(sessionId).ConversationId;
             EnsureContextCorrelation(sessionId, context);
-
-            // Restore the AG-UI thread ID into ChatOptions so AGUIChatClient reuses
-            // the same thread across turns (ConversationId is always null due to
-            // AGUIChatClient's full-history protocol clearing).
-            if (!string.IsNullOrEmpty(context.AguiThreadId))
-            {
-                context.ChatOptions.AdditionalProperties ??= [];
-                context.ChatOptions.AdditionalProperties["agui_thread_id"] = context.AguiThreadId;
-            }
+            ApplyModelRouting(sessionId, context);
 
             bool hasApprovalResponses;
 

@@ -128,7 +128,10 @@
     private async Task CreateNewChatAsync()
     {
         string sessionId = Guid.NewGuid().ToString("N");
-        Dispatcher.Dispatch(new SessionActions.CreateSessionAction(sessionId, EndpointPath: SessionMetadata.DefaultEndpointPath));
+        Dispatcher.Dispatch(new SessionActions.CreateSessionAction(
+            sessionId,
+            EndpointPath: SessionMetadata.DefaultEndpointPath,
+            PreferredModelId: SessionSelectors.GetActiveSession(SessionStore.Value).Metadata.PreferredModelId));
         await ClosePaletteAsync();
     }
 

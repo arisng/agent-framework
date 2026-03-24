@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -214,6 +215,7 @@ public sealed class AGUIChatClient : DelegatingChatClient
                 RunId = runId,
                 Messages = messagesList.AsAGUIMessages(this._jsonSerializerOptions),
                 State = state,
+                ForwardedProperties = ExtractForwardedProperties(options),
             };
 
             // Add tools if provided
@@ -291,6 +293,39 @@ public sealed class AGUIChatClient : DelegatingChatClient
                 return null;
             }
             return threadId;
+        }
+
+        private JsonElement ExtractForwardedProperties(ChatOptions? options)
+        {
+            string? preferredModelId = null;
+
+            if (options?.AdditionalProperties is not null &&
+                options.AdditionalProperties.TryGetValue("preferredModelId", out object? rawPreferredModelId) &&
+                rawPreferredModelId is string modelId &&
+                !string.IsNullOrWhiteSpace(modelId))
+            {
+                preferredModelId = modelId;
+            }
+            else if (!string.IsNullOrWhiteSpace(options?.ModelId))
+            {
+                preferredModelId = options!.ModelId;
+            }
+
+            if (string.IsNullOrWhiteSpace(preferredModelId))
+            {
+                return default;
+            }
+
+            ArrayBufferWriter<byte> buffer = new();
+            using (Utf8JsonWriter writer = new(buffer))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("preferredModelId", preferredModelId);
+                writer.WriteEndObject();
+            }
+
+            using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
+            return document.RootElement.Clone();
         }
 
         // Extract the session id from the second last message's function call content additional properties

@@ -23,6 +23,9 @@ public sealed record SessionMetadata
     /// <summary>Gets the AG-UI route hint associated with the session.</summary>
     public string EndpointPath { get; init; } = DefaultEndpointPath;
 
+    /// <summary>Gets the preferred model identifier for the session.</summary>
+    public string? PreferredModelId { get; init; }
+
     /// <summary>Gets the current lifecycle status of the session.</summary>
     public SessionStatus Status { get; init; } = SessionStatus.Created;
 

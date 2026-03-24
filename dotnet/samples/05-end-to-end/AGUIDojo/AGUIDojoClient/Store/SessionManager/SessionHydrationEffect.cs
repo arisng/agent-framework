@@ -146,6 +146,7 @@ public sealed class SessionHydrationEffect
                 LastActivityAt = lastActivityAt,
                 AguiThreadId = serverSession.AguiThreadId,
                 ServerSessionId = serverSession.Id,
+                PreferredModelId = serverSession.PreferredModelId,
                 UnreadCount = 0,
                 HasPendingApproval = false,
             },
@@ -173,6 +174,9 @@ public sealed class SessionHydrationEffect
                     ? localEntry.Metadata.AguiThreadId
                     : serverEntry.Metadata.AguiThreadId,
                 ServerSessionId = serverSession.Id,
+                PreferredModelId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.PreferredModelId)
+                    ? serverEntry.Metadata.PreferredModelId
+                    : localEntry.Metadata.PreferredModelId,
                 UnreadCount = 0,
                 HasPendingApproval = false,
             },

@@ -170,7 +170,8 @@ public static class SessionReducers
             action.Title,
             action.EndpointPath,
             action.CreatedAt,
-            action.AguiThreadId);
+            action.AguiThreadId,
+            preferredModelId: action.PreferredModelId);
         ImmutableDictionary<string, SessionEntry> sessions = EnforceCapacity(state.Sessions).Add(action.SessionId, entry);
         return EnsureActiveSession(state with
         {
@@ -259,6 +260,19 @@ public static class SessionReducers
                 {
                     AguiThreadId = string.IsNullOrWhiteSpace(action.AguiThreadId) ? entry.Metadata.AguiThreadId : action.AguiThreadId,
                     ServerSessionId = string.IsNullOrWhiteSpace(action.ServerSessionId) ? entry.Metadata.ServerSessionId : action.ServerSessionId,
+                },
+            });
+
+    [ReducerMethod]
+    public static SessionManagerState OnSetPreferredModel(SessionManagerState state, SessionActions.SetPreferredModelAction action) =>
+        UpdateSession(
+            state,
+            action.SessionId,
+            entry => entry with
+            {
+                Metadata = entry.Metadata with
+                {
+                    PreferredModelId = string.IsNullOrWhiteSpace(action.PreferredModelId) ? null : action.PreferredModelId,
                 },
             });
 

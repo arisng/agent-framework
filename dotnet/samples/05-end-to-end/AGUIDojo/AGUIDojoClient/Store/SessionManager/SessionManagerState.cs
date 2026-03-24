@@ -41,7 +41,8 @@ public sealed record SessionManagerState
         string endpointPath = SessionMetadata.DefaultEndpointPath,
         DateTimeOffset? timestamp = null,
         string? aguiThreadId = null,
-        string? serverSessionId = null)
+        string? serverSessionId = null,
+        string? preferredModelId = null)
     {
         DateTimeOffset instant = timestamp ?? DateTimeOffset.UtcNow;
         return new SessionEntry(
@@ -55,6 +56,7 @@ public sealed record SessionManagerState
                 LastActivityAt = instant,
                 AguiThreadId = string.IsNullOrWhiteSpace(aguiThreadId) ? SessionMetadata.CreateAguiThreadId() : aguiThreadId,
                 ServerSessionId = serverSessionId,
+                PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId,
                 UnreadCount = 0,
                 HasPendingApproval = false,
             },

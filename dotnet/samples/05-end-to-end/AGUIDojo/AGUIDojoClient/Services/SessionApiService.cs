@@ -12,6 +12,7 @@ public interface ISessionApiService
     Task<List<ServerSessionSummary>?> ListSessionsAsync(CancellationToken ct = default);
     Task<ServerSessionDetail?> GetSessionAsync(string id, CancellationToken ct = default);
     Task<ServerConversationGraph?> GetConversationAsync(string id, CancellationToken ct = default);
+    Task<ServerModelCatalog?> GetModelCatalogAsync(CancellationToken ct = default);
     Task<bool> SetActiveLeafAsync(string id, string activeLeafId, CancellationToken ct = default);
     Task<bool> ClearConversationAsync(string id, CancellationToken ct = default);
     Task<bool> ArchiveSessionAsync(string id, CancellationToken ct = default);
@@ -155,6 +156,30 @@ public sealed record ActiveLeafUpdateRequest
 {
     [JsonPropertyName("activeLeafId")]
     public required string ActiveLeafId { get; init; }
+}
+
+public sealed record ServerModelInfo
+{
+    [JsonPropertyName("modelId")]
+    public required string ModelId { get; init; }
+
+    [JsonPropertyName("displayName")]
+    public required string DisplayName { get; init; }
+
+    [JsonPropertyName("contextWindowTokens")]
+    public required int ContextWindowTokens { get; init; }
+
+    [JsonPropertyName("supportsVision")]
+    public bool SupportsVision { get; init; }
+}
+
+public sealed record ServerModelCatalog
+{
+    [JsonPropertyName("models")]
+    public List<ServerModelInfo> Models { get; init; } = [];
+
+    [JsonPropertyName("activeModelId")]
+    public string? ActiveModelId { get; init; }
 }
 
 public sealed record ServerConversationGraph
@@ -305,6 +330,44 @@ public sealed class SessionApiService : ISessionApiService
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Loading server conversation {SessionId} returned invalid JSON.", id);
+            return null;
+        }
+    }
+
+    public async Task<ServerModelCatalog?> GetModelCatalogAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using HttpResponseMessage response = await _httpClient.GetAsync(
+                _navigationManager.ToAbsoluteUri("/api/models"),
+                ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Loading model catalog failed with status code {StatusCode}.", response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<ServerModelCatalog>(cancellationToken: ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Loading model catalog timed out.");
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Loading model catalog failed.");
+            return null;
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogWarning(ex, "Loading model catalog returned an unsupported content type.");
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Loading model catalog returned invalid JSON.");
             return null;
         }
     }

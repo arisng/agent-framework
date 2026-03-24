@@ -15,7 +15,8 @@ public static class SessionActions
         string EndpointPath = SessionMetadata.DefaultEndpointPath,
         bool MakeActive = true,
         DateTimeOffset? CreatedAt = null,
-        string? AguiThreadId = null);
+        string? AguiThreadId = null,
+        string? PreferredModelId = null);
 
     public sealed record SetActiveSessionAction(string SessionId);
 
@@ -34,6 +35,8 @@ public static class SessionActions
     public sealed record SetConversationIdAction(string SessionId, string? ConversationId);
 
     public sealed record SetSessionCorrelationAction(string SessionId, string? AguiThreadId = null, string? ServerSessionId = null);
+
+    public sealed record SetPreferredModelAction(string SessionId, string? PreferredModelId);
 
     public sealed record SetPendingApprovalAction(string SessionId, PendingApproval? PendingApproval);
 

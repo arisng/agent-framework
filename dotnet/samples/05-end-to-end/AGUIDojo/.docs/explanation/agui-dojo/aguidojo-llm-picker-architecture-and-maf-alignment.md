@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-AGUIDojo can support per-session model selection without breaking its current unified `POST /chat` architecture. The consolidated finding from the prior research is that the feature still spans **five layers**:
+AGUIDojo now supports per-session model selection on its unified `POST /chat` architecture. The implementation still spans **five layers**:
 
 1. model metadata registry,
 2. client-side session state and UI,
@@ -17,7 +17,7 @@ The important refinement is that Microsoft Agent Framework (MAF) .NET already co
 - bridging `modelId` through AG-UI transport,
 - and making compaction thresholds react to model changes.
 
-The recommended implementation pattern is:
+The implemented pattern is:
 
 - keep `ModelId` as AGUIDojo-owned session metadata,
 - transport it as AG-UI `forwardedProps`,
@@ -27,27 +27,39 @@ The recommended implementation pattern is:
 
 That preserves the sample's single-agent, single-endpoint architecture while making model switching explicit, observable, and safe.
 
-## Current AGUIDojo baseline and gaps
+## Current AGUIDojo baseline
 
-AGUIDojo already has the right high-level shape for an LLM picker:
+AGUIDojo now has the right high-level shape for an LLM picker:
 
 - one unified `/chat` route on the server,
 - one streaming loop on the client,
 - one session model per chat tab,
 - and one agent pipeline composed from wrappers and tools.
 
-However, the current sample still has several gaps that matter for model selection:
+The remaining work is mostly about keeping the durability surfaces aligned:
 
 | Area | Current state | Practical implication |
 | --- | --- | --- |
-| Session metadata | `AGUIDojoClient/Models/SessionMetadata.cs` has no `ModelId` | Model preference is not part of session identity or list state |
-| Session state | `AGUIDojoClient/Store/SessionManager/SessionState.cs` has no `ModelId` or model capability data | Active session runtime cannot reason about model changes |
-| Browser persistence | `AGUIDojoClient/Services/SessionPersistenceService.cs` persists no `ModelId` | Reload loses model preference unless re-derived elsewhere |
-| Client transport | `AgentStreamingService` streams through `AGUIChatClientFactory` → `AGUIChatClient` | There is no AGUIDojo-specific place yet to attach `forwardedProps.modelId` |
-| Server chat pipeline | `AGUIDojoServer/ChatClientAgentFactory.cs` builds one unified agent over `new ContextWindowChatClient(..., maxNonSystemMessages: 80)` | Context protection is fixed, message-count based, and not model-aware |
-| Compaction policy | `AGUIDojoServer/ContextWindowChatClient.cs` only keeps the last N non-system messages | Switching to a smaller-context model can still overflow token limits |
+| Session metadata | `AGUIDojoClient/Models/SessionMetadata.cs` carries `PreferredModelId`, and the server session summary/detail also exposes it | Model preference is part of session identity and list state |
+| Session state | `AGUIDojoClient/Store/SessionManager/SessionManagerState.cs` keeps the preferred model on each session entry | Active session runtime can reason about model changes |
+| Browser persistence | `AGUIDojoClient/Services/SessionPersistenceService.cs` persists `PreferredModelId` | Reload restores the user's preferred model |
+| Client transport | `AgentStreamingService` forwards the preferred model through AG-UI metadata | There is a clear AGUIDojo-specific place to attach `forwardedProps.modelId` |
+| Server chat pipeline | `AGUIDojoServer/ChatClientAgentFactory.cs` resolves the effective model per request | Context protection is now model-aware rather than fixed |
+| Compaction policy | `AGUIDojoServer/ChatClientAgentFactory.cs` uses the model registry to derive compaction thresholds | Switching to a smaller-context model is handled by server policy |
 
-The net effect is that AGUIDojo can currently talk to one configured model per process, but it does not yet have a session-scoped model picker architecture.
+Browser storage still acts as a cache/import layer, but the selected model is now durable enough to survive reloads and server hydration.
+
+## Implementation status
+
+The current end-to-end flow is:
+
+1. `AGUIDojoClient` loads `/api/models` and renders the preferred model in the chat sidebar.
+2. The selected model is stored in session metadata and browser persistence.
+3. `AgentStreamingService` forwards the selected model through AG-UI request metadata.
+4. `ChatClientAgentFactory` resolves the preferred or fallback effective model and updates compaction thresholds from the registry.
+5. Server responses include the effective model metadata so the client can observe routing decisions.
+
+This makes the picker a live feature rather than target architecture.
 
 ## Consolidated 5-layer design
 

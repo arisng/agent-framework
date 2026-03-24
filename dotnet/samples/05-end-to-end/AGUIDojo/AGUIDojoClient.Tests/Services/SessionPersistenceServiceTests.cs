@@ -22,8 +22,8 @@ public sealed class SessionPersistenceServiceTests
         SessionPersistenceService service = new(jsRuntime);
         List<SessionMetadataDto> metadata =
         [
-            new("session-1", "First", "/chat", "Running", 10, 20, "thread_1", "server-1"),
-            new("session-2", "Second", "/chat", "Completed", 30, 40, "thread_2", null)
+            new("session-1", "First", "/chat", "gpt-4.1", "Running", 10, 20, "thread_1", "server-1"),
+            new("session-2", "Second", "/chat", null, "Completed", 30, 40, "thread_2", null)
         ];
 
         await service.SaveMetadataAsync(metadata);
@@ -32,6 +32,7 @@ public sealed class SessionPersistenceServiceTests
         Assert.NotNull(storedMetadata);
         Assert.NotNull(loaded);
         Assert.Equal(metadata, loaded);
+        Assert.Equal("gpt-4.1", loaded[0].PreferredModelId);
     }
 
     [Fact]
@@ -96,12 +97,13 @@ public sealed class SessionPersistenceServiceTests
     [Fact]
     public void SessionMetadataDto_ToMetadata_BackfillsMissingThreadId()
     {
-        SessionMetadataDto dto = new("session-1", "First", "/chat", "Completed", 10, 20);
+        SessionMetadataDto dto = new("session-1", "First", "/chat", null, "Completed", 10, 20);
 
         SessionMetadata metadata = dto.ToMetadata();
 
         Assert.False(string.IsNullOrWhiteSpace(metadata.AguiThreadId));
         Assert.Null(metadata.ServerSessionId);
+        Assert.Null(metadata.PreferredModelId);
     }
 
     private sealed class FakeJsRuntime : IJSRuntime

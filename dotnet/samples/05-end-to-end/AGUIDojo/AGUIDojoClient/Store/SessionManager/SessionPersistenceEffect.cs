@@ -112,6 +112,10 @@ public sealed class SessionPersistenceEffect : IDisposable
         => SaveAllMetadataAsync();
 
     [EffectMethod]
+    public Task OnSetPreferredModel(SessionActions.SetPreferredModelAction action, IDispatcher _)
+        => SaveAllMetadataAsync();
+
+    [EffectMethod]
     public Task OnHydrateSessions(SessionActions.HydrateSessionsAction action, IDispatcher _)
         => SaveAllMetadataAsync();
 
