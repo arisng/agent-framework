@@ -272,9 +272,60 @@ public sealed class AGUIChatMessageExtensionsTests
         List<AGUIMessage> aguiMessages = [.. new[] { assistantMessage, userMessage, toolMessage }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
 
         // Assert
-        Assert.Equal(2, aguiMessages.Count);
-        Assert.IsType<AGUIAssistantMessage>(aguiMessages[0]);
-        Assert.IsType<AGUIUserMessage>(aguiMessages[1]);
+        AGUIUserMessage user = Assert.IsType<AGUIUserMessage>(Assert.Single(aguiMessages));
+        Assert.Equal("Continue", user.Content);
+    }
+
+    [Fact]
+    public void AsAGUIMessages_WithAssistantToolCallFollowedByAssistantText_DropsIncompleteToolCallTurn()
+    {
+        // Arrange
+        ChatMessage incompleteToolCall = new(
+            ChatRole.Assistant,
+            [
+                new FunctionCallContent("call_111", "lookup_plan", new Dictionary<string, object?> { ["step"] = "build" })
+            ]);
+        ChatMessage followUpAssistant = new(ChatRole.Assistant, "Continuing after recovery.");
+
+        // Act
+        List<AGUIMessage> aguiMessages = [.. new[] { incompleteToolCall, followUpAssistant }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
+
+        // Assert
+        AGUIAssistantMessage assistant = Assert.IsType<AGUIAssistantMessage>(Assert.Single(aguiMessages));
+        Assert.Equal("Continuing after recovery.", assistant.Content);
+        Assert.Null(assistant.ToolCalls);
+    }
+
+    [Fact]
+    public void AsAGUIMessages_WithPartialToolResponses_OnlyEmitsMatchedToolCallsAndResults()
+    {
+        // Arrange
+        ChatMessage assistantMessage = new(
+            ChatRole.Assistant,
+            [
+                new FunctionCallContent("call_1", "search_docs", new Dictionary<string, object?> { ["query"] = "tools" }),
+                new FunctionCallContent("call_2", "open_ticket", new Dictionary<string, object?> { ["title"] = "Follow up" })
+            ]);
+        ChatMessage toolMessage = new(
+            ChatRole.Tool,
+            [new FunctionResultContent("call_1", new Dictionary<string, object?> { ["status"] = "ok" })]);
+        ChatMessage userMessage = new(ChatRole.User, "Summarize the result.");
+
+        // Act
+        List<AGUIMessage> aguiMessages = [.. new[] { assistantMessage, toolMessage, userMessage }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
+
+        // Assert
+        Assert.Equal(3, aguiMessages.Count);
+
+        AGUIAssistantMessage assistant = Assert.IsType<AGUIAssistantMessage>(aguiMessages[0]);
+        AGUIToolCall toolCall = Assert.Single(assistant.ToolCalls!);
+        Assert.Equal("call_1", toolCall.Id);
+
+        AGUIToolMessage result = Assert.IsType<AGUIToolMessage>(aguiMessages[1]);
+        Assert.Equal("call_1", result.ToolCallId);
+
+        AGUIUserMessage user = Assert.IsType<AGUIUserMessage>(aguiMessages[2]);
+        Assert.Equal("Summarize the result.", user.Content);
     }
 
     [Fact]
@@ -328,7 +379,7 @@ public sealed class AGUIChatMessageExtensionsTests
         List<AGUIMessage> aguiMessages = [.. new[] { assistantMessage }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
 
         // Assert
-        AGUIAssistantMessage aguiAssistant = Assert.Single(aguiMessages).Should().BeOfType<AGUIAssistantMessage>().Subject;
+        AGUIAssistantMessage aguiAssistant = Assert.IsType<AGUIAssistantMessage>(Assert.Single(aguiMessages));
         Assert.Equal("Plan state updated.", aguiAssistant.Content);
         Assert.Null(aguiAssistant.ToolCalls);
     }

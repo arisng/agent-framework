@@ -120,6 +120,73 @@ public sealed class ChatConversationServiceTests
         }
     }
 
+    [Fact]
+    public async Task PersistConversationAsync_NormalizesExistingDuplicateFunctionResultsForReplayAsync()
+    {
+        string dbPath = CreateDatabasePath();
+
+        try
+        {
+            using ServiceProvider provider = CreateServiceProvider(dbPath);
+            await InitializeDatabaseAsync(provider);
+
+            using IServiceScope scope = provider.CreateScope();
+            ChatSessionsDbContext db = scope.ServiceProvider.GetRequiredService<ChatSessionsDbContext>();
+            ChatSessionService sessionService = scope.ServiceProvider.GetRequiredService<ChatSessionService>();
+            ChatConversationService conversationService = scope.ServiceProvider.GetRequiredService<ChatConversationService>();
+
+            string sessionId = await sessionService.EnsureSessionForThreadAsync(
+                "thread-duplicate-tool-result-normalization",
+                "Apply the tool result once.");
+
+            ChatMessage root = new(ChatRole.User, "Apply the tool result once.")
+            {
+                MessageId = "user-runtime-dup-1",
+            };
+
+            ChatMessage toolMessage = new(
+                ChatRole.Tool,
+                [
+                    new FunctionResultContent("tool-call-dup-1", new Dictionary<string, object?>
+                    {
+                        ["status"] = "completed",
+                    }),
+                ])
+            {
+                MessageId = "tool-runtime-dup-1",
+            };
+
+            ChatConversationGraph initialGraph = await conversationService.PersistConversationAsync(sessionId, [root, toolMessage]);
+            string toolNodeId = Assert.Single(initialGraph.Nodes, node => node.Role == ChatRole.Tool.Value).Id;
+
+            ChatConversationNode storedToolNode = await db.ChatConversationNodes.SingleAsync(node => node.NodeId == toolNodeId);
+            JsonElement storedPayload = Assert.Single(ParseJson(storedToolNode.ContentJson)!.Value.EnumerateArray());
+            string duplicatedPayload = storedPayload.GetRawText();
+            storedToolNode.ContentJson = $"[{duplicatedPayload},{duplicatedPayload}]";
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+
+            ChatConversationGraph? rehydratedGraph = await conversationService.GetConversationAsync(sessionId);
+            ChatConversationNodeDto rehydratedToolNode = Assert.Single(rehydratedGraph!.Nodes, node => node.Id == toolNodeId);
+            Assert.Equal(1, CountFunctionResults(rehydratedToolNode.Content, "tool-call-dup-1"));
+
+            ChatConversationGraph persistedGraph = await conversationService.PersistConversationAsync(sessionId, [root, toolMessage]);
+
+            Assert.Equal(2, persistedGraph.Nodes.Count);
+            Assert.Equal(toolNodeId, persistedGraph.ActiveLeafId);
+
+            ChatConversationNodeDto normalizedToolNode = Assert.Single(persistedGraph.Nodes, node => node.Id == toolNodeId);
+            Assert.Equal(1, CountFunctionResults(normalizedToolNode.Content, "tool-call-dup-1"));
+
+            storedToolNode = await db.ChatConversationNodes.SingleAsync(node => node.NodeId == toolNodeId);
+            Assert.Equal(1, CountFunctionResults(ParseJson(storedToolNode.ContentJson), "tool-call-dup-1"));
+        }
+        finally
+        {
+            File.Delete(dbPath);
+        }
+    }
+
     private static ServiceProvider CreateServiceProvider(string dbPath)
     {
         ServiceCollection services = new();
@@ -139,5 +206,49 @@ public sealed class ChatConversationServiceTests
     }
 
     private static string CreateDatabasePath() =>
-        Path.Combine(Path.GetTempPath(), $"aguidojo-chat-conversation-{Guid.NewGuid():N}.db");
+        Path.Combine(GetTestArtifactDirectory(), $"aguidojo-chat-conversation-{Guid.NewGuid():N}.db");
+
+    private static string GetTestArtifactDirectory()
+    {
+        string directory = Path.Combine(AppContext.BaseDirectory, "test-artifacts");
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static JsonElement? ParseJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static int CountFunctionResults(JsonElement? content, string callId)
+    {
+        if (content is not JsonElement element || element.ValueKind != JsonValueKind.Array)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        foreach (JsonElement item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("type", out JsonElement typeElement) ||
+                !string.Equals(typeElement.GetString(), nameof(FunctionResultContent), StringComparison.Ordinal) ||
+                !item.TryGetProperty("value", out JsonElement valueElement) ||
+                !valueElement.TryGetProperty("callId", out JsonElement callIdElement) ||
+                !string.Equals(callIdElement.GetString(), callId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            count++;
+        }
+
+        return count;
+    }
 }

@@ -215,6 +215,7 @@ public sealed class AGUIAgentTests
         Assert.NotEqual(handler.CapturedRunIds[0], handler.CapturedRunIds[1]);
     }
 
+#if !NET472
     [Fact]
     public async Task GetStreamingResponseAsync_ReconnectsWithLastEventId_AfterMidStreamDisconnectAsync()
     {
@@ -263,6 +264,7 @@ public sealed class AGUIAgentTests
         Assert.Equal("2", Assert.Single(handler.CapturedLastEventIds));
         Assert.Contains(updates, static update => update.Text == " World");
     }
+#endif
 
     [Fact]
     public async Task RunStreamingAsync_ReturnsStreamingUpdates_AfterCompletionAsync()
@@ -681,6 +683,7 @@ public sealed class AGUIAgentTests
         Assert.Contains(updates, u => u.Contents.Any(c => c is FunctionResultContent frc && frc.CallId == "call_1"));
     }
 
+#if !NET472
     [Fact]
     public async Task GetStreamingResponseAsync_DoesNotReplayServerToolResults_InFollowUpClientToolRequestAsync()
     {
@@ -731,6 +734,53 @@ public sealed class AGUIAgentTests
         Assert.Contains(updates, u => u.Contents.Any(c => c is FunctionResultContent frc && frc.CallId == "call_client"));
         Assert.Contains(updates, u => u.Contents.Any(c => c is TextContent));
     }
+#endif
+#if !NET472
+    [Fact]
+    public async Task GetStreamingResponseAsync_DropsIncompleteAssistantToolCallHistory_FromOutboundRequestAsync()
+    {
+        // Arrange
+        var handler = new RequestCapturingTestDelegatingHandler();
+        handler.AddResponse(
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run1" },
+            new TextMessageStartEvent { MessageId = "msg2", Role = AGUIRoles.Assistant },
+            new TextMessageContentEvent { MessageId = "msg2", Delta = "Recovered" },
+            new TextMessageEndEvent { MessageId = "msg2" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run1" }
+        ]);
+        using HttpClient httpClient = new(handler);
+
+        var chatClient = new AGUIChatClient(httpClient, "http://localhost/agent", null, AGUIJsonSerializerContext.Default.Options);
+        List<ChatMessage> messages =
+        [
+            new(ChatRole.User, "Start"),
+            new(ChatRole.Assistant, [new FunctionCallContent("call_orphan", "lookup_plan", new Dictionary<string, object?> { ["step"] = "draft" })]),
+            new(ChatRole.Assistant, "Recovered summary")
+        ];
+
+        // Act
+        await foreach (var _ in chatClient.GetStreamingResponseAsync(messages))
+        {
+        }
+
+        // Assert
+        RunAgentInput input = Assert.Single(handler.CapturedInputs);
+        Assert.Collection(
+            input.Messages,
+            message =>
+            {
+                AGUIUserMessage user = Assert.IsType<AGUIUserMessage>(message);
+                Assert.Equal("Start", user.Content);
+            },
+            message =>
+            {
+                AGUIAssistantMessage assistant = Assert.IsType<AGUIAssistantMessage>(message);
+                Assert.Equal("Recovered summary", assistant.Content);
+                Assert.Null(assistant.ToolCalls);
+            });
+    }
+#endif
 
     [Fact]
     public async Task GetStreamingResponseAsync_PreservesConversationId_AcrossMultipleTurnsAsync()
@@ -1387,6 +1437,7 @@ public sealed class AGUIAgentTests
         Assert.Equal(originalAdditionalProperties, options.AdditionalProperties);
     }
 
+#if !NET472
     [Fact]
     public async Task GetStreamingResponseAsync_EnsuresConversationIdIsNull_ForInnerClientAsync()
     {
@@ -1417,6 +1468,7 @@ public sealed class AGUIAgentTests
         // AG-UI requirement: full history on every turn (which happens when ConversationId is null for FunctionInvokingChatClient)
         Assert.True(captureHandler.RequestWasMade);
     }
+#endif
 
     [Fact]
     public async Task GetStreamingResponseAsync_ForwardsOwnershipAndWorkflowPropertiesAsync()
@@ -1870,7 +1922,7 @@ internal sealed class TestDelegatingHandler : DelegatingHandler
         }
     }
 }
-
+#if !NET472
 internal sealed class ReconnectingStreamTestDelegatingHandler : DelegatingHandler
 {
     private readonly Queue<HttpResponseMessage> _responses = new();
@@ -1912,7 +1964,8 @@ internal sealed class ReconnectingStreamTestDelegatingHandler : DelegatingHandle
         return Task.FromResult(this._responses.Dequeue());
     }
 }
-
+#endif
+#if !NET472
 internal sealed class RequestCapturingTestDelegatingHandler : DelegatingHandler
 {
     private readonly Queue<HttpResponseMessage> _responses = new();
@@ -1947,7 +2000,8 @@ internal sealed class RequestCapturingTestDelegatingHandler : DelegatingHandler
         return this._responses.Dequeue();
     }
 }
-
+#endif
+#if !NET472
 internal sealed class CapturingTestDelegatingHandler : DelegatingHandler
 {
     private readonly Queue<Func<HttpRequestMessage, Task<HttpResponseMessage>>> _responseFactories = new();
@@ -2070,7 +2124,7 @@ internal sealed class ThrowAfterReadStream : Stream
         base.Dispose(disposing);
     }
 }
-
+#endif
 internal sealed class StateCapturingTestDelegatingHandler : DelegatingHandler
 {
     private readonly Queue<Func<HttpRequestMessage, Task<HttpResponseMessage>>> _responseFactories = new();
