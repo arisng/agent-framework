@@ -125,6 +125,7 @@ public sealed class ChatConversationServiceTests
         ServiceCollection services = new();
         services.AddLogging();
         services.AddDbContext<ChatSessionsDbContext>(options => options.UseSqlite($"Data Source={dbPath}"));
+        services.AddScoped<ChatSessionWorkspaceService>();
         services.AddScoped<ChatSessionService>();
         services.AddScoped<ChatConversationService>();
         return services.BuildServiceProvider();

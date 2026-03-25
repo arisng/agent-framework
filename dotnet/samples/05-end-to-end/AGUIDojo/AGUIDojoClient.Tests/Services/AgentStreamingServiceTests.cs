@@ -155,6 +155,41 @@ public sealed class AgentStreamingServiceTests
     }
 
     [Fact]
+    public async Task ProcessAgentResponseAsync_ForwardsOwnershipAndWorkflowMetadataOnLiveRequests()
+    {
+        const string sessionId = "session-forwarded-metadata";
+        SessionManagerState state = CreateConversationState(
+            sessionId,
+            [
+                new ChatMessage(ChatRole.System, "You are a helpful planner."),
+                new ChatMessage(ChatRole.User, "Continue this workflow.")
+            ],
+            aguiThreadId: "thread-forwarded",
+            ownerId: "owner-123",
+            tenantId: "tenant-456",
+            workflowInstanceId: "workflow-789",
+            runtimeInstanceId: "runtime-abc",
+            preferredModelId: "model-preferred");
+
+        ScriptedChatClient client = new([[CreateTextUpdate("Forwarded")]]);
+        var (service, _, _) = CreateReducingService(state, client);
+
+        using (service)
+        {
+            await service.ProcessAgentResponseAsync(sessionId);
+        }
+
+        ChatCallSnapshot call = Assert.Single(client.Calls);
+        Assert.Equal("thread-forwarded", call.AguiThreadId);
+        Assert.Equal("model-preferred", call.ModelId);
+        Assert.Equal("owner-123", AssertAdditionalProperty(call, "ownerId"));
+        Assert.Equal("tenant-456", AssertAdditionalProperty(call, "tenantId"));
+        Assert.Equal("workflow-789", AssertAdditionalProperty(call, "workflowInstanceId"));
+        Assert.Equal("runtime-abc", AssertAdditionalProperty(call, "runtimeInstanceId"));
+        Assert.Equal("model-preferred", AssertAdditionalProperty(call, "preferredModelId"));
+    }
+
+    [Fact]
     public async Task ProcessAgentResponseAsync_EditAndRegenerateUsesFullReplacementBranch()
     {
         const string sessionId = "session-edit";
@@ -491,7 +526,12 @@ public sealed class AgentStreamingServiceTests
         string sessionId,
         IReadOnlyList<ChatMessage> messages,
         string? conversationId = null,
-        string? aguiThreadId = null)
+        string? aguiThreadId = null,
+        string? ownerId = null,
+        string? tenantId = null,
+        string? workflowInstanceId = null,
+        string? runtimeInstanceId = null,
+        string? preferredModelId = null)
     {
         ConversationTree tree = new();
         foreach (ChatMessage message in messages)
@@ -499,8 +539,21 @@ public sealed class AgentStreamingServiceTests
             tree = tree.AddMessage(message);
         }
 
-        SessionEntry entry = SessionManagerState.CreateSessionEntry(sessionId, aguiThreadId: aguiThreadId);
-        entry = entry with { State = entry.State with { Tree = tree, ConversationId = conversationId } };
+        SessionEntry entry = SessionManagerState.CreateSessionEntry(
+            sessionId,
+            aguiThreadId: aguiThreadId,
+            preferredModelId: preferredModelId);
+        entry = entry with
+        {
+            Metadata = entry.Metadata with
+            {
+                OwnerId = ownerId,
+                TenantId = tenantId,
+                WorkflowInstanceId = workflowInstanceId,
+                RuntimeInstanceId = runtimeInstanceId,
+            },
+            State = entry.State with { Tree = tree, ConversationId = conversationId },
+        };
 
         return new SessionManagerState
         {
@@ -596,6 +649,14 @@ public sealed class AgentStreamingServiceTests
         }
     }
 
+    private static string? AssertAdditionalProperty(ChatCallSnapshot call, string propertyName)
+    {
+        Assert.True(
+            call.AdditionalProperties.TryGetValue(propertyName, out string? propertyValue),
+            $"Expected additional property '{propertyName}' to be forwarded.");
+        return propertyValue;
+    }
+
     private static string[] CreateSessionIds(int count) =>
         Enumerable.Range(1, count)
             .Select(index => $"session-{index}")
@@ -664,20 +725,46 @@ public sealed class AgentStreamingServiceTests
     private sealed record ChatCallSnapshot(
         IReadOnlyList<MessageSnapshot> Messages,
         string? ConversationId,
-        string? AguiThreadId)
+        string? AguiThreadId,
+        string? ModelId,
+        IReadOnlyDictionary<string, string?> AdditionalProperties)
     {
         public static ChatCallSnapshot From(IEnumerable<ChatMessage> messages, ChatOptions? options)
         {
             string? aguiThreadId = null;
+            Dictionary<string, string?> additionalProperties = new(StringComparer.Ordinal);
             if (options?.AdditionalProperties?.TryGetValue("agui_thread_id", out object? rawThreadId) is true)
             {
                 aguiThreadId = rawThreadId?.ToString();
+                additionalProperties["agui_thread_id"] = aguiThreadId;
+            }
+
+            if (options?.AdditionalProperties is not null)
+            {
+                CaptureAdditionalProperty(options.AdditionalProperties, additionalProperties, "preferredModelId");
+                CaptureAdditionalProperty(options.AdditionalProperties, additionalProperties, "ownerId");
+                CaptureAdditionalProperty(options.AdditionalProperties, additionalProperties, "tenantId");
+                CaptureAdditionalProperty(options.AdditionalProperties, additionalProperties, "workflowInstanceId");
+                CaptureAdditionalProperty(options.AdditionalProperties, additionalProperties, "runtimeInstanceId");
             }
 
             return new ChatCallSnapshot(
                 messages.Select(MessageSnapshot.From).ToArray(),
                 options?.ConversationId,
-                aguiThreadId);
+                aguiThreadId,
+                options?.ModelId,
+                additionalProperties);
+        }
+
+        private static void CaptureAdditionalProperty(
+            AdditionalPropertiesDictionary additionalProperties,
+            Dictionary<string, string?> capturedProperties,
+            string propertyName)
+        {
+            if (additionalProperties.TryGetValue(propertyName, out object? propertyValue))
+            {
+                capturedProperties[propertyName] = propertyValue?.ToString();
+            }
         }
     }
 

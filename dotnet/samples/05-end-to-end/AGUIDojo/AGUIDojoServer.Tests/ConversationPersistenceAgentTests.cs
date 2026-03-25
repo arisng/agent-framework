@@ -100,6 +100,7 @@ public sealed class ConversationPersistenceAgentTests
         services.AddLogging();
         services.AddHttpContextAccessor();
         services.AddDbContext<ChatSessionsDbContext>(options => options.UseSqlite($"Data Source={dbPath}"));
+        services.AddScoped<ChatSessionWorkspaceService>();
         services.AddScoped<ChatSessionService>();
         services.AddScoped<ChatConversationService>();
         return services.BuildServiceProvider();

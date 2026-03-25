@@ -682,6 +682,57 @@ public sealed class AGUIAgentTests
     }
 
     [Fact]
+    public async Task GetStreamingResponseAsync_DoesNotReplayServerToolResults_InFollowUpClientToolRequestAsync()
+    {
+        // Arrange
+        AIFunction clientTool = AIFunctionFactory.Create(() => "ClientResult", "ClientTool");
+
+        var handler = new RequestCapturingTestDelegatingHandler();
+        handler.AddResponse(
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run1" },
+            new ToolCallStartEvent { ToolCallId = "call_server", ToolCallName = "ServerTool", ParentMessageId = "msg1" },
+            new ToolCallArgsEvent { ToolCallId = "call_server", Delta = "{}" },
+            new ToolCallEndEvent { ToolCallId = "call_server" },
+            new ToolCallResultEvent { MessageId = "server-result-1", ToolCallId = "call_server", Content = "{\"status\":\"ok\"}", Role = AGUIRoles.Tool },
+            new ToolCallStartEvent { ToolCallId = "call_client", ToolCallName = "ClientTool", ParentMessageId = "msg1" },
+            new ToolCallArgsEvent { ToolCallId = "call_client", Delta = "{}" },
+            new ToolCallEndEvent { ToolCallId = "call_client" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run1" }
+        ]);
+        handler.AddResponse(
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run2" },
+            new TextMessageStartEvent { MessageId = "msg2", Role = AGUIRoles.Assistant },
+            new TextMessageContentEvent { MessageId = "msg2", Delta = "Done" },
+            new TextMessageEndEvent { MessageId = "msg2" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run2" }
+        ]);
+        using HttpClient httpClient = new(handler);
+
+        var chatClient = new AGUIChatClient(httpClient, "http://localhost/agent", null, AGUIJsonSerializerContext.Default.Options);
+        var options = new ChatOptions { Tools = [clientTool] };
+        List<ChatMessage> messages = [new ChatMessage(ChatRole.User, "Test")];
+
+        // Act
+        List<ChatResponseUpdate> updates = [];
+        await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options))
+        {
+            updates.Add(update);
+        }
+
+        // Assert
+        Assert.Equal(2, handler.CapturedInputs.Count);
+        RunAgentInput followUpRequest = handler.CapturedInputs[1];
+        Assert.DoesNotContain(followUpRequest.Messages, message => message is AGUIToolMessage toolMessage && toolMessage.ToolCallId == "call_server");
+
+        Assert.Contains(updates, u => u.Contents.Any(c => c is FunctionResultContent frc && frc.CallId == "call_server"));
+        Assert.Contains(updates, u => u.Contents.Any(c => c is FunctionCallContent fcc && fcc.Name == "ClientTool"));
+        Assert.Contains(updates, u => u.Contents.Any(c => c is FunctionResultContent frc && frc.CallId == "call_client"));
+        Assert.Contains(updates, u => u.Contents.Any(c => c is TextContent));
+    }
+
+    [Fact]
     public async Task GetStreamingResponseAsync_PreservesConversationId_AcrossMultipleTurnsAsync()
     {
         // Arrange
@@ -1368,6 +1419,86 @@ public sealed class AGUIAgentTests
     }
 
     [Fact]
+    public async Task GetStreamingResponseAsync_ForwardsOwnershipAndWorkflowPropertiesAsync()
+    {
+        // Arrange
+        var captureHandler = new StateCapturingTestDelegatingHandler();
+        captureHandler.AddResponse(
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run1" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run1" }
+        ]);
+        using HttpClient httpClient = new(captureHandler);
+
+        var chatClient = new AGUIChatClient(httpClient, "http://localhost/agent", null, AGUIJsonSerializerContext.Default.Options);
+        List<ChatMessage> messages = [new ChatMessage(ChatRole.User, "Hello")];
+        ChatOptions options = new()
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                ["ownerId"] = "owner-123",
+                ["tenantId"] = "tenant-456",
+                ["workflowInstanceId"] = "workflow-789",
+                ["runtimeInstanceId"] = "runtime-abc",
+                ["preferredModelId"] = "model-preferred",
+            },
+        };
+
+        // Act
+        await foreach (var _ in chatClient.GetStreamingResponseAsync(messages, options))
+        {
+            // Just consume the stream
+        }
+
+        // Assert
+        Assert.True(captureHandler.RequestWasMade);
+        Assert.NotNull(captureHandler.CapturedForwardedProperties);
+        JsonElement forwardedProperties = captureHandler.CapturedForwardedProperties.Value;
+        Assert.Equal("owner-123", forwardedProperties.GetProperty("ownerId").GetString());
+        Assert.Equal("tenant-456", forwardedProperties.GetProperty("tenantId").GetString());
+        Assert.Equal("workflow-789", forwardedProperties.GetProperty("workflowInstanceId").GetString());
+        Assert.Equal("runtime-abc", forwardedProperties.GetProperty("runtimeInstanceId").GetString());
+        Assert.Equal("model-preferred", forwardedProperties.GetProperty("preferredModelId").GetString());
+    }
+
+    [Fact]
+    public async Task GetStreamingResponseAsync_UsesModelIdFallbackForPreferredModelIdForwardingAsync()
+    {
+        // Arrange
+        var captureHandler = new StateCapturingTestDelegatingHandler();
+        captureHandler.AddResponse(
+        [
+            new RunStartedEvent { ThreadId = "thread1", RunId = "run1" },
+            new RunFinishedEvent { ThreadId = "thread1", RunId = "run1" }
+        ]);
+        using HttpClient httpClient = new(captureHandler);
+
+        var chatClient = new AGUIChatClient(httpClient, "http://localhost/agent", null, AGUIJsonSerializerContext.Default.Options);
+        List<ChatMessage> messages = [new ChatMessage(ChatRole.User, "Hello")];
+        ChatOptions options = new()
+        {
+            ModelId = "model-from-modelid",
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                ["ownerId"] = "owner-123",
+            },
+        };
+
+        // Act
+        await foreach (var _ in chatClient.GetStreamingResponseAsync(messages, options))
+        {
+            // Just consume the stream
+        }
+
+        // Assert
+        Assert.True(captureHandler.RequestWasMade);
+        Assert.NotNull(captureHandler.CapturedForwardedProperties);
+        JsonElement forwardedProperties = captureHandler.CapturedForwardedProperties.Value;
+        Assert.Equal("owner-123", forwardedProperties.GetProperty("ownerId").GetString());
+        Assert.Equal("model-from-modelid", forwardedProperties.GetProperty("preferredModelId").GetString());
+    }
+
+    [Fact]
     public async Task GetStreamingResponseAsync_ExtractsStateFromDataContent_AndRemovesStateMessageAsync()
     {
         // Arrange
@@ -1782,6 +1913,41 @@ internal sealed class ReconnectingStreamTestDelegatingHandler : DelegatingHandle
     }
 }
 
+internal sealed class RequestCapturingTestDelegatingHandler : DelegatingHandler
+{
+    private readonly Queue<HttpResponseMessage> _responses = new();
+    private readonly List<RunAgentInput> _capturedInputs = [];
+
+    public IReadOnlyList<RunAgentInput> CapturedInputs => this._capturedInputs;
+
+    public void AddResponse(BaseEvent[] events)
+    {
+        string sseContent = string.Join("", events.Select(e =>
+            $"data: {JsonSerializer.Serialize(e, AGUIJsonSerializerContext.Default.BaseEvent)}\n\n"));
+
+        this._responses.Enqueue(new HttpResponseMessage
+        {
+            StatusCode = HttpStatusCode.OK,
+            Content = new StringContent(sseContent)
+        });
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        string requestBody = await request.Content!.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        RunAgentInput? input = JsonSerializer.Deserialize(requestBody, AGUIJsonSerializerContext.Default.RunAgentInput);
+        Assert.NotNull(input);
+        this._capturedInputs.Add(input);
+
+        if (this._responses.Count == 0)
+        {
+            throw new InvalidOperationException("No more responses configured for RequestCapturingTestDelegatingHandler.");
+        }
+
+        return this._responses.Dequeue();
+    }
+}
+
 internal sealed class CapturingTestDelegatingHandler : DelegatingHandler
 {
     private readonly Queue<Func<HttpRequestMessage, Task<HttpResponseMessage>>> _responseFactories = new();
@@ -1911,6 +2077,7 @@ internal sealed class StateCapturingTestDelegatingHandler : DelegatingHandler
 
     public bool RequestWasMade { get; private set; }
     public JsonElement? CapturedState { get; private set; }
+    public JsonElement? CapturedForwardedProperties { get; private set; }
     public int CapturedMessageCount { get; private set; }
 
     public void AddResponse(BaseEvent[] events)
@@ -1935,6 +2102,12 @@ internal sealed class StateCapturingTestDelegatingHandler : DelegatingHandler
             {
                 this.CapturedState = input.State;
             }
+
+            if (input.ForwardedProperties.ValueKind == JsonValueKind.Object)
+            {
+                this.CapturedForwardedProperties = input.ForwardedProperties;
+            }
+
             this.CapturedMessageCount = input.Messages.Count();
         }
 

@@ -166,6 +166,10 @@ public sealed class ChatSessionServiceTests
                     SubjectModule = "Todo",
                     SubjectEntityType = "TodoItem",
                     SubjectEntityId = "todo-42",
+                    OwnerId = "alice",
+                    TenantId = "tenant-red",
+                    WorkflowInstanceId = "workflow-42",
+                    RuntimeInstanceId = "runtime-42",
                     PreferredModelId = "gpt-4.1",
                 });
 
@@ -188,9 +192,18 @@ public sealed class ChatSessionServiceTests
             Assert.Equal("Todo", detail.SubjectModule);
             Assert.Equal("TodoItem", detail.SubjectEntityType);
             Assert.Equal("todo-42", detail.SubjectEntityId);
+            Assert.Equal("alice", detail.OwnerId);
+            Assert.Equal("tenant-red", detail.TenantId);
+            Assert.Equal("workflow-42", detail.WorkflowInstanceId);
+            Assert.Equal("runtime-42", detail.RuntimeInstanceId);
             Assert.Equal("gpt-4o-mini", detail.PreferredModelId);
             Assert.Equal(ChatSessionProtocolVersions.Current, detail.ServerProtocolVersion);
-            Assert.Contains(sessions, session => session.Id == created.SessionId && session.ServerProtocolVersion == ChatSessionProtocolVersions.Current);
+            Assert.Contains(
+                sessions,
+                session => session.Id == created.SessionId &&
+                    session.ServerProtocolVersion == ChatSessionProtocolVersions.Current &&
+                    session.OwnerId == "alice" &&
+                    session.WorkflowInstanceId == "workflow-42");
         }
         finally
         {
@@ -203,6 +216,7 @@ public sealed class ChatSessionServiceTests
         ServiceCollection services = new();
         services.AddLogging();
         services.AddDbContext<ChatSessionsDbContext>(options => options.UseSqlite($"Data Source={dbPath}"));
+        services.AddScoped<ChatSessionWorkspaceService>();
         services.AddScoped<ChatSessionService>();
         return services.BuildServiceProvider();
     }

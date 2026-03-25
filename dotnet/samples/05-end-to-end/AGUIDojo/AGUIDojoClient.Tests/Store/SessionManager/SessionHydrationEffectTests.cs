@@ -377,12 +377,127 @@ public sealed class SessionHydrationEffectTests
             entry.State.Messages.Select(message => message.Text));
     }
 
+    [Fact]
+    public async Task HandleHydrateFromStorage_RestoresWorkspaceProjectionState()
+    {
+        const string serverSessionId = "server-session-workspace";
+
+        FakeSessionPersistenceService persistence = new()
+        {
+            Metadata = null,
+            ActiveSessionId = null,
+        };
+
+        Mock<ISessionApiService> sessionApiService = CreateSessionApiServiceMock();
+        sessionApiService
+            .Setup(service => service.ListSessionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new ServerSessionSummary
+                {
+                    Id = serverSessionId,
+                    Title = "Workspace session",
+                    Status = "Active",
+                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(10),
+                    LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(20),
+                    AguiThreadId = "thread-workspace",
+                }
+            ]);
+        sessionApiService
+            .Setup(service => service.GetWorkspaceAsync(serverSessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+                new ServerSessionWorkspace
+                {
+                    Snapshot = new ServerSessionWorkspaceSnapshot
+                    {
+                        CurrentPlan = new Plan
+                        {
+                            Steps =
+                            [
+                                new Step { Description = "Inspect tools", Status = StepStatus.Completed },
+                                new Step { Description = "Implement plan", Status = StepStatus.Pending },
+                            ]
+                        },
+                        CurrentRecipe = new Recipe { Title = "Demo recipe" },
+                        CurrentDocument = new DocumentState { Document = "# Durable workspace" },
+                        IsDocumentPreview = false,
+                        CurrentDataGrid = new DataGridResult
+                        {
+                            Title = "Tools",
+                            Columns = ["Name"],
+                            Rows = [new Dictionary<string, string> { ["Name"] = "get_weather" }],
+                        }
+                    },
+                    Approvals =
+                    [
+                        new ServerSessionApprovalRecord
+                        {
+                            ApprovalId = "approval-1",
+                            FunctionName = "send_email",
+                            Message = "Approve execution of 'send_email'?",
+                            FunctionArgumentsJson = "{\"to\":\"demo@example.com\"}",
+                            OriginalCallId = "approval-call-1",
+                            Status = "Pending",
+                            RequestedAt = DateTimeOffset.UtcNow,
+                        }
+                    ],
+                    AuditEvents =
+                    [
+                        new ServerSessionAuditEvent
+                        {
+                            Id = "audit-1",
+                            EventType = "ApprovalResolved",
+                            Title = "Approval resolved",
+                            OccurredAt = DateTimeOffset.UtcNow,
+                            ApprovalId = "approval-1",
+                            FunctionName = "send_email",
+                            RiskLevel = "High",
+                            AutonomyLevel = "Suggest",
+                            WasApproved = true,
+                            WasAutoDecided = false,
+                        }
+                    ],
+                });
+
+        SessionHydrationEffect effect = new(
+            persistence,
+            sessionApiService.Object,
+            NullLogger<SessionHydrationEffect>.Instance);
+        CapturingDispatcher dispatcher = new();
+
+        await effect.HandleHydrateFromStorage(new SessionActions.HydrateFromStorageAction(), dispatcher);
+
+        SessionActions.HydrateSessionsAction hydrateAction =
+            Assert.IsType<SessionActions.HydrateSessionsAction>(Assert.Single(dispatcher.Actions));
+        SessionEntry entry = Assert.Single(hydrateAction.Sessions.Values);
+
+        Assert.NotNull(entry.State.Plan);
+        Assert.Equal(2, entry.State.Plan!.Steps.Count);
+        Assert.Equal("Demo recipe", entry.State.CurrentRecipe?.Title);
+        Assert.Equal("# Durable workspace", entry.State.CurrentDocumentState?.Document);
+        Assert.False(entry.State.IsDocumentPreview);
+        Assert.Equal("send_email", entry.State.PendingApproval?.FunctionName);
+        Assert.True(entry.Metadata.HasPendingApproval);
+        Assert.Contains(ArtifactType.RecipeEditor, entry.State.VisibleTabs);
+        Assert.Contains(ArtifactType.DocumentPreview, entry.State.VisibleTabs);
+        Assert.Contains(ArtifactType.DataGrid, entry.State.VisibleTabs);
+        Assert.Contains(ArtifactType.AuditTrail, entry.State.VisibleTabs);
+        Assert.Single(entry.State.AuditTrail);
+        Assert.Equal("send_email", entry.State.AuditTrail[0].FunctionName);
+    }
+
     private static Mock<ISessionApiService> CreateSessionApiServiceMock()
     {
         Mock<ISessionApiService> sessionApiService = new();
         sessionApiService
             .Setup(service => service.GetConversationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ServerConversationGraph?)null);
+        sessionApiService
+            .Setup(service => service.GetWorkspaceAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ServerSessionWorkspace?)null);
+        sessionApiService
+            .Setup(service => service.ImportWorkspaceAsync(It.IsAny<string>(), It.IsAny<ServerSessionWorkspaceImportRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         return sessionApiService;
     }

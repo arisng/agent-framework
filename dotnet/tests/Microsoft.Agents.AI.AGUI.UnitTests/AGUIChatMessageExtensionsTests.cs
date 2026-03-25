@@ -209,29 +209,40 @@ public sealed class AGUIChatMessageExtensionsTests
     }
 
     [Fact]
-    public void AsAGUIMessages_WithToolResultMessage_SerializesResultCorrectly()
+    public void AsAGUIMessages_WithAssistantToolCallFollowedByToolResult_SerializesResultCorrectly()
     {
         // Arrange
         var result = new Dictionary<string, object?> { ["temperature"] = 72, ["condition"] = "Sunny" };
+        ChatMessage assistantMessage = new(
+            ChatRole.Assistant,
+            [
+                new TextContent("Checking the weather."),
+                new FunctionCallContent("call_123", "get_weather", new Dictionary<string, object?> { ["location"] = "Seattle" })
+            ]);
         FunctionResultContent toolResult = new("call_123", result);
         ChatMessage toolMessage = new(ChatRole.Tool, [toolResult]);
-        List<ChatMessage> messages = [toolMessage];
+        List<ChatMessage> messages = [assistantMessage, toolMessage];
 
         // Act
         List<AGUIMessage> aguiMessages = messages.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options).ToList();
 
         // Assert
-        AGUIMessage aguiMessage = Assert.Single(aguiMessages);
-        Assert.Equal(AGUIRoles.Tool, aguiMessage.Role);
-        Assert.Equal("call_123", ((AGUIToolMessage)aguiMessage).ToolCallId);
-        Assert.NotEmpty(((AGUIToolMessage)aguiMessage).Content);
+        Assert.Equal(2, aguiMessages.Count);
+
+        AGUIAssistantMessage assistant = Assert.IsType<AGUIAssistantMessage>(aguiMessages[0]);
+        AGUIToolCall toolCall = Assert.Single(assistant.ToolCalls!);
+        Assert.Equal("call_123", toolCall.Id);
+
+        AGUIToolMessage aguiMessage = Assert.IsType<AGUIToolMessage>(aguiMessages[1]);
+        Assert.Equal("call_123", aguiMessage.ToolCallId);
+        Assert.NotEmpty(aguiMessage.Content);
         // Content should be serialized JSON
-        Assert.Contains("temperature", ((AGUIToolMessage)aguiMessage).Content);
-        Assert.Contains("72", ((AGUIToolMessage)aguiMessage).Content);
+        Assert.Contains("temperature", aguiMessage.Content);
+        Assert.Contains("72", aguiMessage.Content);
     }
 
     [Fact]
-    public void AsAGUIMessages_WithNullToolResult_HandlesGracefully()
+    public void AsAGUIMessages_WithOrphanToolResultMessage_SkipsToolMessage()
     {
         // Arrange
         FunctionResultContent toolResult = new("call_456", null);
@@ -242,10 +253,84 @@ public sealed class AGUIChatMessageExtensionsTests
         List<AGUIMessage> aguiMessages = messages.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options).ToList();
 
         // Assert
-        AGUIMessage aguiMessage = Assert.Single(aguiMessages);
-        Assert.Equal(AGUIRoles.Tool, aguiMessage.Role);
-        Assert.Equal("call_456", ((AGUIToolMessage)aguiMessage).ToolCallId);
-        Assert.Equal(string.Empty, ((AGUIToolMessage)aguiMessage).Content);
+        Assert.Empty(aguiMessages);
+    }
+
+    [Fact]
+    public void AsAGUIMessages_WithUserTurnBetweenAssistantToolCallAndToolResult_SkipsOrphanedToolMessage()
+    {
+        // Arrange
+        ChatMessage assistantMessage = new(
+            ChatRole.Assistant,
+            [
+                new FunctionCallContent("call_789", "show_form", new Dictionary<string, object?> { ["title"] = "Contact" })
+            ]);
+        ChatMessage userMessage = new(ChatRole.User, "Continue");
+        ChatMessage toolMessage = new(ChatRole.Tool, [new FunctionResultContent("call_789", new { status = "ok" })]);
+
+        // Act
+        List<AGUIMessage> aguiMessages = [.. new[] { assistantMessage, userMessage, toolMessage }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
+
+        // Assert
+        Assert.Equal(2, aguiMessages.Count);
+        Assert.IsType<AGUIAssistantMessage>(aguiMessages[0]);
+        Assert.IsType<AGUIUserMessage>(aguiMessages[1]);
+    }
+
+    [Fact]
+    public void AsAGUIMessages_WithAssistantToolCallAndEmbeddedResult_EmitsAssistantAndToolMessages()
+    {
+        // Arrange
+        var arguments = new Dictionary<string, object?> { ["location"] = "Seattle" };
+        var result = new Dictionary<string, object?> { ["temperature"] = 58, ["condition"] = "Rain" };
+        ChatMessage assistantMessage = new(
+            ChatRole.Assistant,
+            [
+                new TextContent("I checked the weather."),
+                new FunctionCallContent("call_weather_1", "get_weather", arguments),
+                new FunctionResultContent("call_weather_1", result)
+            ])
+        {
+            MessageId = "assistant-weather-turn"
+        };
+
+        // Act
+        List<AGUIMessage> aguiMessages = [.. new[] { assistantMessage }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
+
+        // Assert
+        Assert.Equal(2, aguiMessages.Count);
+
+        AGUIAssistantMessage aguiAssistant = Assert.IsType<AGUIAssistantMessage>(aguiMessages[0]);
+        Assert.Equal("assistant-weather-turn", aguiAssistant.Id);
+        Assert.Equal("I checked the weather.", aguiAssistant.Content);
+        AGUIToolCall toolCall = Assert.Single(aguiAssistant.ToolCalls!);
+        Assert.Equal("call_weather_1", toolCall.Id);
+        Assert.Equal("get_weather", toolCall.Function.Name);
+
+        AGUIToolMessage toolMessage = Assert.IsType<AGUIToolMessage>(aguiMessages[1]);
+        Assert.Equal("call_weather_1", toolMessage.ToolCallId);
+        Assert.Contains("temperature", toolMessage.Content);
+        Assert.Contains("58", toolMessage.Content);
+    }
+
+    [Fact]
+    public void AsAGUIMessages_WithAssistantEmbeddedResultWithoutMatchingToolCall_DoesNotEmitToolMessage()
+    {
+        // Arrange
+        ChatMessage assistantMessage = new(
+            ChatRole.Assistant,
+            [
+                new TextContent("Plan state updated."),
+                new FunctionResultContent("call_plan_1", new Dictionary<string, object?> { ["status"] = "pending" })
+            ]);
+
+        // Act
+        List<AGUIMessage> aguiMessages = [.. new[] { assistantMessage }.AsAGUIMessages(AGUIJsonSerializerContext.Default.Options)];
+
+        // Assert
+        AGUIAssistantMessage aguiAssistant = Assert.Single(aguiMessages).Should().BeOfType<AGUIAssistantMessage>().Subject;
+        Assert.Equal("Plan state updated.", aguiAssistant.Content);
+        Assert.Null(aguiAssistant.ToolCalls);
     }
 
     [Fact]
