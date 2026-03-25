@@ -353,6 +353,103 @@ public sealed class AgentStreamingServiceTests
             (ChatRole.User, "Do not send it. Summarize the risks instead.", false, false));
     }
 
+    [Fact]
+    public async Task ProcessAgentResponseAsync_FollowUpReplayStripsUnmatchedToolCallsFromCompletedStreamingHistory()
+    {
+        const string sessionId = "session-unmatched-tool-call";
+        SessionManagerState state = CreateConversationState(
+            sessionId,
+            [
+                new ChatMessage(ChatRole.System, "You are a planning assistant."),
+                new ChatMessage(ChatRole.User, "Create a plan that uses tools.")
+            ],
+            aguiThreadId: "thread-unmatched-tool-call");
+
+        ChatResponseUpdate incompleteToolCallUpdate = CreateTextUpdate("I started preparing the next step.");
+        incompleteToolCallUpdate.Contents.Add(new FunctionCallContent(
+            callId: "call-unmatched",
+            name: "show_form",
+            arguments: new Dictionary<string, object?> { ["type"] = "feedback" }));
+
+        ScriptedChatClient client = new(
+            [
+                [incompleteToolCallUpdate],
+                [CreateTextUpdate("Follow-up completed.")]
+            ]);
+
+        var (service, dispatcher, _) = CreateReducingService(state, client);
+
+        using (service)
+        {
+            await service.ProcessAgentResponseAsync(sessionId);
+
+            dispatcher.Dispatch(new SessionActions.AddMessageAction(
+                sessionId,
+                new ChatMessage(ChatRole.User, "Continue from the plan.")));
+
+            await service.ProcessAgentResponseAsync(sessionId);
+        }
+
+        Assert.Equal(2, client.Calls.Length);
+        ChatCallSnapshot replayCall = client.Calls[1];
+        AssertCallMessages(
+            replayCall,
+            (ChatRole.System, "You are a planning assistant.", false, false),
+            (ChatRole.User, "Create a plan that uses tools.", false, false),
+            (ChatRole.Assistant, "I started preparing the next step.", false, false),
+            (ChatRole.User, "Continue from the plan.", false, false));
+    }
+
+    [Fact]
+    public async Task ProcessAgentResponseAsync_FollowUpReplayPreservesMatchedToolCallPairsFromCompletedStreamingHistory()
+    {
+        const string sessionId = "session-matched-tool-call";
+        SessionManagerState state = CreateConversationState(
+            sessionId,
+            [
+                new ChatMessage(ChatRole.System, "You are a planning assistant."),
+                new ChatMessage(ChatRole.User, "Create a plan that uses tools.")
+            ],
+            aguiThreadId: "thread-matched-tool-call");
+
+        ChatResponseUpdate matchedToolCallUpdate = CreateTextUpdate("I created the plan.");
+        matchedToolCallUpdate.Contents.Add(new FunctionCallContent(
+            callId: "call-matched",
+            name: "create_plan",
+            arguments: new Dictionary<string, object?> { ["steps"] = new List<string> { "Collect inputs", "Render form" } }));
+        matchedToolCallUpdate.Contents.Add(new FunctionResultContent(
+            callId: "call-matched",
+            result: new Dictionary<string, object?> { ["steps"] = 2 }));
+
+        ScriptedChatClient client = new(
+            [
+                [matchedToolCallUpdate],
+                [CreateTextUpdate("Follow-up completed.")]
+            ]);
+
+        var (service, dispatcher, _) = CreateReducingService(state, client);
+
+        using (service)
+        {
+            await service.ProcessAgentResponseAsync(sessionId);
+
+            dispatcher.Dispatch(new SessionActions.AddMessageAction(
+                sessionId,
+                new ChatMessage(ChatRole.User, "Continue from the plan.")));
+
+            await service.ProcessAgentResponseAsync(sessionId);
+        }
+
+        Assert.Equal(2, client.Calls.Length);
+        ChatCallSnapshot replayCall = client.Calls[1];
+        AssertCallMessages(
+            replayCall,
+            (ChatRole.System, "You are a planning assistant.", false, false),
+            (ChatRole.User, "Create a plan that uses tools.", false, false),
+            (ChatRole.Assistant, "I created the plan.", true, true),
+            (ChatRole.User, "Continue from the plan.", false, false));
+    }
+
     private static async Task ReleaseAndDrainAsync(
         AgentStreamingService service,
         IEnumerable<string> sessionIds,
