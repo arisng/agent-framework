@@ -731,15 +731,20 @@ public sealed class AgentStreamingService : IAgentStreamingService
 
                 if (ReferenceEquals(context.StreamingMessage, streamingMessage))
                 {
-                    _dispatcher.Dispatch(new SessionActions.SetRunningAction(sessionId, false));
-                    _dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, streamingMessage));
+                    ChatMessage? completedMessage = NormalizeCompletedStreamingMessage(streamingMessage);
+                    this._dispatcher.Dispatch(new SessionActions.SetRunningAction(sessionId, false));
+                    if (completedMessage is not null)
+                    {
+                        this._dispatcher.Dispatch(new SessionActions.AddMessageAction(sessionId, completedMessage));
+                    }
+
                     context.StreamingMessage = null;
-                    _dispatcher.Dispatch(new SessionActions.UpdateResponseMessageAction(sessionId, null));
+                    this._dispatcher.Dispatch(new SessionActions.UpdateResponseMessageAction(sessionId, null));
 
                     if (encounteredError)
                     {
-                        _dispatcher.Dispatch(new SessionActions.SetSessionStatusAction(sessionId, SessionStatus.Error));
-                        NotifyBackgroundError(sessionId, errorNotificationMessage);
+                        this._dispatcher.Dispatch(new SessionActions.SetSessionStatusAction(sessionId, SessionStatus.Error));
+                        this.NotifyBackgroundError(sessionId, errorNotificationMessage);
                     }
                 }
 
@@ -899,6 +904,93 @@ public sealed class AgentStreamingService : IAgentStreamingService
     {
         message.AdditionalProperties ??= new AdditionalPropertiesDictionary();
         message.AdditionalProperties[ConfidenceMarkers.ConfidenceScoreKey] = confidenceScore;
+    }
+
+    private static ChatMessage? NormalizeCompletedStreamingMessage(ChatMessage message)
+    {
+        if (message.Role != ChatRole.Assistant)
+        {
+            return message;
+        }
+
+        HashSet<string> assistantToolCallIds =
+        [
+            .. message.Contents
+                .OfType<FunctionCallContent>()
+                .Select(content => content.CallId)
+                .Where(callId => !string.IsNullOrWhiteSpace(callId))!,
+        ];
+
+        HashSet<string> completedToolCallIds =
+        [
+            .. message.Contents
+                .OfType<FunctionResultContent>()
+                .Select(content => content.CallId)
+                .Where(callId => !string.IsNullOrWhiteSpace(callId))!,
+        ];
+
+        completedToolCallIds.IntersectWith(assistantToolCallIds);
+
+        List<AIContent> normalizedContents = [];
+        HashSet<string> seenAssistantToolCallIds = [];
+        HashSet<string> seenFunctionResultCallIds = [];
+
+        foreach (AIContent content in message.Contents)
+        {
+            switch (content)
+            {
+                case FunctionCallContent functionCall when !string.IsNullOrWhiteSpace(functionCall.CallId):
+                    if (completedToolCallIds.Contains(functionCall.CallId) &&
+                        seenAssistantToolCallIds.Add(functionCall.CallId))
+                    {
+                        normalizedContents.Add(content);
+                    }
+
+                    break;
+
+                case FunctionCallContent:
+                    break;
+
+                case FunctionResultContent functionResult when string.IsNullOrWhiteSpace(functionResult.CallId):
+                    normalizedContents.Add(content);
+                    break;
+
+                case FunctionResultContent functionResult:
+                    if (completedToolCallIds.Contains(functionResult.CallId) &&
+                        seenFunctionResultCallIds.Add(functionResult.CallId))
+                    {
+                        normalizedContents.Add(content);
+                    }
+
+                    break;
+
+                default:
+                    normalizedContents.Add(content);
+                    break;
+            }
+        }
+
+        if (normalizedContents.Count == 0)
+        {
+            return null;
+        }
+
+        ChatMessage normalizedMessage = new(message.Role, normalizedContents)
+        {
+            AuthorName = message.AuthorName,
+            MessageId = message.MessageId,
+        };
+
+        if (message.AdditionalProperties is not null)
+        {
+            normalizedMessage.AdditionalProperties = new AdditionalPropertiesDictionary();
+            foreach ((string key, object? value) in message.AdditionalProperties)
+            {
+                normalizedMessage.AdditionalProperties[key] = value;
+            }
+        }
+
+        return normalizedMessage;
     }
 
     private void StartUndoGracePeriod(string sessionId, Checkpoint checkpoint, string summary)
