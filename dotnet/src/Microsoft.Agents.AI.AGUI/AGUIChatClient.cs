@@ -123,13 +123,16 @@ public sealed class AGUIChatClient : DelegatingChatClient
                 if (content is FunctionCallContent functionCallContent)
                 {
                     functionCallContent.AdditionalProperties?.Remove("agui_thread_id");
+                    functionCallContent.AdditionalProperties?.Remove(AGUIChatMessageExtensions.ServerToolReplayMarkerKey);
                 }
                 if (content is ServerFunctionCallContent serverFunctionCallContent)
                 {
+                    serverFunctionCallContent.FunctionCallContent.AdditionalProperties?.Remove(AGUIChatMessageExtensions.ServerToolReplayMarkerKey);
                     update.Contents[i] = serverFunctionCallContent.FunctionCallContent;
                 }
                 if (content is ServerFunctionResultContent serverFunctionResultContent)
                 {
+                    serverFunctionResultContent.FunctionResultContent.AdditionalProperties?.Remove(AGUIChatMessageExtensions.ServerToolReplayMarkerKey);
                     update.Contents[i] = serverFunctionResultContent.FunctionResultContent;
                 }
             }
@@ -206,9 +209,15 @@ public sealed class AGUIChatClient : DelegatingChatClient
             var messagesList = messages.ToList(); // Avoid triggering the enumerator multiple times.
             var threadId = ExtractTemporaryThreadId(messagesList) ??
                 ExtractThreadIdFromOptions(options) ?? $"thread_{Guid.NewGuid():N}";
+            var clientToolSet = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var tool in options?.Tools ?? [])
+            {
+                clientToolSet.Add(tool.Name);
+            }
 
             // Extract state from the last message if it contains DataContent with application/json
             JsonElement state = this.ExtractAndRemoveStateFromMessages(messagesList);
+            PruneServerToolHistory(messagesList, clientToolSet);
 
             // Create the input for the AGUI service
             var input = new RunAgentInput
@@ -233,12 +242,7 @@ public sealed class AGUIChatClient : DelegatingChatClient
                 }
             }
 
-            var clientToolSet = new HashSet<string>();
             var serverToolCallIds = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var tool in options?.Tools ?? [])
-            {
-                clientToolSet.Add(tool.Name);
-            }
 
             ChatResponseUpdate? firstUpdate = null;
             await foreach (var update in this._httpService.PostRunAsync(input, cancellationToken)
@@ -281,6 +285,8 @@ public sealed class AGUIChatClient : DelegatingChatClient
                         {
                             serverToolCallIds.Add(fcc.CallId);
                         }
+                        fcc.AdditionalProperties ??= [];
+                        fcc.AdditionalProperties[AGUIChatMessageExtensions.ServerToolReplayMarkerKey] = true;
                         update.Contents[0] = new ServerFunctionCallContent(fcc);
                     }
                 }
@@ -292,6 +298,8 @@ public sealed class AGUIChatClient : DelegatingChatClient
                             !string.IsNullOrWhiteSpace(frc.CallId) &&
                             serverToolCallIds.Remove(frc.CallId))
                         {
+                            frc.AdditionalProperties ??= [];
+                            frc.AdditionalProperties[AGUIChatMessageExtensions.ServerToolReplayMarkerKey] = true;
                             update.Contents[i] = new ServerFunctionResultContent(frc);
                         }
                     }
@@ -423,6 +431,51 @@ public sealed class AGUIChatClient : DelegatingChatClient
             }
 
             return threadId;
+        }
+
+        private static void PruneServerToolHistory(List<ChatMessage> messagesList, HashSet<string> clientToolSet)
+        {
+            HashSet<string> removedServerToolCallIds = [];
+
+            for (int messageIndex = 0; messageIndex < messagesList.Count; messageIndex++)
+            {
+                ChatMessage message = messagesList[messageIndex];
+                if (message.Role == ChatRole.Assistant)
+                {
+                    for (int contentIndex = message.Contents.Count - 1; contentIndex >= 0; contentIndex--)
+                    {
+                        if (message.Contents[contentIndex] is FunctionCallContent functionCall &&
+                            !string.IsNullOrWhiteSpace(functionCall.CallId) &&
+                            !clientToolSet.Contains(functionCall.Name))
+                        {
+                            removedServerToolCallIds.Add(functionCall.CallId);
+                            message.Contents.RemoveAt(contentIndex);
+                        }
+                    }
+
+                    if (message.Contents.Count == 0)
+                    {
+                        messagesList.RemoveAt(messageIndex--);
+                    }
+                }
+                else if (message.Role == ChatRole.Tool)
+                {
+                    for (int contentIndex = message.Contents.Count - 1; contentIndex >= 0; contentIndex--)
+                    {
+                        if (message.Contents[contentIndex] is FunctionResultContent functionResult &&
+                            !string.IsNullOrWhiteSpace(functionResult.CallId) &&
+                            removedServerToolCallIds.Contains(functionResult.CallId))
+                        {
+                            message.Contents.RemoveAt(contentIndex);
+                        }
+                    }
+
+                    if (message.Contents.Count == 0)
+                    {
+                        messagesList.RemoveAt(messageIndex--);
+                    }
+                }
+            }
         }
 
         // Extract state from the last message's DataContent with application/json media type

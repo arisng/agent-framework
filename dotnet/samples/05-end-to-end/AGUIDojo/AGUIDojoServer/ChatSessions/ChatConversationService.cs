@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AGUIDojoServer.Data;
@@ -161,6 +162,12 @@ internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSess
                 matchingNode.RuntimeMessageId = storedMessage.MessageId;
             }
 
+            string? normalizedNodeContentJson = NormalizeContentJson(matchingNode.ContentJson);
+            if (!string.Equals(matchingNode.ContentJson, normalizedNodeContentJson, StringComparison.Ordinal))
+            {
+                matchingNode.ContentJson = normalizedNodeContentJson;
+            }
+
             rootId ??= matchingNode.NodeId;
             currentParentId = matchingNode.NodeId;
         }
@@ -243,7 +250,7 @@ internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSess
                     Role = node.Role,
                     AuthorName = node.AuthorName,
                     Text = node.Text,
-                    Content = ParseJson(node.ContentJson),
+                    Content = ParseJson(NormalizeContentJson(node.ContentJson)),
                     AdditionalProperties = ParseJson(node.AdditionalPropertiesJson),
                     CreatedAt = node.CreatedAt,
                 })
@@ -263,6 +270,70 @@ internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSess
     }
 
     private static string NormalizeParentKey(string? parentId) => parentId ?? RootParentKey;
+
+    private static string? NormalizeContentJson(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            List<StoredContentPayload>? payloads = JsonSerializer.Deserialize<List<StoredContentPayload>>(contentJson, s_jsonOptions);
+            if (payloads is null || payloads.Count == 0)
+            {
+                return null;
+            }
+
+            List<StoredContentPayload> normalizedPayloads = [];
+            HashSet<string> seenFunctionResultCallIds = new(StringComparer.Ordinal);
+
+            foreach (StoredContentPayload payload in payloads)
+            {
+                if (string.Equals(payload.Type, nameof(FunctionResultContent), StringComparison.Ordinal) &&
+                    TryGetFunctionResultCallId(payload.Value, out string? callId) &&
+                    !seenFunctionResultCallIds.Add(callId))
+                {
+                    continue;
+                }
+
+                normalizedPayloads.Add(payload);
+            }
+
+            return normalizedPayloads.Count == 0
+                ? null
+                : JsonSerializer.Serialize(normalizedPayloads, s_jsonOptions);
+        }
+        catch (JsonException)
+        {
+            return contentJson;
+        }
+    }
+
+    private static bool TryGetFunctionResultCallId(JsonElement payloadValue, [NotNullWhen(true)] out string? callId)
+    {
+        callId = null;
+        if (payloadValue.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!payloadValue.TryGetProperty("callId", out JsonElement callIdElement) &&
+            !payloadValue.TryGetProperty("CallId", out callIdElement))
+        {
+            return false;
+        }
+
+        string? parsedCallId = callIdElement.GetString();
+        if (string.IsNullOrWhiteSpace(parsedCallId))
+        {
+            return false;
+        }
+
+        callId = parsedCallId;
+        return true;
+    }
 
     private sealed record StoredChatMessage(
         string Role,
@@ -287,7 +358,7 @@ internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSess
             return string.Equals(node.Role, message.Role, StringComparison.Ordinal) &&
                    string.Equals(node.AuthorName, message.AuthorName, StringComparison.Ordinal) &&
                    string.Equals(node.Text, message.Text, StringComparison.Ordinal) &&
-                   string.Equals(node.ContentJson, message.ContentJson, StringComparison.Ordinal) &&
+                   string.Equals(NormalizeContentJson(node.ContentJson), message.ContentJson, StringComparison.Ordinal) &&
                    string.Equals(node.AdditionalPropertiesJson, message.AdditionalPropertiesJson, StringComparison.Ordinal);
         }
 
@@ -299,6 +370,9 @@ internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSess
             }
 
             List<StoredContentPayload> payloads = contents
+                .Where(content => content is not FunctionResultContent functionResult ||
+                    string.IsNullOrWhiteSpace(functionResult.CallId) ||
+                    IsFirstFunctionResult(contents, functionResult))
                 .Select(content => new StoredContentPayload(
                     content.GetType().Name,
                     SerializeValue(content)))
@@ -335,6 +409,26 @@ internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSess
                 JsonElement jsonElement => jsonElement.Clone(),
                 _ => JsonSerializer.SerializeToElement(value, value.GetType(), s_jsonOptions),
             };
+        }
+
+        private static bool IsFirstFunctionResult(IList<AIContent> contents, FunctionResultContent functionResult)
+        {
+            for (int index = 0; index < contents.Count; index++)
+            {
+                if (!ReferenceEquals(contents[index], functionResult) &&
+                    contents[index] is FunctionResultContent otherResult &&
+                    string.Equals(otherResult.CallId, functionResult.CallId, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                if (ReferenceEquals(contents[index], functionResult))
+                {
+                    return true;
+                }
+            }
+
+            return true;
         }
     }
 

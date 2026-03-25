@@ -797,7 +797,7 @@ internal sealed partial class ChatSessionWorkspaceService(ChatSessionsDbContext 
                 }
             }
 
-            return results;
+            return DeduplicateFunctionResultContents(results);
         }
         catch (JsonException)
         {
@@ -816,6 +816,26 @@ internal sealed partial class ChatSessionWorkspaceService(ChatSessionsDbContext 
             nameof(FunctionResultContent) => JsonSerializer.Deserialize<FunctionResultContent>(rawJson, s_jsonOptions),
             _ => null,
         };
+    }
+
+    private static List<AIContent> DeduplicateFunctionResultContents(IEnumerable<AIContent> contents)
+    {
+        List<AIContent> normalized = [];
+        HashSet<string> seenFunctionResultCallIds = new(StringComparer.Ordinal);
+
+        foreach (AIContent content in contents)
+        {
+            if (content is FunctionResultContent functionResult &&
+                !string.IsNullOrWhiteSpace(functionResult.CallId) &&
+                !seenFunctionResultCallIds.Add(functionResult.CallId))
+            {
+                continue;
+            }
+
+            normalized.Add(content);
+        }
+
+        return normalized;
     }
 
     private static bool TryParseApprovalRequest(FunctionCallContent content, out ApprovalRequest? approvalRequest)

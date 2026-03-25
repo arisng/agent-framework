@@ -15,6 +15,7 @@ namespace Microsoft.Agents.AI.AGUI.Shared;
 internal static class AGUIChatMessageExtensions
 {
     private static readonly ChatRole s_developerChatRole = new("developer");
+    internal const string ServerToolReplayMarkerKey = "agui_server_tool_call";
 
     public static IEnumerable<ChatMessage> AsChatMessages(
         this IEnumerable<AGUIMessage> aguiMessages,
@@ -114,61 +115,118 @@ internal static class AGUIChatMessageExtensions
         this IEnumerable<ChatMessage> chatMessages,
         JsonSerializerOptions jsonSerializerOptions)
     {
-        HashSet<string>? pendingToolCallIds = null;
+        PendingAssistantToolCallTurn? pendingAssistantTurn = null;
+        HashSet<string> suppressedToolCallIds = [];
 
         foreach (var message in chatMessages)
         {
             message.MessageId ??= Guid.NewGuid().ToString("N");
             if (message.Role == ChatRole.Tool)
             {
-                if (pendingToolCallIds is null || pendingToolCallIds.Count == 0)
+                List<AGUIToolMessage> toolMessages = [.. MapToolMessages(jsonSerializerOptions, message, excludedToolCallIds: suppressedToolCallIds)];
+                if (pendingAssistantTurn is null)
+                {
+                    foreach (var toolMessage in toolMessages)
+                    {
+                        if (string.IsNullOrEmpty(toolMessage.Content))
+                        {
+                            continue;
+                        }
+
+                        yield return toolMessage;
+                    }
+
+                    continue;
+                }
+
+                List<AGUIToolMessage> unmatchedToolMessages = [];
+                foreach (var toolMessage in toolMessages)
+                {
+                    if (!pendingAssistantTurn.TryAddToolMessage(toolMessage))
+                    {
+                        unmatchedToolMessages.Add(toolMessage);
+                    }
+                }
+
+                if (pendingAssistantTurn.IsComplete)
+                {
+                    foreach (var pendingMessage in pendingAssistantTurn.Emit())
+                    {
+                        yield return pendingMessage;
+                    }
+
+                    pendingAssistantTurn = null;
+                }
+
+                foreach (var toolMessage in unmatchedToolMessages)
+                {
+                    yield return toolMessage;
+                }
+
+                continue;
+            }
+
+            if (pendingAssistantTurn is not null)
+            {
+                suppressedToolCallIds.UnionWith(pendingAssistantTurn.RemainingToolCallIds);
+                foreach (var pendingMessage in pendingAssistantTurn.Emit())
+                {
+                    yield return pendingMessage;
+                }
+
+                pendingAssistantTurn = null;
+            }
+
+            if (message.Role == ChatRole.Assistant)
+            {
+                var assistantMessage = MapAssistantMessage(jsonSerializerOptions, message);
+                HashSet<string> toolCallIds = [.. message.Contents
+                    .OfType<FunctionCallContent>()
+                    .Where(content => !IsServerToolReplayContent(content))
+                    .Select(content => content.CallId)
+                    .Where(callId => !string.IsNullOrWhiteSpace(callId))!];
+
+                if (toolCallIds.Count == 0)
+                {
+                    if (assistantMessage != null)
+                    {
+                        yield return assistantMessage;
+                    }
+
+                    continue;
+                }
+
+                pendingAssistantTurn = new PendingAssistantToolCallTurn(assistantMessage, toolCallIds);
+                pendingAssistantTurn.AddToolMessages(MapToolMessages(jsonSerializerOptions, message, pendingAssistantTurn.RemainingToolCallIds));
+
+                if (!pendingAssistantTurn.IsComplete)
                 {
                     continue;
                 }
 
-                foreach (var toolMessage in MapToolMessages(jsonSerializerOptions, message, pendingToolCallIds))
+                foreach (var pendingMessage in pendingAssistantTurn.Emit())
                 {
-                    pendingToolCallIds.Remove(toolMessage.ToolCallId);
-                    yield return toolMessage;
+                    yield return pendingMessage;
                 }
 
-                if (pendingToolCallIds.Count == 0)
-                {
-                    pendingToolCallIds = null;
-                }
+                pendingAssistantTurn = null;
+                continue;
             }
-            else if (message.Role == ChatRole.Assistant)
+
+            yield return message.Role.Value switch
             {
-                var assistantMessage = MapAssistantMessage(jsonSerializerOptions, message);
-                if (assistantMessage != null)
-                {
-                    yield return assistantMessage;
-                }
+                AGUIRoles.Developer => new AGUIDeveloperMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
+                AGUIRoles.System => new AGUISystemMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
+                AGUIRoles.User => new AGUIUserMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
+                _ => throw new InvalidOperationException($"Unknown role: {message.Role.Value}")
+            };
+        }
 
-                HashSet<string> toolCallIds = [.. message.Contents
-                    .OfType<FunctionCallContent>()
-                    .Select(content => content.CallId)
-                    .Where(callId => !string.IsNullOrWhiteSpace(callId))!];
-
-                foreach (var toolMessage in MapToolMessages(jsonSerializerOptions, message, toolCallIds))
-                {
-                    toolCallIds.Remove(toolMessage.ToolCallId);
-                    yield return toolMessage;
-                }
-
-                pendingToolCallIds = toolCallIds.Count > 0 ? toolCallIds : null;
-            }
-            else
+        if (pendingAssistantTurn is not null)
+        {
+            foreach (var pendingMessage in pendingAssistantTurn.Emit(includeUnmatchedAssistantToolCalls: true))
             {
-                pendingToolCallIds = null;
-
-                yield return message.Role.Value switch
-                {
-                    AGUIRoles.Developer => new AGUIDeveloperMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
-                    AGUIRoles.System => new AGUISystemMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
-                    AGUIRoles.User => new AGUIUserMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
-                    _ => throw new InvalidOperationException($"Unknown role: {message.Role.Value}")
-                };
+                yield return pendingMessage;
             }
         }
     }
@@ -182,6 +240,11 @@ internal static class AGUIChatMessageExtensions
         {
             if (content is FunctionCallContent functionCall)
             {
+                if (IsServerToolReplayContent(functionCall))
+                {
+                    continue;
+                }
+
                 var argumentsJson = functionCall.Arguments is null ?
                     "{}" :
                     JsonSerializer.Serialize(functionCall.Arguments, jsonSerializerOptions.GetTypeInfo(typeof(IDictionary<string, object?>)));
@@ -220,12 +283,25 @@ internal static class AGUIChatMessageExtensions
     private static IEnumerable<AGUIToolMessage> MapToolMessages(
         JsonSerializerOptions jsonSerializerOptions,
         ChatMessage message,
-        HashSet<string>? allowedToolCallIds = null)
+        HashSet<string>? allowedToolCallIds = null,
+        HashSet<string>? excludedToolCallIds = null)
     {
         foreach (var content in message.Contents)
         {
             if (content is FunctionResultContent functionResult)
             {
+                if (IsServerToolReplayContent(functionResult))
+                {
+                    continue;
+                }
+
+                if (excludedToolCallIds is not null &&
+                    !string.IsNullOrWhiteSpace(functionResult.CallId) &&
+                    excludedToolCallIds.Contains(functionResult.CallId))
+                {
+                    continue;
+                }
+
                 if (allowedToolCallIds is not null &&
                     (string.IsNullOrWhiteSpace(functionResult.CallId) || !allowedToolCallIds.Contains(functionResult.CallId)))
                 {
@@ -251,4 +327,109 @@ internal static class AGUIChatMessageExtensions
         string.Equals(role, AGUIRoles.Developer, StringComparison.OrdinalIgnoreCase) ? s_developerChatRole :
         string.Equals(role, AGUIRoles.Tool, StringComparison.OrdinalIgnoreCase) ? ChatRole.Tool :
         throw new InvalidOperationException($"Unknown chat role: {role}");
+
+    private static bool IsServerToolReplayContent(AIContent content)
+    {
+        if (content.AdditionalProperties is null ||
+            !content.AdditionalProperties.TryGetValue(ServerToolReplayMarkerKey, out object? marker))
+        {
+            return false;
+        }
+
+        return marker switch
+        {
+            true => true,
+            string s when bool.TryParse(s, out bool value) => value,
+            JsonElement jsonElement when jsonElement.ValueKind is JsonValueKind.True => true,
+            _ => false
+        };
+    }
+
+    private sealed class PendingAssistantToolCallTurn
+    {
+        private readonly AGUIAssistantMessage? _assistantMessage;
+        private readonly List<AGUIToolMessage> _toolMessages = [];
+        private readonly List<string> _matchedToolCallIds = [];
+
+        public PendingAssistantToolCallTurn(AGUIAssistantMessage? assistantMessage, HashSet<string> remainingToolCallIds)
+        {
+            _assistantMessage = assistantMessage;
+            RemainingToolCallIds = remainingToolCallIds;
+        }
+
+        public HashSet<string> RemainingToolCallIds { get; }
+
+        public bool IsComplete => RemainingToolCallIds.Count == 0;
+
+        public bool TryAddToolMessage(AGUIToolMessage toolMessage)
+        {
+            if (!RemainingToolCallIds.Remove(toolMessage.ToolCallId))
+            {
+                return false;
+            }
+
+            _matchedToolCallIds.Add(toolMessage.ToolCallId);
+            _toolMessages.Add(toolMessage);
+            return true;
+        }
+
+        public void AddToolMessages(IEnumerable<AGUIToolMessage> toolMessages)
+        {
+            foreach (var toolMessage in toolMessages)
+            {
+                _ = TryAddToolMessage(toolMessage);
+            }
+        }
+
+        public IEnumerable<AGUIMessage> Emit(bool includeUnmatchedAssistantToolCalls = false)
+        {
+            AGUIAssistantMessage? assistantMessage = BuildAssistantMessage(includeUnmatchedAssistantToolCalls);
+            if (assistantMessage is not null)
+            {
+                yield return assistantMessage;
+            }
+
+            foreach (var toolMessage in _toolMessages)
+            {
+                yield return toolMessage;
+            }
+        }
+
+        private AGUIAssistantMessage? BuildAssistantMessage(bool includeUnmatchedAssistantToolCalls)
+        {
+            if (_assistantMessage is null)
+            {
+                return null;
+            }
+
+            if (includeUnmatchedAssistantToolCalls && _matchedToolCallIds.Count == 0)
+            {
+                return _assistantMessage;
+            }
+
+            AGUIToolCall[]? toolCalls = null;
+            if (_assistantMessage.ToolCalls is { Length: > 0 } && _matchedToolCallIds.Count > 0)
+            {
+                HashSet<string> matchedToolCallIds = [.. _matchedToolCallIds];
+                toolCalls = [.. _assistantMessage.ToolCalls.Where(toolCall => matchedToolCallIds.Contains(toolCall.Id))];
+            }
+
+            if (toolCalls is null && string.IsNullOrEmpty(_assistantMessage.Content))
+            {
+                return null;
+            }
+
+            if ((toolCalls?.Length ?? 0) == (_assistantMessage.ToolCalls?.Length ?? 0))
+            {
+                return _assistantMessage;
+            }
+
+            return new AGUIAssistantMessage
+            {
+                Id = _assistantMessage.Id,
+                Content = _assistantMessage.Content,
+                ToolCalls = toolCalls
+            };
+        }
+    }
 }
