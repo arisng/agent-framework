@@ -21,11 +21,14 @@
 }
 
 /* Toggle button (Collapsible trigger) — always interactive */
-.thought-toggle {
+::deep .thought-toggle {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.375rem;
-    width: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     padding: 0.25rem 0.5rem;
     border: none;
     cursor: pointer;
@@ -34,13 +37,15 @@
     color: var(--muted-foreground);
     transition: background-color 0.15s ease;
     pointer-events: auto;
+    flex-wrap: nowrap;
+    overflow: hidden;
 }
 
-.thought-toggle:hover {
+::deep .thought-toggle:hover {
     background: color-mix(in oklch, var(--muted) 80%, transparent);
 }
 
-.thought-toggle:focus-visible {
+::deep .thought-toggle:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: -2px;
 }
@@ -52,9 +57,15 @@
 }
 
 .thought-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: block;
     font-weight: 500;
     color: var(--foreground);
     font-size: 0.8125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 ::deep .thought-chevron-icon {
