@@ -60,6 +60,9 @@ The final fix was split across the outbound AGUI layer and the AGUIDojo server p
   - normalize duplicate `FunctionResultContent` entries during persistence/readback
 - `AGUIDojoServer/ChatSessions/ChatSessionWorkspaceService.cs`
   - deduplicate duplicate tool-result content during workspace rehydration/derived-state reads
+- `AGUIDojoClient/Services/AgentStreamingService.cs`
+  - normalize completed streaming assistant turns before they are committed to the client conversation tree
+  - strip unmatched `FunctionCallContent` / orphan `FunctionResultContent` entries from same-tab live replay history while preserving matched tool-call cycles
 
 ## Validation
 
@@ -89,6 +92,23 @@ The summary evidence recorded `resolved: true`, with empty `pageErrors` and empt
 
 - `Microsoft.Agents.AI.AGUI.UnitTests` (`net10.0`): `173 / 173` passed
 - `AGUIDojoServer.Tests`: `43 / 43` passed
+- `AGUIDojoClient.Tests`: `75 / 75` passed after adding live-history replay coverage
+
+### Follow-up runtime hardening
+
+After the original server-side + AGUI fix landed, a follow-up review found one more replay boundary on the client:
+
+- `AgentStreamingService` collapses a just-finished streamed assistant turn into one `ChatMessage` in the live conversation tree
+- that same-tab live history can be replayed on the next `/chat` request before any full reload/hydration round-trip occurs
+
+The follow-up hardening now normalizes that completed streaming message before it becomes replayable client history. Clean browser validation on `server:5111` / `client:6008` also passed with:
+
+1. `"Which tools are you equipped?"`
+2. `"Let's compose a plan of multi integrated step that can showcase all these tools"`
+3. `"Let's implement the plan step by step"`
+4. explicit thinking-toggle interaction before sending the third prompt
+
+No `StreamingError`, `invalid_request_error`, or `HTTP 400` markers appeared in the captured `5111/6008` logs for that run.
 
 ## Outcome
 

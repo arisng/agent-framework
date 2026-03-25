@@ -71,6 +71,8 @@ Checkpoint restore trims the active branch to the checkpoint's retained message 
 - checkpoint re-entry after trimming the active branch
 - approval approval-submit re-entry within the same stream
 - same-session continuation after an approval rejection
+- completed streaming turns strip unmatched tool calls before they enter replayable client history
+- completed streaming turns preserve matched call/result pairs so live-tab follow-up requests still resend structurally valid tool history
 
 The AGUI layer now also carries targeted regression coverage for the `260325` tool-call replay bug:
 
@@ -80,3 +82,10 @@ The AGUI layer now also carries targeted regression coverage for the `260325` to
 - server-only tool replay markers are not leaked into follow-up client-tool requests
 
 Those tests guard the contract that `/chat` receives full active-branch history, that tool-call chains remain structurally valid, and that correlation IDs remain correlation only.
+
+The follow-up hardening matters because AGUIDojo has two replay boundaries:
+
+- durable server history restored from `/api/chat-sessions/...`
+- same-tab live history captured from the just-finished streaming assistant message
+
+Both boundaries now normalize tool-call structure before that history can be replayed on the next `/chat` turn.
