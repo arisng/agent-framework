@@ -100,7 +100,17 @@ The client hydration path restores:
 
 This is intentionally richer than the older browser-only `ConversationNodeDto`, which flattened messages to text plus minimal metadata.
 
-## Runtime validation used for child 3
+### Tool-call replay safety
+
+The durable graph now also has to preserve a stricter invariant than "message text looks right":
+
+- assistant tool-call turns must replay as valid `assistant(tool_calls)` -> `tool` sequences when the client sends the active branch back through `/chat`
+- duplicate `FunctionResultContent` entries for the same `tool_call_id` must be normalized away before persisted history is used for replay or workspace derivation
+- server-only replay markers may exist internally while the AGUI client unwraps streaming updates, but those markers must not survive into the next outbound request payload
+
+That distinction mattered for issue `260325_aguidojo-streaming-toolcall-error.md`: the visible branch could look correct while the outbound `/chat` history was still structurally invalid for the upstream model API, or while duplicate persisted tool results were still replayable.
+
+## Runtime validation used for child 3 and follow-up replay hardening
 
 The live LLM endpoint in this environment was quota-limited during validation, so runtime proof focused on the server-owned rehydration path directly:
 
@@ -113,3 +123,15 @@ The live LLM endpoint in this environment was quota-limited during validation, s
 7. open a second isolated browser and verify it also restores `1/2`
 
 That runtime path proved the bug that motivated child 3 is closed even without relying on a successful upstream LLM response.
+
+Later follow-up validation for issue `260325` exercised the real upstream runtime again:
+
+1. start a clean stack on `server:5110` / `client:6002`
+2. send:
+   - `"Which tools are you provided?"`
+   - `"Let's compose a plan of multi integrated step that can showcase all these tools"`
+   - `"Let's implement the plan step by step"`
+3. verify the third turn completes without the prior `invalid_request_error` about missing tool responses
+4. confirm the captured validation logs contain zero `HTTP 400` and zero missing-tool-response markers
+
+That validation closed the replay-specific gap: the canonical branch is now durable enough to rehydrate correctly, and the outbound AGUI shaping layer is now strict enough to resend only structurally valid tool-call history.

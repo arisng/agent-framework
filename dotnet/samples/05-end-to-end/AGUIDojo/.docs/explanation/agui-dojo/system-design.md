@@ -108,6 +108,12 @@ That is the main reason `/chat` exists: the sample is demonstrating one combined
 - Shared state and predictive UI need `DataContent` projections, not just final text.
 - The sample is modeling one end-to-end agent pipeline, not a thin chat relay.
 
+### Tool-call history safety boundary
+
+- Outbound `/chat` history must stay protocol-valid, not just complete. If an assistant turn contains `tool_calls`, the shaped history has to preserve the matching `tool` response messages in order.
+- `AGUIChatMessageExtensions.AsAGUIMessages(...)` now buffers assistant tool-call turns and only emits matched assistant/tool pairs. Partial or orphaned tool-call turns are dropped instead of being re-sent as invalid follow-up history.
+- `AGUIChatClient` also prunes server-executed tool-call/result history before follow-up requests are posted. Server replay markers are transport internals and must not leak into client-tool requests.
+
 ## 4. Client session model and artifact surfaces
 
 ### Session model

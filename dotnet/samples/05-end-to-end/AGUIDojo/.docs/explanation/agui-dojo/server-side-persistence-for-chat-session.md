@@ -446,6 +446,12 @@ Recommended rule:
 - create **derived summaries** or **context-window projections** separately when needed for model token limits
 - never destructively replace the canonical history with summaries
 
+For tool-using turns, "full history" also has to mean "valid history":
+
+- preserve assistant `tool_calls` together with the matching tool-result messages as one ordered turn boundary
+- deduplicate duplicate `FunctionResultContent` entries for the same `callId` during persist/rehydrate so replay does not create double tool responses
+- keep server-only replay markers out of the durable record and out of follow-up client-tool requests
+
 In other words:
 
 - **source of truth** = full journal/graph
@@ -602,6 +608,8 @@ On every user turn:
 - persist the assistant/tool outputs as nodes or ordered message records
 - update active leaf
 - update last activity/title snippets
+
+Before durable write and before replay/rehydrate, normalize tool results by `callId` so one logical tool response remains one durable tool response even if an upstream replay path produced duplicates.
 
 If AGUIDojo uses `ChatHistoryProvider`, implement it against those relational tables or projections. The framework seam does not require NoSQL; it only requires durable ordered history.[20]
 
