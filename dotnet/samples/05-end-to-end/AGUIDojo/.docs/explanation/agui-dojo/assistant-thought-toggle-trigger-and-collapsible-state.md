@@ -69,4 +69,10 @@ With the fix in place:
 - the existing `IsExpanded` / `_userToggled` lifecycle continues to work
 - completed thoughts can collapse and re-expand without losing their content model
 
+## Styling invariant for Blueprint trigger roots
+
+One additional layout lesson came out of the follow-up button-layout fix: when a BlazorBlueprint primitive renders the actual DOM element, scoped CSS in the parent component does not automatically style that generated root element.
+
+For trigger-root styling such as `display: flex`, hover, or focus-visible rules, AGUIDojo should target the trigger with `::deep .thought-toggle` rather than a plain `.thought-toggle` selector. Otherwise the trigger falls back to browser default button layout, which can stack icons and text vertically even though the markup is correct.
+
 The design lesson is that disclosure widgets should use the UI library’s explicit trigger element, not a visually styled stand-in that only looks interactive.

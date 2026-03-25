@@ -35,16 +35,15 @@ Today the sample is a unified `/chat` architecture:
 
 - `AGUIDojoClient` is a Blazor Server BFF with a session sidebar, chat UI, notifications, and YARP for `/api/*`
 - `AGUIDojoServer` hosts business APIs plus a single `POST /chat` AG-UI route
-- the client currently keeps session state locally and rehydrates it from browser storage on reload
-- the live source of truth for sessions is the client Fluxor store, not the server
-- session ids are currently generated in the client UI layer rather than issued by a server-side session API[1][12][13][17]
+- the server owns a durable chat-session catalog, canonical branching conversation graph, and workspace projection APIs
+- the client still renders from Fluxor, but hydration now prefers server-owned conversation/workspace reads and only falls back to browser cache/import when the server surfaces are unavailable
+- the browser cache remains useful for drafts and best-effort recovery, but it is no longer the authoritative session record[1][12][13][17]
 
-The current persistence model is explicitly browser-local:
+The current persistence model is therefore split on purpose:
 
-- metadata is stored in `localStorage`
-- active session id is stored in `localStorage`
-- conversation trees are stored in IndexedDB
-- hydration reconstructs only a subset of the original session state[2][3][4]
+- the **server** stores session identity, list/detail lifecycle, canonical branching conversation history, approvals, audit events, and workspace snapshots
+- the **browser** still caches metadata in `localStorage`, active session state in `localStorage`, and conversation-tree convenience data in IndexedDB
+- hydration now reconstructs the main session experience from server reads first, using the browser cache only as fallback/import support[2][3][4]
 
 This local persistence is also **lossy**:
 
@@ -55,7 +54,7 @@ This local persistence is also **lossy**:
 - hydration returns early if metadata is missing, so IndexedDB-only session trees are not recovered even though the JS layer exposes `loadAllSessionIds()`
 - plans, approvals, audit trail, diff previews, recipe state, document state, and data grid state are not reconstructed from the persisted tree model[2][4][5]
 
-So the current design is useful as a local UX cache, but it is not a viable primary store for:
+So the browser-local layer remains useful as a local UX cache/import source, but it is not a viable primary store for:
 
 - cross-device resume
 - server-side authorization and ownership

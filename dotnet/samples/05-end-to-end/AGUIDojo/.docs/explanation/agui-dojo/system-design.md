@@ -11,10 +11,10 @@ For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap 
 **CURRENT**
 - AGUIDojo is a unified `/chat` sample. `AGUIDojoClient` is a Blazor Server BFF, `AGUIDojoServer` is a Minimal API backend, and `AGUIDojo.AppHost` wires both together.
 - `AGUIDojoClient` sends AG-UI traffic directly to `AGUIDojoServer /chat`. YARP proxies only `/api/*` business endpoints.
-- Client session state lives in Fluxor and is hydrated from browser storage, while the server now owns a thin chat-session catalog for identity, lifecycle, and cross-browser list recovery.
-- Model selection is process-wide today. `ChatClientAgentFactory` creates one provider-bound `ChatClient` from startup configuration and all sessions use it.
+- Client session state still lives in Fluxor for rendering, but browser persistence is now cache/import only while the server owns the durable chat-session catalog, canonical branching conversation graph, and workspace projections used for recovery and inspection.
+- Model selection is now per session. The client loads a model catalog from the server, forwards the requested model on `/chat`, and the server records preferred/effective model facts while applying model-aware compaction policy.
 - Context handling is still transitional, but the baseline continuity invariant is already restored: the client sends the full active branch on each `/chat` turn, while the server still uses `ContextWindowChatClient` with a fixed 80 non-system-message cap rather than a model-aware token policy.
-- Browser storage is a convenience cache, not the system of record, while the server now owns a thin chat-session catalog for list/detail/archive recovery.
+- Browser storage is a convenience cache, draft, and best-effort import surface, not the system of record.
 - `/chat` is the canonical server shape. The older seven-endpoint AG-UI layout is legacy only.
 
 **CURRENT**
@@ -23,6 +23,7 @@ For the supporting model-picker, persistence, MAF boundary, and Copilot-overlap 
 - Server-owned session records are more than transcript storage: AGUIDojo needs both a read-optimized catalog/index surface for list/resume/search and a richer session-detail/workspace surface for approvals, plans, checkpoints, files/artifacts, audit facts, and compaction/debug history.
 - Copilot CLI's recent public-doc research plus the companion schema reference and topology note are useful mainly as a topology lesson: separate a central session catalog/index from richer per-session detail/workspace surfaces, but do not copy the literal `~/.copilot/session-state/<id>/...` filesystem layout into AGUIDojo. In this sample, both surfaces stay server-owned and SQL-first.
 - AGUIDojo remains a chat module inside a modular monolith: chat sessions link to business-module subjects (start with Todo), while business data stays owned by those modules.
+- The active `/chat` request can now carry a request-scoped ownership-routing seam derived from the server-owned chat session (`OwnerId`, `TenantId`, subject link fields, and workflow/runtime correlations) so downstream services can route honestly without turning chat persistence into a fake business module.
 - Per-session model preference becomes part of session metadata and later part of server-owned session records; requested/preferred model and effective model stay distinct facts.
 - `/chat` remains the only AG-UI route; requested model should travel as per-request metadata on that route rather than spawning per-model endpoints.
 - Context-window policy moves fully server-side: the client sends the full active branch, the server selects the effective model, and checkpointed compaction happens on invocation context without rewriting canonical history.

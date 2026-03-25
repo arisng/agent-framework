@@ -3,8 +3,9 @@
 <!-- MY CUSTOMIZATION POINT: align sample doc links with the current AGUIDojo session research set -->
 
 AGUIDojo is a full end-to-end sample that now uses a **single AG-UI route** on the server: `POST /chat`.
-The client keeps per-session UI state locally and renders plans, approvals, recipe state,
-document previews, charts, forms, and data grids from the unified event stream.
+The client keeps per-session UI state locally as a cache/draft convenience, while the server owns
+the durable session catalog, canonical branching conversation graph, and workspace projections for
+plans, approvals, audit history, documents, charts/forms, and data grids.
 
 ## Projects
 
@@ -83,7 +84,21 @@ The sample now exposes a **per-session model picker** on the unified `/chat` rou
 - the server records both the preferred and effective model IDs and applies model-aware compaction before invoking the provider
 - the unified route remains `POST /chat`; model choice is still request metadata, not endpoint topology
 
-The current implementation keeps browser storage as session cache/import support for now, but the selected model itself is now durable enough to survive reloads and server hydration.
+The current implementation keeps browser storage as session cache/import support only. Durable
+re-entry, inspection, and model-awareness now come from the server-owned session APIs plus the
+unified `/chat` route.
+
+## Inspection and portability surfaces
+
+For local debugging and support-style inspection, the sample exposes:
+
+- `GET /api/chat-sessions` for the session catalog
+- `GET /api/chat-sessions/{id}` for thin session detail
+- `GET /api/chat-sessions/{id}/conversation` for the canonical branching graph
+- `GET /api/chat-sessions/{id}/workspace` for approvals, audit, plan/artifact state, and file references
+
+The sample keeps this foundation **SQL-first**: SQLite is the local default, while SQL Server or
+PostgreSQL remain the intended modular-monolith portability targets.
 
 Related docs:
 

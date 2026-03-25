@@ -12,7 +12,9 @@ This note captures what AGUIDojo now implements for the child work item that int
 - lifecycle status (`Active`, `Archived`)
 - created / last-activity / archived timestamps
 - thin list title derived from the first user turn
+- simulated ownership context (`OwnerId`, `TenantId`)
 - primary subject link fields (`SubjectModule`, `SubjectEntityType`, `SubjectEntityId`)
+- workflow/runtime correlation links (`WorkflowInstanceId`, `RuntimeInstanceId`)
 - AG-UI correlation (`AguiThreadId`)
 - preferred-model metadata placeholder (`PreferredModelId`)
 - a small server protocol marker (`ServerProtocolVersion`)
@@ -28,11 +30,12 @@ When the browser sends the first persisted `/chat` turn for a draft:
 3. the middleware extracts:
    - `threadId`
    - the first user message (for a thin title)
-   - any forwarded metadata already present for subject / preferred model
+   - any forwarded metadata already present for owner / tenant / subject / workflow / preferred model
 4. `ChatSessionService` creates or updates the server-owned session row
-5. the server returns the canonical session ID in `X-Session-Id`
-6. the AG-UI client surfaces that value as `server_session_id` on the first streamed update
-7. `AgentStreamingService` stores that canonical ID in the local session metadata
+5. the middleware stores a request-scoped `ChatSessionRoutingContext` in `HttpContext.Items` so downstream tools/services can resolve the active owner / tenant / subject / workflow seam from the canonical chat session
+6. the server returns the canonical session ID in `X-Session-Id`
+7. the AG-UI client surfaces that value as `server_session_id` on the first streamed update
+8. `AgentStreamingService` stores that canonical ID in the local session metadata
 
 The important boundary is that the browser can still keep a local UI/session key, but it no longer has to guess the durable server identity after the first persisted turn.
 
@@ -75,5 +78,6 @@ This child item does **not** make the server the authority for:
 - full branching conversation history
 - approvals, audit, plans, or artifact projections
 - model routing or model-aware compaction
+- a real Todo module, production auth flow, or tenant-management rollout
 
 Those remain later child items. The server-owned Chat Sessions module is only the first durable identity and lifecycle layer.
