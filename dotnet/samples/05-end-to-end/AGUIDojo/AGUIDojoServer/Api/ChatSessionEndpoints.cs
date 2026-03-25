@@ -21,14 +21,49 @@ public static class ChatSessionEndpoints
         .WithDescription("Lists active chat sessions ordered by most recent activity.")
         .Produces<List<ChatSessionSummary>>(StatusCodes.Status200OK);
 
-        group.MapGet("/chat-sessions/{id}", async (string id, ChatSessionService service, CancellationToken ct) =>
+        group.MapGet("/chat-sessions/{id}", async (
+            string id,
+            ChatSessionService service,
+            CancellationToken ct) =>
         {
             var session = await service.GetSessionAsync(id, ct);
             return session is not null ? Results.Ok(session) : Results.NotFound();
         })
         .WithName("GetChatSession")
-        .WithDescription("Gets detail for a specific chat session.")
+        .WithDescription("Gets detail for a specific chat session with thin workspace summary counts.")
         .Produces<ChatSessionDetail>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound);
+
+        group.MapGet("/chat-sessions/{id}/workspace", async (string id, ChatSessionWorkspaceService workspaceService, CancellationToken ct) =>
+        {
+            ChatSessionWorkspaceDto? workspace = await workspaceService.GetWorkspaceAsync(id, ct);
+            return workspace is not null ? Results.Ok(workspace) : Results.NotFound();
+        })
+        .WithName("GetChatSessionWorkspace")
+        .WithDescription("Gets the current durable workspace projection, approvals, audit entries, and file references for a chat session.")
+        .Produces<ChatSessionWorkspaceDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/chat-sessions/{id}/workspace/import", async (
+            string id,
+            ChatSessionWorkspaceImportRequest request,
+            ChatSessionWorkspaceService workspaceService,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                await workspaceService.ImportWorkspaceAsync(id, request, ct);
+                return Results.NoContent();
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("was not found.", StringComparison.Ordinal))
+            {
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Chat session not found", detail: ex.Message);
+            }
+        })
+        .WithName("ImportChatSessionWorkspace")
+        .WithDescription("Imports best-effort browser-local workspace state into the durable server-owned projection for a chat session.")
+        .Accepts<ChatSessionWorkspaceImportRequest>("application/json")
+        .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status404NotFound);
 
         group.MapGet("/chat-sessions/{id}/conversation", async (string id, ChatConversationService conversationService, CancellationToken ct) =>
@@ -64,13 +99,16 @@ public static class ChatSessionEndpoints
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound);
 
-        group.MapDelete("/chat-sessions/{id}/conversation", async (string id, ChatConversationService conversationService, CancellationToken ct) =>
+        group.MapDelete("/chat-sessions/{id}/conversation", async (
+            string id,
+            ChatConversationService conversationService,
+            CancellationToken ct) =>
         {
             bool cleared = await conversationService.ClearConversationAsync(id, ct);
             return cleared ? Results.NoContent() : Results.NotFound();
         })
         .WithName("ClearChatSessionConversation")
-        .WithDescription("Clears the canonical conversation graph for a specific chat session.")
+        .WithDescription("Clears the canonical conversation graph and derived workspace state for a specific chat session.")
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status404NotFound);
 

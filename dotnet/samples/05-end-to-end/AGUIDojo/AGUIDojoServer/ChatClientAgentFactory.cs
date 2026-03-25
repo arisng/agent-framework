@@ -3,6 +3,7 @@ using System.Linq;
 using AGUIDojoServer.AgenticUI;
 using AGUIDojoServer.Api;
 using AGUIDojoServer.ChatSessions;
+using AGUIDojoServer.Data;
 using AGUIDojoServer.HumanInTheLoop;
 using AGUIDojoServer.Multimodal;
 using AGUIDojoServer.Models;
@@ -15,6 +16,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Compaction;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
 using OpenAI.Chat;
 using AIChatMessage = Microsoft.Extensions.AI.ChatMessage;
@@ -165,7 +167,13 @@ public sealed class ChatClientAgentFactory
     /// <returns>An <see cref="AIAgent"/> composed from the unified tool registry and wrapper pipeline.</returns>
     public AIAgent CreateUnifiedAgent(JsonSerializerOptions jsonSerializerOptions)
     {
-        IChatClient wrappedClient = new ToolResultStreamingChatClient(this._chatClient.AsIChatClient());
+        ToolResultReplayStore replayStore = new();
+        IChatClient wrappedClient = new ToolResultUnwrappingChatClient(
+            new FunctionInvokingChatClient(
+                new ToolResultStreamingChatClient(this._chatClient.AsIChatClient(), replayStore),
+                null,
+                null),
+            replayStore);
 
         var baseAgent = wrappedClient.AsAIAgent(new ChatClientAgentOptions
         {
@@ -186,7 +194,7 @@ public sealed class ChatClientAgentFactory
             .Use(inner => new AgenticUIAgent(inner, jsonSerializerOptions))
             .Use(inner => new PredictiveStateUpdatesAgent(inner, jsonSerializerOptions))
             .Use(inner => new SharedStateAgent(inner, jsonSerializerOptions))
-            .Use(inner => new ModelRoutingAgent(inner, this._modelRegistry))
+            .Use(inner => new ModelRoutingAgent(inner, this._modelRegistry, this._httpContextAccessor))
             .Use(inner => new ConversationPersistenceAgent(inner, this._httpContextAccessor))
             .UseOpenTelemetry(SourceName)
             .Build();
@@ -246,11 +254,13 @@ public sealed class ChatClientAgentFactory
     private sealed class ModelRoutingAgent : DelegatingAIAgent
     {
         private readonly IModelRegistry _modelRegistry;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public ModelRoutingAgent(AIAgent innerAgent, IModelRegistry modelRegistry)
+        public ModelRoutingAgent(AIAgent innerAgent, IModelRegistry modelRegistry, IHttpContextAccessor httpContextAccessor)
             : base(innerAgent)
         {
             this._modelRegistry = modelRegistry;
+            this._httpContextAccessor = httpContextAccessor;
         }
 
         protected override Task<AgentResponse> RunCoreAsync(
@@ -273,13 +283,19 @@ public sealed class ChatClientAgentFactory
             ChatClientAgentRunOptions routedOptions = PrepareRunOptions(options, out string preferredModelId, out string effectiveModelId, out string routingReason);
             string recordedPreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? effectiveModelId : preferredModelId;
             IEnumerable<AIChatMessage> compactedMessages = await CompactMessagesAsync(effectiveModelId, inputMessages, cancellationToken).ConfigureAwait(false);
+            List<AIChatMessage> compactedMessageList = compactedMessages.ToList();
 
-            await foreach (AgentResponseUpdate update in this.InnerAgent.RunStreamingAsync(compactedMessages, session, routedOptions, cancellationToken).ConfigureAwait(false))
+            await PersistRoutingAuditAsync(recordedPreferredModelId, effectiveModelId, routingReason, inputMessages.Count, compactedMessageList.Count, cancellationToken).ConfigureAwait(false);
+
+            await foreach (AgentResponseUpdate update in this.InnerAgent.RunStreamingAsync(compactedMessageList, session, routedOptions, cancellationToken).ConfigureAwait(false))
             {
                 update.AdditionalProperties ??= [];
                 update.AdditionalProperties["preferredModelId"] = recordedPreferredModelId;
                 update.AdditionalProperties["effectiveModelId"] = effectiveModelId;
                 update.AdditionalProperties["modelRoutingReason"] = routingReason;
+                update.AdditionalProperties["inputMessageCount"] = inputMessages.Count;
+                update.AdditionalProperties["outputMessageCount"] = compactedMessageList.Count;
+                update.AdditionalProperties["wasCompacted"] = compactedMessageList.Count < inputMessages.Count;
                 yield return update;
             }
         }
@@ -330,6 +346,61 @@ public sealed class ChatClientAgentFactory
             ModelInfo model = this._modelRegistry.GetModel(effectiveModelId) ?? new ModelInfo(effectiveModelId, effectiveModelId, ContextWindowTokens: 128_000);
             CompactionStrategy strategy = BuildCompactionStrategy(model);
             return await CompactionProvider.CompactAsync(strategy, messages, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task PersistRoutingAuditAsync(
+            string preferredModelId,
+            string effectiveModelId,
+            string routingReason,
+            int inputMessageCount,
+            int outputMessageCount,
+            CancellationToken cancellationToken)
+        {
+            HttpContext? httpContext = this._httpContextAccessor.HttpContext;
+            if (httpContext is null ||
+                !ChatSessionHttpContextItems.TryGetRoutingContext(httpContext, out ChatSessionRoutingContext? routingContext))
+            {
+                return;
+            }
+
+            string sessionId = routingContext.SessionId;
+            ChatSessionAuditService? auditService = httpContext.RequestServices.GetService<ChatSessionAuditService>();
+            if (auditService is null)
+            {
+                return;
+            }
+
+            await auditService.AppendAsync(
+                sessionId,
+                ChatAuditEventType.ModelRouting,
+                $"Model routed to {effectiveModelId}",
+                routingReason,
+                new
+                {
+                    preferredModelId,
+                    effectiveModelId,
+                    routingReason,
+                },
+                correlationId: sessionId,
+                ct: cancellationToken).ConfigureAwait(false);
+
+            bool wasCompacted = outputMessageCount < inputMessageCount;
+            await auditService.AppendAsync(
+                sessionId,
+                ChatAuditEventType.CompactionCheckpoint,
+                wasCompacted ? "Compaction reduced invocation context" : "Compaction checkpoint evaluated without reducing context",
+                $"Input messages: {inputMessageCount}; compacted messages: {outputMessageCount}.",
+                new
+                {
+                    preferredModelId,
+                    effectiveModelId,
+                    inputMessageCount,
+                    outputMessageCount,
+                    wasCompacted,
+                    routingReason,
+                },
+                correlationId: sessionId,
+                ct: cancellationToken).ConfigureAwait(false);
         }
 
         private static string ExtractPreferredModelId(ChatClientAgentRunOptions routedOptions)

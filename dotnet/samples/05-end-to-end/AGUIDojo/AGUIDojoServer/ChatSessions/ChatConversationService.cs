@@ -10,9 +10,10 @@ namespace AGUIDojoServer.ChatSessions;
 /// <summary>
 /// Persists and projects the canonical server-owned branching conversation graph.
 /// </summary>
-public sealed class ChatConversationService(ChatSessionsDbContext db)
+internal sealed class ChatConversationService(ChatSessionsDbContext db, ChatSessionWorkspaceService workspaceService)
 {
     private const string RootParentKey = "<root>";
+    private const int MaxConcurrencyRetries = 2;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -48,11 +49,63 @@ public sealed class ChatConversationService(ChatSessionsDbContext db)
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         ArgumentNullException.ThrowIfNull(orderedMessages);
 
+        List<ChatMessage> orderedPath = orderedMessages.ToList();
+
+        for (int attempt = 0; ; attempt++)
+        {
+            db.ChangeTracker.Clear();
+
+            try
+            {
+                return await PersistConversationOnceAsync(sessionId, orderedPath, ct);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < MaxConcurrencyRetries)
+            {
+                // Another request updated the session row between load and save.
+                // Rebuild from the latest persisted graph and retry.
+            }
+        }
+    }
+
+    /// <summary>Updates the active leaf to an existing persisted node.</summary>
+    public async Task<bool> SetActiveLeafAsync(string sessionId, string activeLeafId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(activeLeafId);
+
+        ChatSession? session = await db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        if (session is null)
+        {
+            return false;
+        }
+
+        bool nodeExists = await db.ChatConversationNodes.AnyAsync(
+            node => node.SessionId == sessionId && node.NodeId == activeLeafId,
+            ct);
+        if (!nodeExists)
+        {
+            throw new ArgumentException(
+                $"Conversation node '{activeLeafId}' does not belong to session '{sessionId}'.",
+                nameof(activeLeafId));
+        }
+
+        session.ActiveLeafMessageId = activeLeafId;
+        session.LastActivityAt = DateTimeOffset.UtcNow;
+        session.ConcurrencyStamp = Guid.NewGuid().ToString("N");
+        await db.SaveChangesAsync(ct);
+        await workspaceService.RefreshDerivedStateAsync(sessionId, ct);
+        return true;
+    }
+
+    private async Task<ChatConversationGraph> PersistConversationOnceAsync(
+        string sessionId,
+        IReadOnlyList<ChatMessage> orderedPath,
+        CancellationToken ct)
+    {
         ChatSession session = await db.ChatSessions
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct)
             ?? throw new InvalidOperationException($"Chat session '{sessionId}' was not found.");
 
-        List<ChatMessage> orderedPath = orderedMessages.ToList();
         List<ChatConversationEntity> nodes = await db.ChatConversationNodes
             .Where(node => node.SessionId == sessionId)
             .OrderBy(node => node.CreatedAt)
@@ -118,36 +171,8 @@ public sealed class ChatConversationService(ChatSessionsDbContext db)
         session.ConcurrencyStamp = Guid.NewGuid().ToString("N");
 
         await db.SaveChangesAsync(ct);
+        await workspaceService.RefreshDerivedStateAsync(sessionId, ct);
         return BuildConversation(session, nodes);
-    }
-
-    /// <summary>Updates the active leaf to an existing persisted node.</summary>
-    public async Task<bool> SetActiveLeafAsync(string sessionId, string activeLeafId, CancellationToken ct = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(activeLeafId);
-
-        ChatSession? session = await db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct);
-        if (session is null)
-        {
-            return false;
-        }
-
-        bool nodeExists = await db.ChatConversationNodes.AnyAsync(
-            node => node.SessionId == sessionId && node.NodeId == activeLeafId,
-            ct);
-        if (!nodeExists)
-        {
-            throw new ArgumentException(
-                $"Conversation node '{activeLeafId}' does not belong to session '{sessionId}'.",
-                nameof(activeLeafId));
-        }
-
-        session.ActiveLeafMessageId = activeLeafId;
-        session.LastActivityAt = DateTimeOffset.UtcNow;
-        session.ConcurrencyStamp = Guid.NewGuid().ToString("N");
-        await db.SaveChangesAsync(ct);
-        return true;
     }
 
     /// <summary>Clears the persisted conversation graph for a session.</summary>
@@ -175,6 +200,7 @@ public sealed class ChatConversationService(ChatSessionsDbContext db)
         session.LastActivityAt = DateTimeOffset.UtcNow;
         session.ConcurrencyStamp = Guid.NewGuid().ToString("N");
         await db.SaveChangesAsync(ct);
+        await workspaceService.ClearWorkspaceAsync(sessionId, ct);
         return true;
     }
 

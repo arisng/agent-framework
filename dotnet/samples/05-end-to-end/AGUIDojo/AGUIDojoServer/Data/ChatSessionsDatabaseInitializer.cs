@@ -51,10 +51,61 @@ public static class ChatSessionsDatabaseInitializer
 
             CREATE INDEX IF NOT EXISTS "IX_ChatConversationNodes_SessionId" ON "ChatConversationNodes" ("SessionId");
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ChatConversationNodes_SessionId_ParentNodeId_SiblingOrder" ON "ChatConversationNodes" ("SessionId", "ParentNodeId", "SiblingOrder");
+
+            CREATE TABLE IF NOT EXISTS "ChatSessionApprovalRecords" (
+                "SessionId" TEXT NOT NULL,
+                "ApprovalId" TEXT NOT NULL,
+                "FunctionName" TEXT NOT NULL,
+                "Message" TEXT NULL,
+                "FunctionArgumentsJson" TEXT NULL,
+                "OriginalCallId" TEXT NULL,
+                "Status" TEXT NOT NULL,
+                "RequestedAt" TEXT NOT NULL,
+                "ResolvedAt" TEXT NULL,
+                "RequestNodeId" TEXT NULL,
+                "ResponseNodeId" TEXT NULL,
+                "ResolutionSource" TEXT NULL,
+                "ConcurrencyStamp" TEXT NOT NULL,
+                CONSTRAINT "PK_ChatSessionApprovalRecords" PRIMARY KEY ("SessionId", "ApprovalId"),
+                CONSTRAINT "FK_ChatSessionApprovalRecords_ChatSessions_SessionId" FOREIGN KEY ("SessionId") REFERENCES "ChatSessions" ("Id") ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionApprovalRecords_SessionId" ON "ChatSessionApprovalRecords" ("SessionId");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionApprovalRecords_SessionId_Status" ON "ChatSessionApprovalRecords" ("SessionId", "Status");
+
+            CREATE TABLE IF NOT EXISTS "ChatSessionAuditEvents" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ChatSessionAuditEvents" PRIMARY KEY,
+                "SessionId" TEXT NOT NULL,
+                "EventType" TEXT NOT NULL,
+                "Title" TEXT NOT NULL,
+                "Summary" TEXT NULL,
+                "DataJson" TEXT NULL,
+                "OccurredAt" TEXT NOT NULL,
+                "RelatedNodeId" TEXT NULL,
+                "CorrelationId" TEXT NULL,
+                CONSTRAINT "FK_ChatSessionAuditEvents_ChatSessions_SessionId" FOREIGN KEY ("SessionId") REFERENCES "ChatSessions" ("Id") ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionAuditEvents_SessionId" ON "ChatSessionAuditEvents" ("SessionId");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionAuditEvents_SessionId_OccurredAt" ON "ChatSessionAuditEvents" ("SessionId", "OccurredAt");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionAuditEvents_SessionId_EventType" ON "ChatSessionAuditEvents" ("SessionId", "EventType");
+
+            CREATE TABLE IF NOT EXISTS "ChatSessionWorkspaceSnapshots" (
+                "SessionId" TEXT NOT NULL CONSTRAINT "PK_ChatSessionWorkspaceSnapshots" PRIMARY KEY,
+                "SnapshotJson" TEXT NOT NULL,
+                "UpdatedAt" TEXT NOT NULL,
+                "Source" TEXT NOT NULL,
+                "ConcurrencyStamp" TEXT NOT NULL,
+                CONSTRAINT "FK_ChatSessionWorkspaceSnapshots_ChatSessions_SessionId" FOREIGN KEY ("SessionId") REFERENCES "ChatSessions" ("Id") ON DELETE CASCADE
+            );
             """,
             cancellationToken);
 
         await EnsureSqliteColumnAsync(db, "ChatSessions", "SubjectEntityType", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessions", "OwnerId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessions", "TenantId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessions", "WorkflowInstanceId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessions", "RuntimeInstanceId", "TEXT", cancellationToken);
         await EnsureSqliteColumnAsync(
             db,
             "ChatSessions",
@@ -66,12 +117,25 @@ public static class ChatSessionsDatabaseInitializer
         await EnsureSqliteColumnAsync(db, "ChatConversationNodes", "SiblingOrder", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
         await EnsureSqliteColumnAsync(db, "ChatConversationNodes", "RuntimeMessageId", "TEXT", cancellationToken);
         await EnsureSqliteColumnAsync(db, "ChatConversationNodes", "ContentJson", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessionApprovalRecords", "OriginalCallId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessionApprovalRecords", "RequestNodeId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessionApprovalRecords", "ResponseNodeId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessionApprovalRecords", "ResolutionSource", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessionAuditEvents", "RelatedNodeId", "TEXT", cancellationToken);
+        await EnsureSqliteColumnAsync(db, "ChatSessionAuditEvents", "CorrelationId", "TEXT", cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync(
             """
             CREATE INDEX IF NOT EXISTS "IX_ChatSessions_Status" ON "ChatSessions" ("Status");
             CREATE INDEX IF NOT EXISTS "IX_ChatSessions_LastActivityAt" ON "ChatSessions" ("LastActivityAt");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessions_OwnerId_Status_LastActivityAt" ON "ChatSessions" ("OwnerId", "Status", "LastActivityAt");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessions_TenantId_Status" ON "ChatSessions" ("TenantId", "Status");
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ChatSessions_AguiThreadId" ON "ChatSessions" ("AguiThreadId");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionApprovalRecords_SessionId" ON "ChatSessionApprovalRecords" ("SessionId");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionApprovalRecords_SessionId_Status" ON "ChatSessionApprovalRecords" ("SessionId", "Status");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionAuditEvents_SessionId" ON "ChatSessionAuditEvents" ("SessionId");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionAuditEvents_SessionId_OccurredAt" ON "ChatSessionAuditEvents" ("SessionId", "OccurredAt");
+            CREATE INDEX IF NOT EXISTS "IX_ChatSessionAuditEvents_SessionId_EventType" ON "ChatSessionAuditEvents" ("SessionId", "EventType");
             """,
             cancellationToken);
     }

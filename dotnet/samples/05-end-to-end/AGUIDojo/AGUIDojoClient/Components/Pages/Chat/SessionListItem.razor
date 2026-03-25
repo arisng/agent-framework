@@ -89,13 +89,44 @@
         await OnDeleted.InvokeAsync(Entry.Metadata.Id);
     }
 
-    private string GetTooltip() => $"{Entry.Metadata.Title} • {GetStatusLabel()} • {GetSecondaryText()}";
+    private string GetTooltip()
+    {
+        List<string> parts = [Entry.Metadata.Title, GetStatusLabel(), GetSecondaryText()];
+
+        if (!string.IsNullOrWhiteSpace(Entry.Metadata.OwnerId))
+        {
+            parts.Add($"Owner: {Entry.Metadata.OwnerId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Entry.Metadata.TenantId))
+        {
+            parts.Add($"Tenant: {Entry.Metadata.TenantId}");
+        }
+
+        return string.Join(" • ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
 
     private string GetSecondaryText()
     {
         if (Entry.Metadata.HasPendingApproval)
         {
             return "Approval required";
+        }
+
+        if (!string.IsNullOrWhiteSpace(Entry.Metadata.SubjectModule) &&
+            !string.IsNullOrWhiteSpace(Entry.Metadata.SubjectEntityId))
+        {
+            return $"{Entry.Metadata.SubjectModule} · {Entry.Metadata.SubjectEntityId}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(Entry.Metadata.WorkflowInstanceId))
+        {
+            return $"Workflow · {Entry.Metadata.WorkflowInstanceId}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(Entry.Metadata.RuntimeInstanceId))
+        {
+            return $"Runtime · {Entry.Metadata.RuntimeInstanceId}";
         }
 
         return GetRelativeTime(Entry.Metadata.LastActivityAt);

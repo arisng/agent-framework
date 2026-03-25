@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 
@@ -113,14 +114,27 @@ internal static class AGUIChatMessageExtensions
         this IEnumerable<ChatMessage> chatMessages,
         JsonSerializerOptions jsonSerializerOptions)
     {
+        HashSet<string>? pendingToolCallIds = null;
+
         foreach (var message in chatMessages)
         {
             message.MessageId ??= Guid.NewGuid().ToString("N");
             if (message.Role == ChatRole.Tool)
             {
-                foreach (var toolMessage in MapToolMessages(jsonSerializerOptions, message))
+                if (pendingToolCallIds is null || pendingToolCallIds.Count == 0)
                 {
+                    continue;
+                }
+
+                foreach (var toolMessage in MapToolMessages(jsonSerializerOptions, message, pendingToolCallIds))
+                {
+                    pendingToolCallIds.Remove(toolMessage.ToolCallId);
                     yield return toolMessage;
+                }
+
+                if (pendingToolCallIds.Count == 0)
+                {
+                    pendingToolCallIds = null;
                 }
             }
             else if (message.Role == ChatRole.Assistant)
@@ -130,9 +144,24 @@ internal static class AGUIChatMessageExtensions
                 {
                     yield return assistantMessage;
                 }
+
+                HashSet<string> toolCallIds = [.. message.Contents
+                    .OfType<FunctionCallContent>()
+                    .Select(content => content.CallId)
+                    .Where(callId => !string.IsNullOrWhiteSpace(callId))!];
+
+                foreach (var toolMessage in MapToolMessages(jsonSerializerOptions, message, toolCallIds))
+                {
+                    toolCallIds.Remove(toolMessage.ToolCallId);
+                    yield return toolMessage;
+                }
+
+                pendingToolCallIds = toolCallIds.Count > 0 ? toolCallIds : null;
             }
             else
             {
+                pendingToolCallIds = null;
+
                 yield return message.Role.Value switch
                 {
                     AGUIRoles.Developer => new AGUIDeveloperMessage { Id = message.MessageId, Content = message.Text ?? string.Empty },
@@ -188,12 +217,21 @@ internal static class AGUIChatMessageExtensions
         return null;
     }
 
-    private static IEnumerable<AGUIToolMessage> MapToolMessages(JsonSerializerOptions jsonSerializerOptions, ChatMessage message)
+    private static IEnumerable<AGUIToolMessage> MapToolMessages(
+        JsonSerializerOptions jsonSerializerOptions,
+        ChatMessage message,
+        HashSet<string>? allowedToolCallIds = null)
     {
         foreach (var content in message.Contents)
         {
             if (content is FunctionResultContent functionResult)
             {
+                if (allowedToolCallIds is not null &&
+                    (string.IsNullOrWhiteSpace(functionResult.CallId) || !allowedToolCallIds.Contains(functionResult.CallId)))
+                {
+                    continue;
+                }
+
                 yield return new AGUIToolMessage
                 {
                     Id = functionResult.CallId,

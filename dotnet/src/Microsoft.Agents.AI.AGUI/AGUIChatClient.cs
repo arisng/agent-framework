@@ -1,8 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -128,6 +128,10 @@ public sealed class AGUIChatClient : DelegatingChatClient
                 {
                     update.Contents[i] = serverFunctionCallContent.FunctionCallContent;
                 }
+                if (content is ServerFunctionResultContent serverFunctionResultContent)
+                {
+                    update.Contents[i] = serverFunctionResultContent.FunctionResultContent;
+                }
             }
 
             var finalUpdate = CopyResponseUpdate(update);
@@ -215,7 +219,7 @@ public sealed class AGUIChatClient : DelegatingChatClient
                 RunId = runId,
                 Messages = messagesList.AsAGUIMessages(this._jsonSerializerOptions),
                 State = state,
-                ForwardedProperties = ExtractForwardedProperties(options),
+                ForwardedProperties = this.ExtractForwardedProperties(options),
             };
 
             // Add tools if provided
@@ -230,6 +234,7 @@ public sealed class AGUIChatClient : DelegatingChatClient
             }
 
             var clientToolSet = new HashSet<string>();
+            var serverToolCallIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var tool in options?.Tools ?? [])
             {
                 clientToolSet.Add(tool.Name);
@@ -272,7 +277,23 @@ public sealed class AGUIChatClient : DelegatingChatClient
                     {
                         // Hide the server result call from the FunctionInvokingChatClient.
                         // The wrapping client will unwrap it and present it as a normal function result.
+                        if (!string.IsNullOrWhiteSpace(fcc.CallId))
+                        {
+                            serverToolCallIds.Add(fcc.CallId);
+                        }
                         update.Contents[0] = new ServerFunctionCallContent(fcc);
+                    }
+                }
+                else if (update.Role == ChatRole.Tool)
+                {
+                    for (var i = 0; i < update.Contents.Count; i++)
+                    {
+                        if (update.Contents[i] is FunctionResultContent frc &&
+                            !string.IsNullOrWhiteSpace(frc.CallId) &&
+                            serverToolCallIds.Remove(frc.CallId))
+                        {
+                            update.Contents[i] = new ServerFunctionResultContent(frc);
+                        }
                     }
                 }
 
@@ -297,14 +318,46 @@ public sealed class AGUIChatClient : DelegatingChatClient
 
         private JsonElement ExtractForwardedProperties(ChatOptions? options)
         {
-            string? preferredModelId = null;
+            bool hasForwardedProperties = false;
 
-            if (options?.AdditionalProperties is not null &&
-                options.AdditionalProperties.TryGetValue("preferredModelId", out object? rawPreferredModelId) &&
-                rawPreferredModelId is string modelId &&
-                !string.IsNullOrWhiteSpace(modelId))
+            using MemoryStream buffer = new();
+            using (Utf8JsonWriter writer = new(buffer))
             {
-                preferredModelId = modelId;
+                writer.WriteStartObject();
+                hasForwardedProperties |= TryWriteForwardedStringProperty(writer, options, "ownerId");
+                hasForwardedProperties |= TryWriteForwardedStringProperty(writer, options, "tenantId");
+                hasForwardedProperties |= TryWriteForwardedStringProperty(writer, options, "workflowInstanceId");
+                hasForwardedProperties |= TryWriteForwardedStringProperty(writer, options, "runtimeInstanceId");
+                hasForwardedProperties |= TryWritePreferredModelId(writer, options);
+                writer.WriteEndObject();
+            }
+
+            if (!hasForwardedProperties)
+            {
+                return default;
+            }
+
+            using JsonDocument document = JsonDocument.Parse(buffer.ToArray());
+            return document.RootElement.Clone();
+        }
+
+        private static bool TryWriteForwardedStringProperty(Utf8JsonWriter writer, ChatOptions? options, string propertyName)
+        {
+            if (!TryGetAdditionalPropertyString(options, propertyName, out string? propertyValue))
+            {
+                return false;
+            }
+
+            writer.WriteString(propertyName, propertyValue);
+            return true;
+        }
+
+        private static bool TryWritePreferredModelId(Utf8JsonWriter writer, ChatOptions? options)
+        {
+            string? preferredModelId = null;
+            if (TryGetAdditionalPropertyString(options, "preferredModelId", out string? configuredPreferredModelId))
+            {
+                preferredModelId = configuredPreferredModelId;
             }
             else if (!string.IsNullOrWhiteSpace(options?.ModelId))
             {
@@ -313,19 +366,40 @@ public sealed class AGUIChatClient : DelegatingChatClient
 
             if (string.IsNullOrWhiteSpace(preferredModelId))
             {
-                return default;
+                return false;
             }
 
-            ArrayBufferWriter<byte> buffer = new();
-            using (Utf8JsonWriter writer = new(buffer))
+            writer.WriteString("preferredModelId", preferredModelId);
+            return true;
+        }
+
+        private static bool TryGetAdditionalPropertyString(ChatOptions? options, string propertyName, out string? propertyValue)
+        {
+            propertyValue = null;
+            if (options?.AdditionalProperties is null ||
+                !options.AdditionalProperties.TryGetValue(propertyName, out object? rawPropertyValue))
             {
-                writer.WriteStartObject();
-                writer.WriteString("preferredModelId", preferredModelId);
-                writer.WriteEndObject();
+                return false;
             }
 
-            using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
-            return document.RootElement.Clone();
+            if (rawPropertyValue is string stringValue && !string.IsNullOrWhiteSpace(stringValue))
+            {
+                propertyValue = stringValue;
+                return true;
+            }
+
+            if (rawPropertyValue is JsonElement jsonElement &&
+                jsonElement.ValueKind == JsonValueKind.String)
+            {
+                string? jsonStringValue = jsonElement.GetString();
+                if (!string.IsNullOrWhiteSpace(jsonStringValue))
+                {
+                    propertyValue = jsonStringValue;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // Extract the session id from the second last message's function call content additional properties
@@ -415,5 +489,10 @@ public sealed class AGUIChatClient : DelegatingChatClient
     private sealed class ServerFunctionCallContent(FunctionCallContent functionCall) : AIContent
     {
         public FunctionCallContent FunctionCallContent { get; } = functionCall;
+    }
+
+    private sealed class ServerFunctionResultContent(FunctionResultContent functionResult) : AIContent
+    {
+        public FunctionResultContent FunctionResultContent { get; } = functionResult;
     }
 }

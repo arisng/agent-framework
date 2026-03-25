@@ -317,6 +317,8 @@ builder.Services.AddDbContext<ChatSessionsDbContext>(options =>
     options.UseSqlite("Data Source=aguidojo-sessions.db"));
 builder.Services.AddScoped<ChatSessionService>();
 builder.Services.AddScoped<ChatConversationService>();
+builder.Services.AddScoped<ChatSessionAuditService>();
+builder.Services.AddScoped<ChatSessionWorkspaceService>();
 
 // Add health checks for operational monitoring
 // Health checks verify:

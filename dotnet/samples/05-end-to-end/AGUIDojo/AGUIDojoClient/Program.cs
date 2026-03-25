@@ -82,7 +82,7 @@ builder.Services.AddFluxor(options => options.ScanAssemblies(typeof(Program).Ass
 // Uses IJSRuntime to toggle .dark CSS class on <html> and persist to localStorage
 builder.Services.AddScoped<IThemeService, ThemeService>();
 
-// Register SessionPersistenceService for browser-based session storage (localStorage + IndexedDB)
+// Register SessionPersistenceService for browser cache/draft persistence (localStorage + IndexedDB)
 builder.Services.AddScoped<ISessionPersistenceService, SessionPersistenceService>();
 builder.Services.AddScoped<ISessionApiService, SessionApiService>();
 
@@ -486,8 +486,18 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment())
+{
+    // MapStaticAssets currently throws for compressed package assets like BlazorMonaco in this sample's dev host.
+    app.UseStaticFiles();
+}
+else
+{
+    app.MapStaticAssets();
+}
+
 app.UseAntiforgery();
-app.MapStaticAssets();
 
 // Map health check endpoint for operational monitoring
 // Returns aggregate status of BFF health and backend availability

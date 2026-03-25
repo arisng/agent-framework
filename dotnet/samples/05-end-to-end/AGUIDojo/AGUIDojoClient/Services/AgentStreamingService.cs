@@ -324,21 +324,41 @@ public sealed class AgentStreamingService : IAgentStreamingService
         if (!TryGetSession(sessionId, out SessionEntry entry))
         {
             context.ChatOptions.ModelId = null;
-            context.ChatOptions.AdditionalProperties?.Remove("preferredModelId");
+            SetForwardedProperty(context.ChatOptions, "preferredModelId", null);
+            SetForwardedProperty(context.ChatOptions, "ownerId", null);
+            SetForwardedProperty(context.ChatOptions, "tenantId", null);
+            SetForwardedProperty(context.ChatOptions, "workflowInstanceId", null);
+            SetForwardedProperty(context.ChatOptions, "runtimeInstanceId", null);
             return;
         }
+
+        SetForwardedProperty(context.ChatOptions, "ownerId", entry.Metadata.OwnerId);
+        SetForwardedProperty(context.ChatOptions, "tenantId", entry.Metadata.TenantId);
+        SetForwardedProperty(context.ChatOptions, "workflowInstanceId", entry.Metadata.WorkflowInstanceId);
+        SetForwardedProperty(context.ChatOptions, "runtimeInstanceId", entry.Metadata.RuntimeInstanceId);
 
         string? preferredModelId = entry.Metadata.PreferredModelId;
         if (!string.IsNullOrWhiteSpace(preferredModelId))
         {
             context.ChatOptions.ModelId = preferredModelId;
-            context.ChatOptions.AdditionalProperties ??= [];
-            context.ChatOptions.AdditionalProperties["preferredModelId"] = preferredModelId;
+            SetForwardedProperty(context.ChatOptions, "preferredModelId", preferredModelId);
             return;
         }
 
         context.ChatOptions.ModelId = null;
-        context.ChatOptions.AdditionalProperties?.Remove("preferredModelId");
+        SetForwardedProperty(context.ChatOptions, "preferredModelId", null);
+    }
+
+    private static void SetForwardedProperty(ChatOptions chatOptions, string propertyName, string? propertyValue)
+    {
+        if (string.IsNullOrWhiteSpace(propertyValue))
+        {
+            chatOptions.AdditionalProperties?.Remove(propertyName);
+            return;
+        }
+
+        chatOptions.AdditionalProperties ??= [];
+        chatOptions.AdditionalProperties[propertyName] = propertyValue;
     }
 
     private void OnSessionStoreChanged(object? sender, EventArgs e)

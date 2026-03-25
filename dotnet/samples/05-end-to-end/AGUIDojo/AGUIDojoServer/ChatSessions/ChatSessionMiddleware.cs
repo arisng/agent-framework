@@ -1,4 +1,7 @@
 using System.Text.Json;
+using System.Security.Claims;
+using AGUIDojoServer.Data;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AGUIDojoServer.ChatSessions;
 
@@ -14,22 +17,31 @@ public sealed class ChatSessionMiddleware(RequestDelegate next)
         string? SubjectModule,
         string? SubjectEntityType,
         string? SubjectEntityId,
+        string? OwnerId,
+        string? TenantId,
+        string? WorkflowInstanceId,
+        string? RuntimeInstanceId,
         string? PreferredModelId);
 
     /// <summary>
     /// Intercepts chat requests and ensures the backing server session exists.
     /// Reads threadId from the AG-UI JSON request body (RunAgentInput.threadId).
     /// </summary>
-    public async Task InvokeAsync(HttpContext context, ChatSessionService sessionService)
+    public async Task InvokeAsync(HttpContext context)
     {
         if (context.Request.Path.StartsWithSegments("/chat", StringComparison.OrdinalIgnoreCase) &&
             HttpMethods.IsPost(context.Request.Method))
         {
+            ChatSessionService sessionService = context.RequestServices.GetRequiredService<ChatSessionService>();
+
             // AG-UI sends threadId inside the JSON request body (RunAgentInput).
             // Buffer the body so MapAGUI can still read it downstream.
             context.Request.EnableBuffering();
 
-            ChatSessionRequestContext requestContext = await ExtractRequestContextAsync(context.Request.Body, context.RequestAborted);
+            ChatSessionRequestContext requestContext = await ExtractRequestContextAsync(
+                context.Request.Body,
+                context.User,
+                context.RequestAborted);
 
             // Rewind the body for the next handler.
             context.Request.Body.Position = 0;
@@ -45,11 +57,15 @@ public sealed class ChatSessionMiddleware(RequestDelegate next)
                             SubjectModule = requestContext.SubjectModule,
                             SubjectEntityType = requestContext.SubjectEntityType,
                             SubjectEntityId = requestContext.SubjectEntityId,
+                            OwnerId = requestContext.OwnerId,
+                            TenantId = requestContext.TenantId,
+                            WorkflowInstanceId = requestContext.WorkflowInstanceId,
+                            RuntimeInstanceId = requestContext.RuntimeInstanceId,
                             PreferredModelId = requestContext.PreferredModelId,
                         },
                         context.RequestAborted);
 
-                context.Items[ChatSessionHttpContextItems.SessionId] = sessionResult.SessionId;
+                ChatSessionHttpContextItems.SetRoutingContext(context, sessionResult.RoutingContext);
                 context.Response.Headers["X-Session-Id"] = sessionResult.SessionId;
                 context.Response.Headers["X-Chat-Session-Protocol"] = sessionResult.ServerProtocolVersion;
             }
@@ -58,7 +74,10 @@ public sealed class ChatSessionMiddleware(RequestDelegate next)
         await next(context);
     }
 
-    private static async Task<ChatSessionRequestContext> ExtractRequestContextAsync(Stream body, CancellationToken ct)
+    private static async Task<ChatSessionRequestContext> ExtractRequestContextAsync(
+        Stream body,
+        ClaimsPrincipal user,
+        CancellationToken ct)
     {
         try
         {
@@ -98,6 +117,10 @@ public sealed class ChatSessionMiddleware(RequestDelegate next)
                 TryGetStringProperty(forwardedProps, "subjectModule"),
                 TryGetStringProperty(forwardedProps, "subjectEntityType"),
                 TryGetStringProperty(forwardedProps, "subjectEntityId"),
+                ResolveOwnerId(forwardedProps, user),
+                ResolveTenantId(forwardedProps, user),
+                TryGetStringProperty(forwardedProps, "workflowInstanceId"),
+                TryGetStringProperty(forwardedProps, "runtimeInstanceId"),
                 TryGetStringProperty(forwardedProps, "preferredModelId"));
         }
         catch (JsonException)
@@ -107,6 +130,16 @@ public sealed class ChatSessionMiddleware(RequestDelegate next)
 
         return default;
     }
+
+    private static string? ResolveOwnerId(JsonElement forwardedProps, ClaimsPrincipal user)
+        => TryGetStringProperty(forwardedProps, "ownerId")
+            ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("sub")?.Value;
+
+    private static string? ResolveTenantId(JsonElement forwardedProps, ClaimsPrincipal user)
+        => TryGetStringProperty(forwardedProps, "tenantId")
+            ?? user.FindFirst("tenant_id")?.Value
+            ?? user.FindFirst("tid")?.Value;
 
     private static string? TryGetStringProperty(JsonElement element, string propertyName)
     {

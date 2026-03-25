@@ -53,9 +53,7 @@ internal sealed class ConversationPersistenceAgent : DelegatingAIAgent
     {
         HttpContext? httpContext = this._httpContextAccessor.HttpContext;
         if (httpContext is null ||
-            !httpContext.Items.TryGetValue(ChatSessionHttpContextItems.SessionId, out object? rawSessionId) ||
-            rawSessionId is not string sessionId ||
-            string.IsNullOrWhiteSpace(sessionId))
+            !ChatSessionHttpContextItems.TryGetSessionId(httpContext, out string? sessionId))
         {
             return;
         }
@@ -74,5 +72,11 @@ internal sealed class ConversationPersistenceAgent : DelegatingAIAgent
         }
 
         await conversationService.PersistConversationAsync(sessionId, conversationPath, cancellationToken).ConfigureAwait(false);
+
+        ChatSessionWorkspaceService? workspaceService = httpContext.RequestServices.GetService<ChatSessionWorkspaceService>();
+        if (workspaceService is not null)
+        {
+            await workspaceService.RefreshDerivedStateAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
     }
 }

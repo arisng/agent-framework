@@ -38,6 +38,18 @@ public sealed class ChatSession
     /// <summary>The business entity type within the subject module.</summary>
     public string? SubjectEntityType { get; set; }
 
+    /// <summary>Simulated current-user ownership for the session.</summary>
+    public string? OwnerId { get; set; }
+
+    /// <summary>Simulated tenant or organization context for the session.</summary>
+    public string? TenantId { get; set; }
+
+    /// <summary>Linked workflow instance identifier for correlation only.</summary>
+    public string? WorkflowInstanceId { get; set; }
+
+    /// <summary>Linked runtime or Durable Task identifier for correlation only.</summary>
+    public string? RuntimeInstanceId { get; set; }
+
     /// <summary>AG-UI thread correlation ID (runtime reference, not primary key).</summary>
     public string? AguiThreadId { get; set; }
 
@@ -57,6 +69,15 @@ public sealed class ChatSession
 public static class ChatSessionProtocolVersions
 {
     public const string Current = "agui-chat-session.v1";
+}
+
+/// <summary>
+/// Default simulated ownership context used when no authenticated user is present.
+/// </summary>
+public static class ChatSessionOwnershipDefaults
+{
+    public const string OwnerId = "dev-user";
+    public const string TenantId = "sample-tenant";
 }
 
 /// <summary>

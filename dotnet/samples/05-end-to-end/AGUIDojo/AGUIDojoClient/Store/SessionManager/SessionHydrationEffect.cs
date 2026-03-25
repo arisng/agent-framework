@@ -8,7 +8,7 @@ using Microsoft.Extensions.AI;
 namespace AGUIDojoClient.Store.SessionManager;
 
 /// <summary>
-/// Fluxor effect that hydrates session state from browser persistence on app start.
+/// Fluxor effect that hydrates session state from server-first data plus browser cache on app start.
 /// Triggered once from <c>Chat.razor.OnAfterRenderAsync(firstRender: true)</c>
 /// via <see cref="SessionActions.HydrateFromStorageAction"/>.
 /// </summary>
@@ -29,7 +29,7 @@ public sealed class SessionHydrationEffect
     }
 
     /// <summary>
-    /// Loads browser metadata, prefers server-owned conversation graphs when available,
+    /// Loads cached browser metadata, prefers server-owned conversation graphs when available,
     /// and falls back to IndexedDB trees before dispatching
     /// <see cref="SessionActions.HydrateSessionsAction"/> to restore state.
     /// </summary>
@@ -84,14 +84,14 @@ public sealed class SessionHydrationEffect
                         ConversationTree mergedTree = await ResolveHydratedTreeAsync(
                             serverSession.Id,
                             sessions[localSessionId].State.Tree);
-                        SessionEntry mergedEntry = MergeCorrelatedSession(sessions[localSessionId], serverSession, mergedTree);
+                        SessionEntry mergedEntry = await MergeCorrelatedSessionAsync(sessions[localSessionId], serverSession, mergedTree);
                         sessions[localSessionId] = mergedEntry;
                         UpdateCorrelationIndexes(localSessionIdsByServerSessionId, localSessionIdsByThreadId, localSessionId, mergedEntry.Metadata);
                         continue;
                     }
 
                     ConversationTree hydratedTree = await ResolveHydratedTreeAsync(serverSession.Id);
-                    SessionEntry serverEntry = CreateServerSessionEntry(serverSession, hydratedTree);
+                    SessionEntry serverEntry = await CreateServerSessionEntryAsync(serverSession, hydratedTree);
                     sessions[serverSession.Id] = serverEntry;
                     UpdateCorrelationIndexes(localSessionIdsByServerSessionId, localSessionIdsByThreadId, serverSession.Id, serverEntry.Metadata);
                 }
@@ -130,12 +130,12 @@ public sealed class SessionHydrationEffect
         return TryBuildConversationTree(serverGraph, out ConversationTree? tree) ? tree : null;
     }
 
-    private static SessionEntry CreateServerSessionEntry(ServerSessionSummary serverSession, ConversationTree? tree = null)
+    private async Task<SessionEntry> CreateServerSessionEntryAsync(ServerSessionSummary serverSession, ConversationTree? tree = null)
     {
         DateTimeOffset createdAt = serverSession.CreatedAt == default ? DateTimeOffset.UtcNow : serverSession.CreatedAt;
         DateTimeOffset lastActivityAt = serverSession.LastActivityAt == default ? createdAt : serverSession.LastActivityAt;
 
-        return new SessionEntry(
+        SessionEntry entry = new(
             new SessionMetadata
             {
                 Id = serverSession.Id,
@@ -146,6 +146,13 @@ public sealed class SessionHydrationEffect
                 LastActivityAt = lastActivityAt,
                 AguiThreadId = serverSession.AguiThreadId,
                 ServerSessionId = serverSession.Id,
+                SubjectModule = serverSession.SubjectModule,
+                SubjectEntityType = serverSession.SubjectEntityType,
+                SubjectEntityId = serverSession.SubjectEntityId,
+                OwnerId = serverSession.OwnerId,
+                TenantId = serverSession.TenantId,
+                WorkflowInstanceId = serverSession.WorkflowInstanceId,
+                RuntimeInstanceId = serverSession.RuntimeInstanceId,
                 PreferredModelId = serverSession.PreferredModelId,
                 UnreadCount = 0,
                 HasPendingApproval = false,
@@ -154,15 +161,17 @@ public sealed class SessionHydrationEffect
             {
                 Tree = tree ?? new ConversationTree(),
             });
+
+        return await MergeWorkspaceAsync(serverSession.Id, entry);
     }
 
-    private static SessionEntry MergeCorrelatedSession(SessionEntry localEntry, ServerSessionSummary serverSession, ConversationTree hydratedTree)
+    private async Task<SessionEntry> MergeCorrelatedSessionAsync(SessionEntry localEntry, ServerSessionSummary serverSession, ConversationTree hydratedTree)
     {
-        SessionEntry serverEntry = CreateServerSessionEntry(serverSession, hydratedTree);
+        SessionEntry serverEntry = await CreateServerSessionEntryAsync(serverSession, hydratedTree);
         DateTimeOffset mergedCreatedAt = GetEarlierTimestamp(localEntry.Metadata.CreatedAt, serverEntry.Metadata.CreatedAt);
         DateTimeOffset mergedLastActivityAt = GetLaterTimestamp(localEntry.Metadata.LastActivityAt, serverEntry.Metadata.LastActivityAt);
 
-        return localEntry with
+        SessionEntry mergedEntry = localEntry with
         {
             Metadata = localEntry.Metadata with
             {
@@ -174,17 +183,40 @@ public sealed class SessionHydrationEffect
                     ? localEntry.Metadata.AguiThreadId
                     : serverEntry.Metadata.AguiThreadId,
                 ServerSessionId = serverSession.Id,
+                SubjectModule = !string.IsNullOrWhiteSpace(serverEntry.Metadata.SubjectModule)
+                    ? serverEntry.Metadata.SubjectModule
+                    : localEntry.Metadata.SubjectModule,
+                SubjectEntityType = !string.IsNullOrWhiteSpace(serverEntry.Metadata.SubjectEntityType)
+                    ? serverEntry.Metadata.SubjectEntityType
+                    : localEntry.Metadata.SubjectEntityType,
+                SubjectEntityId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.SubjectEntityId)
+                    ? serverEntry.Metadata.SubjectEntityId
+                    : localEntry.Metadata.SubjectEntityId,
+                OwnerId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.OwnerId)
+                    ? serverEntry.Metadata.OwnerId
+                    : localEntry.Metadata.OwnerId,
+                TenantId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.TenantId)
+                    ? serverEntry.Metadata.TenantId
+                    : localEntry.Metadata.TenantId,
+                WorkflowInstanceId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.WorkflowInstanceId)
+                    ? serverEntry.Metadata.WorkflowInstanceId
+                    : localEntry.Metadata.WorkflowInstanceId,
+                RuntimeInstanceId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.RuntimeInstanceId)
+                    ? serverEntry.Metadata.RuntimeInstanceId
+                    : localEntry.Metadata.RuntimeInstanceId,
                 PreferredModelId = !string.IsNullOrWhiteSpace(serverEntry.Metadata.PreferredModelId)
                     ? serverEntry.Metadata.PreferredModelId
                     : localEntry.Metadata.PreferredModelId,
                 UnreadCount = 0,
-                HasPendingApproval = false,
+                HasPendingApproval = serverEntry.Metadata.HasPendingApproval,
             },
             State = localEntry.State with
             {
                 Tree = hydratedTree,
             },
         };
+
+        return await MergeWorkspaceAsync(serverSession.Id, mergedEntry);
     }
 
     private static Dictionary<string, string> BuildLocalSessionIdsByServerSessionId(IReadOnlyDictionary<string, SessionEntry> sessions)
@@ -452,4 +484,19 @@ public sealed class SessionHydrationEffect
     }
 
     private readonly record struct StoredContentPayload(string Type, JsonElement Value);
+
+private async Task<SessionEntry> MergeWorkspaceAsync(string serverSessionId, SessionEntry entry)
+{
+    ServerSessionWorkspace? workspace = await _sessionApiService.GetWorkspaceAsync(serverSessionId);
+    if (workspace is null)
+    {
+        return entry;
+    }
+
+    return entry with
+    {
+        Metadata = SessionWorkspaceProjection.ApplyMetadata(entry.Metadata, workspace),
+        State = SessionWorkspaceProjection.ApplyState(entry.State, workspace),
+    };
+}
 }

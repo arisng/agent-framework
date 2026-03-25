@@ -91,13 +91,13 @@ public static class SessionActions
     public sealed record SwitchBranchAction(string SessionId, string NodeId, string TargetSiblingId);
 
     /// <summary>
-    /// Triggers hydration of session state from browser storage.
+    /// Triggers hydration of session state from server-owned surfaces plus browser cache.
     /// Dispatched once from <c>Chat.razor.OnAfterRenderAsync(firstRender: true)</c>.
     /// </summary>
     public sealed record HydrateFromStorageAction;
 
     /// <summary>
-    /// Hydrates session state from browser persistence on app start.
+    /// Hydrates session state from server-owned surfaces plus browser persistence on app start.
     /// Replaces the default initial state with previously persisted sessions.
     /// </summary>
     public sealed record HydrateSessionsAction(

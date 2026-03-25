@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AGUIDojoClient.Models;
 using Microsoft.AspNetCore.Components;
 
 namespace AGUIDojoClient.Services;
@@ -12,7 +13,9 @@ public interface ISessionApiService
     Task<List<ServerSessionSummary>?> ListSessionsAsync(CancellationToken ct = default);
     Task<ServerSessionDetail?> GetSessionAsync(string id, CancellationToken ct = default);
     Task<ServerConversationGraph?> GetConversationAsync(string id, CancellationToken ct = default);
+    Task<ServerSessionWorkspace?> GetWorkspaceAsync(string id, CancellationToken ct = default);
     Task<ServerModelCatalog?> GetModelCatalogAsync(CancellationToken ct = default);
+    Task<bool> ImportWorkspaceAsync(string id, ServerSessionWorkspaceImportRequest request, CancellationToken ct = default);
     Task<bool> SetActiveLeafAsync(string id, string activeLeafId, CancellationToken ct = default);
     Task<bool> ClearConversationAsync(string id, CancellationToken ct = default);
     Task<bool> ArchiveSessionAsync(string id, CancellationToken ct = default);
@@ -43,6 +46,18 @@ public sealed record ServerSessionSummary
 
     [JsonPropertyName("subjectEntityId")]
     public string? SubjectEntityId { get; init; }
+
+    [JsonPropertyName("ownerId")]
+    public string? OwnerId { get; init; }
+
+    [JsonPropertyName("tenantId")]
+    public string? TenantId { get; init; }
+
+    [JsonPropertyName("workflowInstanceId")]
+    public string? WorkflowInstanceId { get; init; }
+
+    [JsonPropertyName("runtimeInstanceId")]
+    public string? RuntimeInstanceId { get; init; }
 
     [JsonPropertyName("preferredModelId")]
     public string? PreferredModelId { get; init; }
@@ -82,6 +97,18 @@ public sealed record ServerSessionDetail
 
     [JsonPropertyName("subjectEntityId")]
     public string? SubjectEntityId { get; init; }
+
+    [JsonPropertyName("ownerId")]
+    public string? OwnerId { get; init; }
+
+    [JsonPropertyName("tenantId")]
+    public string? TenantId { get; init; }
+
+    [JsonPropertyName("workflowInstanceId")]
+    public string? WorkflowInstanceId { get; init; }
+
+    [JsonPropertyName("runtimeInstanceId")]
+    public string? RuntimeInstanceId { get; init; }
 
     [JsonPropertyName("aguiThreadId")]
     public string? AguiThreadId { get; init; }
@@ -192,6 +219,243 @@ public sealed record ServerConversationGraph
 
     [JsonPropertyName("nodes")]
     public List<ServerConversationNode> Nodes { get; init; } = [];
+}
+
+public sealed record ServerSessionWorkspace
+{
+    [JsonPropertyName("snapshot")]
+    public ServerSessionWorkspaceSnapshot? Snapshot { get; init; }
+
+    [JsonPropertyName("approvals")]
+    public List<ServerSessionApprovalRecord> Approvals { get; init; } = [];
+
+    [JsonPropertyName("auditEvents")]
+    public List<ServerSessionAuditEvent> AuditEvents { get; init; } = [];
+}
+
+public sealed record ServerSessionWorkspaceSnapshot
+{
+    [JsonPropertyName("currentPlan")]
+    public Plan? CurrentPlan { get; init; }
+
+    [JsonPropertyName("currentRecipe")]
+    public Recipe? CurrentRecipe { get; init; }
+
+    [JsonPropertyName("currentDocument")]
+    public DocumentState? CurrentDocument { get; init; }
+
+    [JsonPropertyName("previousDocumentText")]
+    public string? PreviousDocumentText { get; init; }
+
+    [JsonPropertyName("isDocumentPreview")]
+    public bool IsDocumentPreview { get; init; }
+
+    [JsonPropertyName("currentDataGrid")]
+    public DataGridResult? CurrentDataGrid { get; init; }
+
+    [JsonPropertyName("fileReferences")]
+    public List<ServerSessionFileReference> FileReferences { get; init; } = [];
+
+    [JsonPropertyName("updatedAt")]
+    public DateTimeOffset UpdatedAt { get; init; }
+}
+
+public sealed record ServerSessionFileReference
+{
+    [JsonPropertyName("attachmentId")]
+    public required string AttachmentId { get; init; }
+
+    [JsonPropertyName("fileName")]
+    public required string FileName { get; init; }
+
+    [JsonPropertyName("contentType")]
+    public required string ContentType { get; init; }
+
+    [JsonPropertyName("messageNodeId")]
+    public required string MessageNodeId { get; init; }
+}
+
+public sealed record ServerSessionApprovalRecord
+{
+    [JsonPropertyName("approvalId")]
+    public required string ApprovalId { get; init; }
+
+    [JsonPropertyName("functionName")]
+    public required string FunctionName { get; init; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+
+    [JsonPropertyName("functionArgumentsJson")]
+    public string? FunctionArgumentsJson { get; init; }
+
+    [JsonPropertyName("originalCallId")]
+    public string? OriginalCallId { get; init; }
+
+    [JsonPropertyName("status")]
+    public required string Status { get; init; }
+
+    [JsonPropertyName("requestedAt")]
+    public DateTimeOffset RequestedAt { get; init; }
+
+    [JsonPropertyName("resolvedAt")]
+    public DateTimeOffset? ResolvedAt { get; init; }
+
+    [JsonPropertyName("requestNodeId")]
+    public string? RequestNodeId { get; init; }
+
+    [JsonPropertyName("responseNodeId")]
+    public string? ResponseNodeId { get; init; }
+
+    [JsonPropertyName("resolutionSource")]
+    public string? ResolutionSource { get; init; }
+}
+
+public sealed record ServerSessionAuditEvent
+{
+    [JsonPropertyName("id")]
+    public required string Id { get; init; }
+
+    [JsonPropertyName("eventType")]
+    public required string EventType { get; init; }
+
+    [JsonPropertyName("title")]
+    public required string Title { get; init; }
+
+    [JsonPropertyName("summary")]
+    public string? Summary { get; init; }
+
+    [JsonPropertyName("occurredAt")]
+    public DateTimeOffset OccurredAt { get; init; }
+
+    [JsonPropertyName("approvalId")]
+    public string? ApprovalId { get; init; }
+
+    [JsonPropertyName("functionName")]
+    public string? FunctionName { get; init; }
+
+    [JsonPropertyName("riskLevel")]
+    public string? RiskLevel { get; init; }
+
+    [JsonPropertyName("autonomyLevel")]
+    public string? AutonomyLevel { get; init; }
+
+    [JsonPropertyName("wasApproved")]
+    public bool? WasApproved { get; init; }
+
+    [JsonPropertyName("wasAutoDecided")]
+    public bool? WasAutoDecided { get; init; }
+
+    [JsonPropertyName("preferredModelId")]
+    public string? PreferredModelId { get; init; }
+
+    [JsonPropertyName("effectiveModelId")]
+    public string? EffectiveModelId { get; init; }
+
+    [JsonPropertyName("routingReason")]
+    public string? RoutingReason { get; init; }
+
+    [JsonPropertyName("inputMessageCount")]
+    public int? InputMessageCount { get; init; }
+
+    [JsonPropertyName("outputMessageCount")]
+    public int? OutputMessageCount { get; init; }
+
+    [JsonPropertyName("wasCompacted")]
+    public bool? WasCompacted { get; init; }
+}
+
+public sealed record ServerSessionWorkspaceImportRequest
+{
+    [JsonPropertyName("snapshot")]
+    public ServerSessionWorkspaceImportSnapshot? Snapshot { get; init; }
+
+    [JsonPropertyName("pendingApproval")]
+    public ServerSessionPendingApprovalImport? PendingApproval { get; init; }
+
+    [JsonPropertyName("auditEntries")]
+    public List<ServerSessionAuditImportEntry> AuditEntries { get; init; } = [];
+}
+
+public sealed record ServerSessionWorkspaceImportSnapshot
+{
+    [JsonPropertyName("currentPlan")]
+    public Plan? CurrentPlan { get; init; }
+
+    [JsonPropertyName("currentRecipe")]
+    public Recipe? CurrentRecipe { get; init; }
+
+    [JsonPropertyName("currentDocument")]
+    public DocumentState? CurrentDocument { get; init; }
+
+    [JsonPropertyName("previousDocumentText")]
+    public string? PreviousDocumentText { get; init; }
+
+    [JsonPropertyName("isDocumentPreview")]
+    public bool IsDocumentPreview { get; init; }
+
+    [JsonPropertyName("currentDataGrid")]
+    public DataGridResult? CurrentDataGrid { get; init; }
+
+    [JsonPropertyName("fileReferences")]
+    public List<ServerSessionFileReference> FileReferences { get; init; } = [];
+}
+
+public sealed record ServerSessionPendingApprovalImport
+{
+    [JsonPropertyName("approvalId")]
+    public required string ApprovalId { get; init; }
+
+    [JsonPropertyName("functionName")]
+    public required string FunctionName { get; init; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+
+    [JsonPropertyName("functionArgumentsJson")]
+    public string? FunctionArgumentsJson { get; init; }
+
+    [JsonPropertyName("originalCallId")]
+    public string? OriginalCallId { get; init; }
+
+    [JsonPropertyName("requestedAt")]
+    public DateTimeOffset RequestedAt { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public sealed record ServerSessionAuditImportEntry
+{
+    [JsonPropertyName("id")]
+    public required string Id { get; init; }
+
+    [JsonPropertyName("eventType")]
+    public required string EventType { get; init; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
+
+    [JsonPropertyName("summary")]
+    public string? Summary { get; init; }
+
+    [JsonPropertyName("occurredAt")]
+    public DateTimeOffset OccurredAt { get; init; }
+
+    [JsonPropertyName("approvalId")]
+    public string? ApprovalId { get; init; }
+
+    [JsonPropertyName("functionName")]
+    public string? FunctionName { get; init; }
+
+    [JsonPropertyName("riskLevel")]
+    public string? RiskLevel { get; init; }
+
+    [JsonPropertyName("autonomyLevel")]
+    public string? AutonomyLevel { get; init; }
+
+    [JsonPropertyName("wasApproved")]
+    public bool? WasApproved { get; init; }
+
+    [JsonPropertyName("wasAutoDecided")]
+    public bool? WasAutoDecided { get; init; }
 }
 
 public sealed class SessionApiService : ISessionApiService
@@ -331,6 +595,88 @@ public sealed class SessionApiService : ISessionApiService
         {
             _logger.LogWarning(ex, "Loading server conversation {SessionId} returned invalid JSON.", id);
             return null;
+        }
+    }
+
+    public async Task<ServerSessionWorkspace?> GetWorkspaceAsync(string id, CancellationToken ct = default)
+    {
+        try
+        {
+            using HttpResponseMessage response = await _httpClient.GetAsync(
+                BuildUri($"/api/chat-sessions/{Uri.EscapeDataString(id)}/workspace"),
+                ct);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Loading server workspace {SessionId} failed with status code {StatusCode}.", id, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<ServerSessionWorkspace>(cancellationToken: ct);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Loading server workspace {SessionId} timed out.", id);
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Loading server workspace {SessionId} failed.", id);
+            return null;
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogWarning(ex, "Loading server workspace {SessionId} returned an unsupported content type.", id);
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Loading server workspace {SessionId} returned invalid JSON.", id);
+            return null;
+        }
+    }
+
+    public async Task<bool> ImportWorkspaceAsync(string id, ServerSessionWorkspaceImportRequest request, CancellationToken ct = default)
+    {
+        try
+        {
+            using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
+                BuildUri($"/api/chat-sessions/{Uri.EscapeDataString(id)}/workspace/import"),
+                request,
+                cancellationToken: ct);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Importing workspace {SessionId} failed with status code {StatusCode}.", id, response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Importing workspace {SessionId} timed out.", id);
+            return false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Importing workspace {SessionId} failed.", id);
+            return false;
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger.LogWarning(ex, "Importing workspace {SessionId} returned an unsupported content type.", id);
+            return false;
         }
     }
 

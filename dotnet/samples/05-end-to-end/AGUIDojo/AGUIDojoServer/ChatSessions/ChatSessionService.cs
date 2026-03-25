@@ -6,7 +6,7 @@ namespace AGUIDojoServer.ChatSessions;
 /// <summary>
 /// Service for managing chat session lifecycle.
 /// </summary>
-public sealed class ChatSessionService(ChatSessionsDbContext db)
+internal sealed class ChatSessionService(ChatSessionsDbContext db, ChatSessionWorkspaceService workspaceService)
 {
     private const int MaxTitleLength = 80;
 
@@ -17,6 +17,10 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
         public string? SubjectModule { get; init; }
         public string? SubjectEntityType { get; init; }
         public string? SubjectEntityId { get; init; }
+        public string? OwnerId { get; init; }
+        public string? TenantId { get; init; }
+        public string? WorkflowInstanceId { get; init; }
+        public string? RuntimeInstanceId { get; init; }
         public string? PreferredModelId { get; init; }
         public string ServerProtocolVersion { get; init; } = ChatSessionProtocolVersions.Current;
     }
@@ -25,39 +29,62 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
     {
         public required string SessionId { get; init; }
         public required string ServerProtocolVersion { get; init; }
+        public required ChatSessionRoutingContext RoutingContext { get; init; }
     }
 
     /// <summary>Lists active sessions, ordered by most recent activity.</summary>
     public async Task<List<ChatSessionSummary>> ListSessionsAsync(CancellationToken ct = default)
     {
-        return await db.ChatSessions
+        List<ChatSession> sessions = await db.ChatSessions
             .Where(s => s.Status == ChatSessionStatus.Active)
             .OrderByDescending(s => s.LastActivityAt)
-            .Select(s => new ChatSessionSummary
-            {
-                Id = s.Id,
-                Title = s.Title,
-                Status = s.Status.ToString(),
-                CreatedAt = s.CreatedAt,
-                LastActivityAt = s.LastActivityAt,
-                SubjectModule = s.SubjectModule,
-                SubjectEntityType = s.SubjectEntityType,
-                SubjectEntityId = s.SubjectEntityId,
-                PreferredModelId = s.PreferredModelId,
-                AguiThreadId = s.AguiThreadId,
-                ServerProtocolVersion = s.ServerProtocolVersion,
-            })
             .ToListAsync(ct);
+
+        Dictionary<string, ChatSessionWorkspaceSummary> workspaceSummaries = await LoadWorkspaceSummariesAsync(
+            sessions.Select(session => session.Id),
+            ct);
+
+        return sessions.ConvertAll(session =>
+        {
+            workspaceSummaries.TryGetValue(session.Id, out ChatSessionWorkspaceSummary? workspaceSummary);
+            return new ChatSessionSummary
+            {
+                Id = session.Id,
+                Title = session.Title,
+                Status = session.Status.ToString(),
+                CreatedAt = session.CreatedAt,
+                LastActivityAt = session.LastActivityAt,
+                    SubjectModule = session.SubjectModule,
+                    SubjectEntityType = session.SubjectEntityType,
+                    SubjectEntityId = session.SubjectEntityId,
+                    OwnerId = session.OwnerId,
+                    TenantId = session.TenantId,
+                    WorkflowInstanceId = session.WorkflowInstanceId,
+                    RuntimeInstanceId = session.RuntimeInstanceId,
+                    PreferredModelId = session.PreferredModelId,
+                    AguiThreadId = session.AguiThreadId,
+                    ServerProtocolVersion = session.ServerProtocolVersion,
+                ApprovalCount = workspaceSummary?.ApprovalCount ?? 0,
+                PendingApprovalCount = workspaceSummary?.PendingApprovalCount ?? 0,
+                AuditEventCount = workspaceSummary?.AuditEventCount ?? 0,
+                ArtifactCount = workspaceSummary?.ArtifactCount ?? 0,
+                FileReferenceCount = workspaceSummary?.FileReferenceCount ?? 0,
+                LatestEffectiveModelId = workspaceSummary?.LatestEffectiveModelId,
+                LatestCompactionAt = workspaceSummary?.LatestCompactionAt,
+            };
+        });
     }
 
     /// <summary>Gets a session by ID.</summary>
     public async Task<ChatSessionDetail?> GetSessionAsync(string id, CancellationToken ct = default)
     {
-        var session = await db.ChatSessions.FindAsync([id], ct);
+        ChatSession? session = await db.ChatSessions.FindAsync([id], ct);
         if (session is null)
         {
             return null;
         }
+
+        ChatSessionWorkspaceSummary workspaceSummary = await workspaceService.GetWorkspaceSummaryAsync(id, ct);
 
         return new ChatSessionDetail
         {
@@ -70,11 +97,22 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
             SubjectModule = session.SubjectModule,
             SubjectEntityType = session.SubjectEntityType,
             SubjectEntityId = session.SubjectEntityId,
+            OwnerId = session.OwnerId,
+            TenantId = session.TenantId,
+            WorkflowInstanceId = session.WorkflowInstanceId,
+            RuntimeInstanceId = session.RuntimeInstanceId,
             AguiThreadId = session.AguiThreadId,
             PreferredModelId = session.PreferredModelId,
             RootMessageId = session.RootMessageId,
             ActiveLeafMessageId = session.ActiveLeafMessageId,
             ServerProtocolVersion = session.ServerProtocolVersion,
+            ApprovalCount = workspaceSummary.ApprovalCount,
+            PendingApprovalCount = workspaceSummary.PendingApprovalCount,
+            AuditEventCount = workspaceSummary.AuditEventCount,
+            ArtifactCount = workspaceSummary.ArtifactCount,
+            FileReferenceCount = workspaceSummary.FileReferenceCount,
+            LatestEffectiveModelId = workspaceSummary.LatestEffectiveModelId,
+            LatestCompactionAt = workspaceSummary.LatestCompactionAt,
         };
     }
 
@@ -137,6 +175,7 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
             {
                 SessionId = session.Id,
                 ServerProtocolVersion = session.ServerProtocolVersion,
+                RoutingContext = BuildRoutingContext(session),
             };
         }
 
@@ -166,6 +205,7 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
         {
             SessionId = session.Id,
             ServerProtocolVersion = session.ServerProtocolVersion,
+            RoutingContext = BuildRoutingContext(session),
         };
     }
 
@@ -206,6 +246,32 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
             requestedValue: request.SubjectEntityId,
             fieldName: nameof(ChatSession.SubjectEntityId),
             assign: value => session.SubjectEntityId = value);
+
+        ApplyImmutableMetadataWithDefault(
+            currentValue: session.OwnerId,
+            requestedValue: request.OwnerId,
+            defaultValue: ChatSessionOwnershipDefaults.OwnerId,
+            fieldName: nameof(ChatSession.OwnerId),
+            assign: value => session.OwnerId = value);
+
+        ApplyImmutableMetadataWithDefault(
+            currentValue: session.TenantId,
+            requestedValue: request.TenantId,
+            defaultValue: ChatSessionOwnershipDefaults.TenantId,
+            fieldName: nameof(ChatSession.TenantId),
+            assign: value => session.TenantId = value);
+
+        ApplyImmutableMetadata(
+            currentValue: session.WorkflowInstanceId,
+            requestedValue: request.WorkflowInstanceId,
+            fieldName: nameof(ChatSession.WorkflowInstanceId),
+            assign: value => session.WorkflowInstanceId = value);
+
+        ApplyImmutableMetadata(
+            currentValue: session.RuntimeInstanceId,
+            requestedValue: request.RuntimeInstanceId,
+            fieldName: nameof(ChatSession.RuntimeInstanceId),
+            assign: value => session.RuntimeInstanceId = value);
 
         if (!string.IsNullOrWhiteSpace(request.PreferredModelId))
         {
@@ -262,6 +328,23 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
         }
     }
 
+    private static void ApplyImmutableMetadataWithDefault(
+        string? currentValue,
+        string? requestedValue,
+        string defaultValue,
+        string fieldName,
+        Action<string> assign)
+    {
+        string? effectiveRequestedValue = requestedValue;
+        if (string.IsNullOrWhiteSpace(effectiveRequestedValue) &&
+            string.IsNullOrWhiteSpace(currentValue))
+        {
+            effectiveRequestedValue = defaultValue;
+        }
+
+        ApplyImmutableMetadata(currentValue, effectiveRequestedValue, fieldName, assign);
+    }
+
     private static string? BuildTitleCandidate(string? firstUserMessage)
     {
         if (string.IsNullOrWhiteSpace(firstUserMessage))
@@ -282,5 +365,34 @@ public sealed class ChatSessionService(ChatSessionsDbContext db)
         return collapsed.Length <= MaxTitleLength
             ? collapsed
             : $"{collapsed[..(MaxTitleLength - 3)]}...";
+    }
+
+    private static ChatSessionRoutingContext BuildRoutingContext(ChatSession session)
+        => new()
+        {
+            SessionId = session.Id,
+            ServerProtocolVersion = session.ServerProtocolVersion,
+            OwnerId = session.OwnerId,
+            TenantId = session.TenantId,
+            SubjectModule = session.SubjectModule,
+            SubjectEntityType = session.SubjectEntityType,
+            SubjectEntityId = session.SubjectEntityId,
+            WorkflowInstanceId = session.WorkflowInstanceId,
+            RuntimeInstanceId = session.RuntimeInstanceId,
+            AguiThreadId = session.AguiThreadId,
+            PreferredModelId = session.PreferredModelId,
+        };
+
+    private async Task<Dictionary<string, ChatSessionWorkspaceSummary>> LoadWorkspaceSummariesAsync(
+        IEnumerable<string> sessionIds,
+        CancellationToken ct)
+    {
+        Dictionary<string, ChatSessionWorkspaceSummary> results = new(StringComparer.Ordinal);
+        foreach (string sessionId in sessionIds)
+        {
+            results[sessionId] = await workspaceService.GetWorkspaceSummaryAsync(sessionId, ct);
+        }
+
+        return results;
     }
 }

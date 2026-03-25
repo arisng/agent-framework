@@ -9,7 +9,7 @@ using Microsoft.JSInterop;
 namespace AGUIDojoClient.Services;
 
 /// <summary>
-/// Abstracts browser-based persistence (localStorage + IndexedDB) for session state.
+/// Abstracts browser-local cache/draft persistence (localStorage + IndexedDB) for session state.
 /// </summary>
 public interface ISessionPersistenceService
 {
@@ -23,7 +23,7 @@ public interface ISessionPersistenceService
 }
 
 /// <summary>
-/// Lightweight DTO for persisting session metadata to localStorage.
+/// Lightweight DTO for persisting cached session metadata to localStorage.
 /// </summary>
 public sealed record SessionMetadataDto(
     [property: JsonPropertyName("id")] string Id,
@@ -34,7 +34,14 @@ public sealed record SessionMetadataDto(
     [property: JsonPropertyName("createdAt")] long CreatedAt,
     [property: JsonPropertyName("lastActivityAt")] long LastActivityAt,
     [property: JsonPropertyName("aguiThreadId")] string? AguiThreadId = null,
-    [property: JsonPropertyName("serverSessionId")] string? ServerSessionId = null)
+    [property: JsonPropertyName("serverSessionId")] string? ServerSessionId = null,
+    [property: JsonPropertyName("subjectModule")] string? SubjectModule = null,
+    [property: JsonPropertyName("subjectEntityType")] string? SubjectEntityType = null,
+    [property: JsonPropertyName("subjectEntityId")] string? SubjectEntityId = null,
+    [property: JsonPropertyName("ownerId")] string? OwnerId = null,
+    [property: JsonPropertyName("tenantId")] string? TenantId = null,
+    [property: JsonPropertyName("workflowInstanceId")] string? WorkflowInstanceId = null,
+    [property: JsonPropertyName("runtimeInstanceId")] string? RuntimeInstanceId = null)
 {
     public static SessionMetadataDto FromMetadata(SessionMetadata m) => new(
         m.Id,
@@ -45,7 +52,14 @@ public sealed record SessionMetadataDto(
         m.CreatedAt.ToUnixTimeMilliseconds(),
         m.LastActivityAt.ToUnixTimeMilliseconds(),
         m.AguiThreadId,
-        m.ServerSessionId);
+        m.ServerSessionId,
+        m.SubjectModule,
+        m.SubjectEntityType,
+        m.SubjectEntityId,
+        m.OwnerId,
+        m.TenantId,
+        m.WorkflowInstanceId,
+        m.RuntimeInstanceId);
 
     public SessionMetadata ToMetadata() => new()
     {
@@ -58,6 +72,13 @@ public sealed record SessionMetadataDto(
         LastActivityAt = DateTimeOffset.FromUnixTimeMilliseconds(LastActivityAt),
         AguiThreadId = string.IsNullOrWhiteSpace(AguiThreadId) ? SessionMetadata.CreateAguiThreadId() : AguiThreadId,
         ServerSessionId = ServerSessionId,
+        SubjectModule = SubjectModule,
+        SubjectEntityType = SubjectEntityType,
+        SubjectEntityId = SubjectEntityId,
+        OwnerId = OwnerId,
+        TenantId = TenantId,
+        WorkflowInstanceId = WorkflowInstanceId,
+        RuntimeInstanceId = RuntimeInstanceId,
     };
 }
 

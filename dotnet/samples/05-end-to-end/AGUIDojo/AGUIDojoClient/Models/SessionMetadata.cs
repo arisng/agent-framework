@@ -41,6 +41,27 @@ public sealed record SessionMetadata
     /// <summary>Gets the correlated server-owned chat session identifier, when known.</summary>
     public string? ServerSessionId { get; init; }
 
+    /// <summary>Gets the linked business subject module, when known.</summary>
+    public string? SubjectModule { get; init; }
+
+    /// <summary>Gets the linked business subject type, when known.</summary>
+    public string? SubjectEntityType { get; init; }
+
+    /// <summary>Gets the linked business subject identifier, when known.</summary>
+    public string? SubjectEntityId { get; init; }
+
+    /// <summary>Gets the simulated owner identifier for the session.</summary>
+    public string? OwnerId { get; init; }
+
+    /// <summary>Gets the simulated tenant identifier for the session.</summary>
+    public string? TenantId { get; init; }
+
+    /// <summary>Gets the linked workflow instance identifier, when known.</summary>
+    public string? WorkflowInstanceId { get; init; }
+
+    /// <summary>Gets the linked runtime instance identifier, when known.</summary>
+    public string? RuntimeInstanceId { get; init; }
+
     /// <summary>Gets the number of unread updates for the session.</summary>
     public int UnreadCount { get; init; }
 

@@ -2,11 +2,12 @@ using AGUIDojoClient.Models;
 using AGUIDojoClient.Services;
 using Fluxor;
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace AGUIDojoClient.Store.SessionManager;
 
 /// <summary>
-/// Fluxor effects that auto-persist session state to browser storage.
+/// Fluxor effects that keep a browser-local cache of session state.
 /// Listens to state-changing actions and writes metadata (localStorage)
 /// and conversation trees (IndexedDB) via <see cref="ISessionPersistenceService"/>.
 /// </summary>
@@ -19,8 +20,9 @@ public sealed class SessionPersistenceEffect : IDisposable
 
     /// <summary>Debounce handle for conversation saves.</summary>
     private CancellationTokenSource? _debounceCts;
+    private CancellationTokenSource? _workspaceDebounceCts;
 
-    /// <summary>Debounce interval for IndexedDB writes.</summary>
+    /// <summary>Debounce interval for cached IndexedDB writes.</summary>
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(500);
 
     public SessionPersistenceEffect(
@@ -39,10 +41,12 @@ public sealed class SessionPersistenceEffect : IDisposable
     {
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
+        _workspaceDebounceCts?.Cancel();
+        _workspaceDebounceCts?.Dispose();
     }
 
     // =========================================================================
-    // Conversation tree persistence (IndexedDB) — debounced
+    // Conversation tree cache (IndexedDB) — debounced
     // =========================================================================
 
     [EffectMethod]
@@ -66,7 +70,7 @@ public sealed class SessionPersistenceEffect : IDisposable
         => DebouncedSaveConversationAsync(action.SessionId);
 
     // =========================================================================
-    // Metadata persistence (localStorage) — immediate
+    // Metadata cache (localStorage) — immediate
     // =========================================================================
 
     [EffectMethod]
@@ -101,6 +105,7 @@ public sealed class SessionPersistenceEffect : IDisposable
                 SaveConversationImmediateAsync(action.SessionId),
                 SaveAllMetadataAsync());
             await ReconcileServerSessionAsync(action.SessionId, dispatcher);
+            await SyncWorkspaceImmediateAsync(action.SessionId, dispatcher);
             return;
         }
 
@@ -118,6 +123,46 @@ public sealed class SessionPersistenceEffect : IDisposable
     [EffectMethod]
     public Task OnHydrateSessions(SessionActions.HydrateSessionsAction action, IDispatcher _)
         => SaveAllMetadataAsync();
+
+    [EffectMethod]
+    public Task OnSetPendingApproval(SessionActions.SetPendingApprovalAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnSetPlan(SessionActions.SetPlanAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnApplyPlanDelta(SessionActions.ApplyPlanDeltaAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnClearPlan(SessionActions.ClearPlanAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnSetRecipe(SessionActions.SetRecipeAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnSetDocument(SessionActions.SetDocumentAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnSetDocumentPreview(SessionActions.SetDocumentPreviewAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnClearArtifacts(SessionActions.ClearArtifactsAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnSetDataGridArtifact(SessionActions.SetDataGridArtifactAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
+
+    [EffectMethod]
+    public Task OnAddAuditEntry(SessionActions.AddAuditEntryAction action, IDispatcher dispatcher)
+        => DebouncedSyncWorkspaceAsync(action.SessionId, dispatcher);
 
     // =========================================================================
     // Private helpers
@@ -137,6 +182,27 @@ public sealed class SessionPersistenceEffect : IDisposable
             await SaveConversationImmediateAsync(sessionId);
         }
         catch (TaskCanceledException) { }
+    }
+
+    private async Task DebouncedSyncWorkspaceAsync(string sessionId, IDispatcher dispatcher)
+    {
+        _workspaceDebounceCts?.Cancel();
+        _workspaceDebounceCts = new CancellationTokenSource();
+        CancellationToken token = _workspaceDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(DebounceInterval, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await SyncWorkspaceImmediateAsync(sessionId, dispatcher);
+        }
+        catch (TaskCanceledException)
+        {
+        }
     }
 
     private async Task SaveConversationImmediateAsync(string sessionId)
@@ -170,7 +236,7 @@ public sealed class SessionPersistenceEffect : IDisposable
                 return;
             }
 
-            if (LooksLikeServerConversationNodeId(entry.State.Tree.ActiveLeafId))
+            if (!entry.State.IsRunning && LooksLikeServerConversationNodeId(entry.State.Tree.ActiveLeafId))
             {
                 await _sessionApiService.SetActiveLeafAsync(resolvedServerSessionId, entry.State.Tree.ActiveLeafId!);
             }
@@ -197,6 +263,44 @@ public sealed class SessionPersistenceEffect : IDisposable
     {
         await _persistence.SaveActiveSessionIdAsync(sessionId);
         await SaveAllMetadataAsync();
+    }
+
+    private async Task ImportWorkspaceToServerAsync(string sessionId)
+    {
+        if (!SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        ServerSessionWorkspaceImportRequest? request = SessionWorkspaceProjection.CreateImportRequest(entry.State);
+        if (request is null)
+        {
+            return;
+        }
+
+        string? resolvedServerSessionId = entry.Metadata.ServerSessionId;
+        if (string.IsNullOrWhiteSpace(resolvedServerSessionId) && !string.IsNullOrWhiteSpace(entry.Metadata.AguiThreadId))
+        {
+            resolvedServerSessionId = await ResolveServerSessionIdAsync(entry.Metadata.AguiThreadId);
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedServerSessionId))
+        {
+            return;
+        }
+
+        try
+        {
+            bool imported = await _sessionApiService.ImportWorkspaceAsync(resolvedServerSessionId, request);
+            if (!imported)
+            {
+                _logger.LogWarning("Workspace import sync did not succeed for session {ServerSessionId}.", resolvedServerSessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Workspace import sync failed for session {ServerSessionId}.", resolvedServerSessionId);
+        }
     }
 
     private async Task ArchiveSessionOnServerAsync(string? serverSessionId, string? aguiThreadId)
@@ -249,6 +353,44 @@ public sealed class SessionPersistenceEffect : IDisposable
             sessionId,
             entry.Metadata.AguiThreadId,
             resolvedServerSessionId));
+    }
+
+    private async Task SyncWorkspaceImmediateAsync(string sessionId, IDispatcher dispatcher)
+    {
+        if (!SessionSelectors.TryGetSession(_sessionStore.Value, sessionId, out SessionEntry entry))
+        {
+            return;
+        }
+
+        ServerSessionWorkspaceImportRequest? request = SessionWorkspaceProjection.CreateImportRequest(entry.State);
+        if (request is null)
+        {
+            return;
+        }
+
+        string? resolvedServerSessionId = entry.Metadata.ServerSessionId;
+        if (string.IsNullOrWhiteSpace(resolvedServerSessionId) && !string.IsNullOrWhiteSpace(entry.Metadata.AguiThreadId))
+        {
+            resolvedServerSessionId = await ResolveServerSessionIdAsync(entry.Metadata.AguiThreadId);
+            if (!string.IsNullOrWhiteSpace(resolvedServerSessionId))
+            {
+                dispatcher.Dispatch(new SessionActions.SetSessionCorrelationAction(
+                    sessionId,
+                    entry.Metadata.AguiThreadId,
+                    resolvedServerSessionId));
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedServerSessionId))
+        {
+            return;
+        }
+
+        bool imported = await _sessionApiService.ImportWorkspaceAsync(resolvedServerSessionId, request);
+        if (!imported)
+        {
+            _logger.LogWarning("Workspace import did not succeed for server session {ServerSessionId}.", resolvedServerSessionId);
+        }
     }
 
     private async Task<string?> ResolveServerSessionIdAsync(string aguiThreadId)
