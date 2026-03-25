@@ -2,7 +2,7 @@
 date: 2026-03-23
 type: Task
 severity: Critical
-status: resolved
+status: Resolved
 related:
   - 260323_aguidojo-implementation-plan.md
 ---

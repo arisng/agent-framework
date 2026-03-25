@@ -23,7 +23,7 @@ Establish the canonical high-level roadmap and implementation plan for AGUIDojo 
 - [x] Add a server-owned Chat Sessions module with implicit first-turn creation plus thin list/detail/archive lifecycle APIs.
 - [x] Persist the canonical branching conversation graph and active-branch state with rich enough message fidelity for current AGUIDojo surfaces.
 - [x] Support per-session preferred model selection on the single `/chat` route, server-side effective-model routing, and model-aware compaction/checkpoint policy.
-- [ ] Persist approvals, audit, plan state, compaction checkpoints, and durable artifact/projection records needed for resume and support.
+- [x] Persist approvals, audit, plan state, compaction checkpoints, and durable artifact/projection records needed for resume and support.
 - [ ] Add simulated owner/tenant context plus durable workflow and business-subject links, starting with Todo.
 - [ ] Demote browser storage to cache, drafts, offline convenience, and best-effort import while keeping portability, inspection, and docs aligned.
 
